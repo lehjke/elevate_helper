@@ -21,42 +21,48 @@ def main(n_copy, path, buildingtype, morningflag) -> None:
     n_copy = int(n_copy)
     try:
         makecopiesandrun(buildingtype, path, n_copy,morningflag) 
-    except:
-        print("Error in makecopiesandrun")
+    except Exception as ex:
+        template = "An exception of type {0} occurred in makecopiesandrun(). Arguments:\n{1!r}"
+        message = template.format(type(ex).__name__, ex.args)
+        print(message)
     if buildingtype == "Office":
         try:
             if morningflag == 1:
                 get_area(path + "//" + "lunch")
             get_area(path + "//" + "morning")
-        except:
-            print("Error in get_area")
+        except Exception as ex:
+            template = "An exception of type {0} occurred in get_area(). Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print(message)
     else:
         try:
             get_area(path)
-        except:
-            print("Error in get_area")
+        except Exception as ex:
+            template = "An exception of type {0} occurred in get_area() (not office one). Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print(message)
     
 
 
 def print_report(path) -> None:
+    if path:    
+        excel_app = win32com.client.Dispatch("Excel.Application")
+        #excel_app.WindowState = -4137
+        excel_app.Visible = True
+
+        workbook = excel_app.Workbooks.Open(path + '\\' + 'batch_results.csv')
+        win32gui.SetForegroundWindow(excel_app.Hwnd) 
+
+        workbook.RefreshAll()
+        excel_app.CalculateUntilAsyncQueriesDone()
+
+        keyboard.press_and_release('alt + c')
+        keyboard.press_and_release('left arrow')
+        keyboard.press_and_release('tab')
+        keyboard.press_and_release('enter')
         
-    excel_app = win32com.client.Dispatch("Excel.Application")
-    #excel_app.WindowState = -4137
-    excel_app.Visible = True
-
-    workbook = excel_app.Workbooks.Open(path + '\\' + 'batch_results.csv')
-    win32gui.SetForegroundWindow(excel_app.Hwnd) 
-
-    workbook.RefreshAll()
-    excel_app.CalculateUntilAsyncQueriesDone()
-
-    keyboard.press_and_release('alt + c')
-    keyboard.press_and_release('left arrow')
-    keyboard.press_and_release('tab')
-    keyboard.press_and_release('enter')
-    
-    keyboard.press_and_release('left arrow')
-    keyboard.press_and_release('enter')
+        keyboard.press_and_release('left arrow')
+        keyboard.press_and_release('enter')
 
 def modify_handling_capacity(xml_file, new_capacity):
 
@@ -106,6 +112,10 @@ def modify_buildingtype_office(xml_file, peak) -> None:
                 else: 
                     print('Unknown peak')
 
+    data_btype = root.find('.//BuildingData')
+    if data_btype is not None:
+        data_btype.set('BuildingType', "1")
+
     xml_str = ET.tostring(root, encoding='utf-8')
     pretty_xml = minidom.parseString(xml_str).toprettyxml(indent="  ")
     
@@ -125,9 +135,22 @@ def modify_buildingtype_residence(xml_file, buildingtype) -> None:
                 data_period.set('SplitDown',"50")
                 data_period.set('SplitInterfloor',"0")
 
+    try:
+        data_btype = root.find('.//BuildingData')
+        if data_btype is not None:
+            if buildingtype == "Residence":
+                data_btype.set('BuildingType', '3')
+            elif buildingtype == "Hotel":
+                data_btype.set('BuildingType', '2')
+            else:
+                print("Unknown building type")
+    except Exception as ex:
+        template = "An exception of type {0} occurred in btype change. Arguments:\n{1!r}"
+        message = template.format(type(ex).__name__, ex.args)
+        print(message)
+    
     xml_str = ET.tostring(root, encoding='utf-8')
     pretty_xml = minidom.parseString(xml_str).toprettyxml(indent="  ")
-    
     with open(xml_file, 'w', encoding='utf-8') as f:
         f.write(pretty_xml) 
 
@@ -151,8 +174,9 @@ def modifytitle(xml_file,peak) -> None:
         f.write(pretty_xml)
 
 def get_area(path) -> None:
-
-    xml_file = path + '\\' + os.listdir(path)[0]
+    file = [f for f in os.listdir(path) if f.lower().endswith("01.elvx")]
+    xml_file = path + '\\' + file[0]
+    # xml_file = path + '\\' + os.listdir(path)[0]
     csv_file = os.path.join(path, 'floor_area.csv')
 
     tree = ET.parse(xml_file)
@@ -223,6 +247,7 @@ def officerun(path,morningflag) -> None:
     keyboard.press_and_release('enter')
     print("Morning launched")
     if morningflag == 1:
+        os.startfile(r'C:\Program Files (x86)\Elevate 9\Elevate.exe')
         time.sleep(1.5)
         py_win_keyboard_layout.change_foreground_window_keyboard_layout(0x04090409)
         keyboard.press_and_release('alt + a')
@@ -243,7 +268,7 @@ def officerun(path,morningflag) -> None:
         print("Lunch launched")
 
 def makecopiesandrun(buildingtype, path, n_copy, morningflag) -> None:
-    file = os.listdir(path)
+    file = [f for f in os.listdir(path) if f.lower().endswith(".elvx")]
     lunchpath = ''
     morningpath = ''
     
@@ -254,22 +279,23 @@ def makecopiesandrun(buildingtype, path, n_copy, morningflag) -> None:
                 shutil.copyfile(path + '\\' + file[0], path + '\\' + file[0][:-6] + str(i) + '.elvx')
             else:
                 shutil.copyfile(path + '\\' + file[0], path + '\\' + file[0][:-7] + str(i) + '.elvx')
-            file = os.listdir(path)
+            file = [f for f in os.listdir(path) if f.lower().endswith(".elvx")]
             modify_handling_capacity(path + '\\' + file[i-1], i)
         resedencerun(path)
 
     elif buildingtype == 'Office':
         morningpath = path + '\\' + 'morning'
-        os.makedirs(morningpath)
+        os.makedirs(morningpath, exist_ok=True)
         shutil.copyfile(path + '\\' + file[0], morningpath + '\\' + file[0])
         if morningflag == 1:
             lunchpath = path + '\\' + 'lunch'
-            os.makedirs(lunchpath)
+            os.makedirs(lunchpath, exist_ok=True)
             shutil.copyfile(path + '\\' + file[0], lunchpath + '\\' + file[0])
             modify_buildingtype_office(lunchpath + '\\' + file[0],'Lunch')  
             modifytitle(lunchpath + '\\' + file[0],"Lunch")
         modify_buildingtype_office(morningpath + '\\' + file[0],'Morning') 
         modifytitle(morningpath + '\\' + file[0],"Morning")
+        print(morningpath + '\\' + file[0])
         for i in range(2, n_copy + 1):
             if i < 10:
                 shutil.copyfile(morningpath + '\\' + file[0], morningpath + '\\' + file[0][:-6] + str(i) + '.elvx')

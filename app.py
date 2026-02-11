@@ -9,29 +9,38 @@ def button_click(buildingtype,morningflag) -> None:
     global n_copy
     try:
         body.main(n_copy, path, buildingtype, morningflag)
-    except:
-        error_state_val.set('NOT OK!')
+    except Exception as ex:
+        template = "An exception of type {0} occurred in main(). Arguments:\n{1!r}"
+        message = template.format(type(ex).__name__, ex.args)
+        error_state_val.set(message)
+
 
 def print_report() -> None:
     path = path_entry.get()
     try:
         body.print_report(path)
-    except:
-        error_state_val.set('NOT OK!')
+    except Exception as ex:
+        template = "An exception of type {0} occurred in print_report(). Arguments:\n{1!r}"
+        message = template.format(type(ex).__name__, ex.args)
+        error_state_val.set(message)
 
 def print_report_morning() -> None:
     path = path_entry.get()
     try:
         body.print_report(path + '//' + 'morning')
-    except:
-        error_state_val.set('NOT OK!')
+    except Exception as ex:
+        template = "An exception of type {0} occurred in print_report_morning(). Arguments:\n{1!r}"
+        message = template.format(type(ex).__name__, ex.args)
+        error_state_val.set(message)
 
 def print_report_lunch() -> None:
     path = path_entry.get()
     try:
         body.print_report(path + '//' + 'lunch')
-    except:
-        error_state_val.set('NOT OK!')
+    except Exception as ex:
+        template = "An exception of type {0} occurred in print_report_lunch(). Arguments:\n{1!r}"
+        message = template.format(type(ex).__name__, ex.args)
+        error_state_val.set(message)
 
 def choosetype(type) -> None:
     global n_copy
@@ -51,7 +60,7 @@ def choosetype(type) -> None:
         residence_button.select()
         office_button.deselect()
         hotel_button.deselect()
-        n_copy = 7
+        n_copy = 8
         report_button_morning.grid_forget()
         report_button_lunch.grid_forget()
         report_button.grid(column=0, row=1, columnspan=4, padx=10, pady=5, ipadx=70, sticky='news')
@@ -149,7 +158,7 @@ error_state_val.set('OK!')
 error_label = tkinter.Label(frame_4, text='Checkup:')
 error_label.grid(column=0, row=0, padx=10, pady=5, sticky='w')
 
-error_state = tkinter.Label(frame_4, textvariable=error_state_val)
+error_state = tkinter.Label(frame_4, textvariable=error_state_val,justify='right',width=35,wraplength=250,anchor="e")
 error_state.grid(column=1, row=0, padx=10, pady=5, sticky='e')
 
 root.mainloop()
