@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
 import csv
+import report_lib
 
 def main(n_copy, path, buildingtype, morningflag) -> None:
     #n_copy=3
@@ -28,8 +29,8 @@ def main(n_copy, path, buildingtype, morningflag) -> None:
     if buildingtype == "Office":
         try:
             if morningflag == 1:
-                get_area(path + "//" + "lunch")
-            get_area(path + "//" + "morning")
+                get_area(os.path.join(path, "lunch"))
+            get_area(os.path.join(path, "morning"))
         except Exception as ex:
             template = "An exception of type {0} occurred in get_area(). Arguments:\n{1!r}"
             message = template.format(type(ex).__name__, ex.args)
@@ -45,24 +46,22 @@ def main(n_copy, path, buildingtype, morningflag) -> None:
 
 
 def print_report(path) -> None:
-    if path:    
-        excel_app = win32com.client.Dispatch("Excel.Application")
-        #excel_app.WindowState = -4137
-        excel_app.Visible = True
+    if not path:
+        return
 
-        workbook = excel_app.Workbooks.Open(path + '\\' + 'batch_results.csv')
-        win32gui.SetForegroundWindow(excel_app.Hwnd) 
+    batch_results_path = os.path.join(path, "batch_results.csv")
+    if not os.path.exists(batch_results_path):
+        print(f"batch_results.csv not found: {batch_results_path}")
+        return
 
-        workbook.RefreshAll()
-        excel_app.CalculateUntilAsyncQueriesDone()
+    excel_app = report_lib.get_excel_app(visible=True, use_active=False)
+    win32gui.SetForegroundWindow(excel_app.Hwnd)
 
-        keyboard.press_and_release('alt + c')
-        keyboard.press_and_release('left arrow')
-        keyboard.press_and_release('tab')
-        keyboard.press_and_release('enter')
-        
-        keyboard.press_and_release('left arrow')
-        keyboard.press_and_release('enter')
+    report_lib.ElevateReportV1(
+        excel=excel_app,
+        batch_results_path=batch_results_path,
+        output_folder=path,
+    )
 
 def modify_handling_capacity(xml_file, new_capacity):
 
@@ -175,8 +174,8 @@ def modifytitle(xml_file,peak) -> None:
 
 def get_area(path) -> None:
     file = [f for f in os.listdir(path) if f.lower().endswith("01.elvx")]
-    xml_file = path + '\\' + file[0]
-    # xml_file = path + '\\' + os.listdir(path)[0]
+    xml_file = os.path.join(path, file[0])
+    # xml_file = os.path.join(path, os.listdir(path)[0])
     csv_file = os.path.join(path, 'floor_area.csv')
 
     tree = ET.parse(xml_file)
@@ -243,7 +242,7 @@ def officerun(path,morningflag) -> None:
     keyboard.press_and_release('tab')
     time.sleep(0.5)
     #keyboard.press_and_release('ctrl + v')
-    keyboard.write(path + '\\' + 'morning')
+    keyboard.write(os.path.join(path, 'morning'))
     keyboard.press_and_release('enter')
     print("Morning launched")
     if morningflag == 1:
@@ -263,7 +262,7 @@ def officerun(path,morningflag) -> None:
         keyboard.press_and_release('tab')
         time.sleep(0.5)
         #keyboard.press_and_release('ctrl + v')
-        keyboard.write(path + '\\' + 'lunch')
+        keyboard.write(os.path.join(path, 'lunch'))
         keyboard.press_and_release('enter')
         print("Lunch launched")
 
@@ -273,43 +272,61 @@ def makecopiesandrun(buildingtype, path, n_copy, morningflag) -> None:
     morningpath = ''
     
     if buildingtype == 'Residence' or buildingtype == 'Hotel':
-        modify_buildingtype_residence(path + '\\' + file[0],buildingtype) 
+        modify_buildingtype_residence(os.path.join(path, file[0]),buildingtype) 
         for i in range(2, n_copy + 1):
             if i < 10:
-                shutil.copyfile(path + '\\' + file[0], path + '\\' + file[0][:-6] + str(i) + '.elvx')
+                shutil.copyfile(
+                    os.path.join(path, file[0]),
+                    os.path.join(path, file[0][:-6] + str(i) + '.elvx'),
+                )
             else:
-                shutil.copyfile(path + '\\' + file[0], path + '\\' + file[0][:-7] + str(i) + '.elvx')
+                shutil.copyfile(
+                    os.path.join(path, file[0]),
+                    os.path.join(path, file[0][:-7] + str(i) + '.elvx'),
+                )
             file = [f for f in os.listdir(path) if f.lower().endswith(".elvx")]
-            modify_handling_capacity(path + '\\' + file[i-1], i)
+            modify_handling_capacity(os.path.join(path, file[i-1]), i)
         resedencerun(path)
 
     elif buildingtype == 'Office':
-        morningpath = path + '\\' + 'morning'
+        morningpath = os.path.join(path, 'morning')
         os.makedirs(morningpath, exist_ok=True)
-        shutil.copyfile(path + '\\' + file[0], morningpath + '\\' + file[0])
+        shutil.copyfile(os.path.join(path, file[0]), os.path.join(morningpath, file[0]))
         if morningflag == 1:
-            lunchpath = path + '\\' + 'lunch'
+            lunchpath = os.path.join(path, 'lunch')
             os.makedirs(lunchpath, exist_ok=True)
-            shutil.copyfile(path + '\\' + file[0], lunchpath + '\\' + file[0])
-            modify_buildingtype_office(lunchpath + '\\' + file[0],'Lunch')  
-            modifytitle(lunchpath + '\\' + file[0],"Lunch")
-        modify_buildingtype_office(morningpath + '\\' + file[0],'Morning') 
-        modifytitle(morningpath + '\\' + file[0],"Morning")
-        print(morningpath + '\\' + file[0])
+            shutil.copyfile(os.path.join(path, file[0]), os.path.join(lunchpath, file[0]))
+            modify_buildingtype_office(os.path.join(lunchpath, file[0]),'Lunch')  
+            modifytitle(os.path.join(lunchpath, file[0]),"Lunch")
+        modify_buildingtype_office(os.path.join(morningpath, file[0]),'Morning') 
+        modifytitle(os.path.join(morningpath, file[0]),"Morning")
+        print(os.path.join(morningpath, file[0]))
         for i in range(2, n_copy + 1):
             if i < 10:
-                shutil.copyfile(morningpath + '\\' + file[0], morningpath + '\\' + file[0][:-6] + str(i) + '.elvx')
+                shutil.copyfile(
+                    os.path.join(morningpath, file[0]),
+                    os.path.join(morningpath, file[0][:-6] + str(i) + '.elvx'),
+                )
                 if morningflag == 1:
-                    shutil.copyfile(lunchpath + '\\' + file[0], lunchpath + '\\' + file[0][:-6] + str(i) + '.elvx')
+                    shutil.copyfile(
+                        os.path.join(lunchpath, file[0]),
+                        os.path.join(lunchpath, file[0][:-6] + str(i) + '.elvx'),
+                    )
             else:
-                shutil.copyfile(morningpath + '\\' + file[0], morningpath + '\\' + file[0][:-7] + str(i) + '.elvx')
+                shutil.copyfile(
+                    os.path.join(morningpath, file[0]),
+                    os.path.join(morningpath, file[0][:-7] + str(i) + '.elvx'),
+                )
                 if morningflag == 1:
-                    shutil.copyfile(lunchpath + '\\' + file[0], lunchpath + '\\' + file[0][:-7] + str(i) + '.elvx')
+                    shutil.copyfile(
+                        os.path.join(lunchpath, file[0]),
+                        os.path.join(lunchpath, file[0][:-7] + str(i) + '.elvx'),
+                    )
             file = os.listdir(morningpath)
-            modify_handling_capacity(morningpath + '\\' + file[i-1], i)
+            modify_handling_capacity(os.path.join(morningpath, file[i-1]), i)
             if morningflag == 1:
                 file = os.listdir(lunchpath)
-                modify_handling_capacity(lunchpath + '\\' + file[i-1], i) 
+                modify_handling_capacity(os.path.join(lunchpath, file[i-1]), i) 
         officerun(path,morningflag) 
 
     else:
