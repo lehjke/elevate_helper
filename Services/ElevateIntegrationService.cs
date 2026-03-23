@@ -178,7 +178,7 @@ public sealed class ElevateIntegrationService : IElevateIntegrationService
                     $"Program Files scan ({root})");
             }
 
-            // Common direct path used in prior Python version.
+            // Common direct legacy path.
             yield return (
                 Path.Combine(root, "Elevate 9", "Elevate.exe"),
                 $"Legacy default ({root})");

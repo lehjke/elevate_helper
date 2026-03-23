@@ -10,11 +10,10 @@
       "ElevateHelperWinUI/1.0.0": {
         "dependencies": {
           "Microsoft.Web.WebView2": "1.0.3856.49",
-          "Microsoft.Windows.SDK.BuildTools": "10.0.26100.7705",
           "Microsoft.WindowsAppSDK": "1.8.260317003",
           "Microsoft.Web.WebView2.Core.Projection": "1.0.3856.49",
           "runtimepack.Microsoft.NETCore.App.Runtime.win-x64": "8.0.25",
-          "runtimepack.Microsoft.Windows.SDK.NET.Ref": "10.0.19041.56"
+          "runtimepack.Microsoft.Windows.SDK.NET.Ref": "10.0.19041.57"
         },
         "runtime": {
           "ElevateHelperWinUI.dll": {}
@@ -740,7 +739,7 @@
           }
         }
       },
-      "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.19041.56": {
+      "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.19041.57": {
         "runtime": {
           "Microsoft.Windows.SDK.NET.dll": {
             "assemblyVersion": "10.0.19041.38",
@@ -759,24 +758,18 @@
           }
         }
       },
-      "Microsoft.Windows.SDK.BuildTools/10.0.26100.7705": {},
-      "Microsoft.Windows.SDK.BuildTools.MSIX/1.7.20250829.1": {},
       "Microsoft.WindowsAppSDK/1.8.260317003": {
         "dependencies": {
           "Microsoft.WindowsAppSDK.AI": "1.8.53",
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
-          "Microsoft.WindowsAppSDK.DWrite": "1.8.25122902",
           "Microsoft.WindowsAppSDK.Foundation": "1.8.260222000",
           "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001",
           "Microsoft.WindowsAppSDK.ML": "1.8.2141",
-          "Microsoft.WindowsAppSDK.Runtime": "1.8.260317003",
           "Microsoft.WindowsAppSDK.Widgets": "1.8.251231004",
           "Microsoft.WindowsAppSDK.WinUI": "1.8.260224000"
         }
       },
       "Microsoft.WindowsAppSDK.AI/1.8.53": {
         "dependencies": {
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
           "Microsoft.WindowsAppSDK.Foundation": "1.8.260222000"
         },
         "runtime": {
@@ -806,20 +799,8 @@
           }
         }
       },
-      "Microsoft.WindowsAppSDK.Base/1.8.251216001": {
-        "dependencies": {
-          "Microsoft.Windows.SDK.BuildTools": "10.0.26100.7705",
-          "Microsoft.Windows.SDK.BuildTools.MSIX": "1.7.20250829.1"
-        }
-      },
-      "Microsoft.WindowsAppSDK.DWrite/1.8.25122902": {
-        "dependencies": {
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
-        }
-      },
       "Microsoft.WindowsAppSDK.Foundation/1.8.260222000": {
         "dependencies": {
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
           "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
         },
         "runtime": {
@@ -910,9 +891,6 @@
         }
       },
       "Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260125001": {
-        "dependencies": {
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
-        },
         "runtime": {
           "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
             "assemblyVersion": "10.0.0.0",
@@ -922,7 +900,6 @@
       },
       "Microsoft.WindowsAppSDK.ML/1.8.2141": {
         "dependencies": {
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
           "Microsoft.WindowsAppSDK.Foundation": "1.8.260222000",
           "System.Numerics.Tensors": "9.0.0"
         },
@@ -937,15 +914,7 @@
           }
         }
       },
-      "Microsoft.WindowsAppSDK.Runtime/1.8.260317003": {
-        "dependencies": {
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
-        }
-      },
       "Microsoft.WindowsAppSDK.Widgets/1.8.251231004": {
-        "dependencies": {
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
-        },
         "runtime": {
           "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Widgets.Projection.dll": {
             "assemblyVersion": "1.0.0.0",
@@ -956,7 +925,6 @@
       "Microsoft.WindowsAppSDK.WinUI/1.8.260224000": {
         "dependencies": {
           "Microsoft.Web.WebView2": "1.0.3856.49",
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
           "Microsoft.WindowsAppSDK.Foundation": "1.8.260222000",
           "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
         },
@@ -996,7 +964,7 @@
       "serviceable": false,
       "sha512": ""
     },
-    "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.19041.56": {
+    "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.19041.57": {
       "type": "runtimepack",
       "serviceable": false,
       "sha512": ""
@@ -1007,20 +975,6 @@
       "sha512": "sha512-OOBKvFgK0pUKcndvTK6/jUsbrPRwce62Wt/0hkJWDsK2AcsJ2ylOS/mLa4xAcNUTOs96YIjpPN4AHMADXJcrgQ==",
       "path": "microsoft.web.webview2/1.0.3856.49",
       "hashPath": "microsoft.web.webview2.1.0.3856.49.nupkg.sha512"
-    },
-    "Microsoft.Windows.SDK.BuildTools/10.0.26100.7705": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-HhD3TweZMpyor2t7vRJgJrASHJDWcDjYWQB2HSqsYWvpB10K8KgkdmXLtGUoKYwoztyIV2k1vjt1DdVsYs8jWw==",
-      "path": "microsoft.windows.sdk.buildtools/10.0.26100.7705",
-      "hashPath": "microsoft.windows.sdk.buildtools.10.0.26100.7705.nupkg.sha512"
-    },
-    "Microsoft.Windows.SDK.BuildTools.MSIX/1.7.20250829.1": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-IMdvRmCIZnBS5GkYnv0po1bcx6U1OF39pqA4TphQ9evDzpCRoSE19/PkDvlUNNrBavTsLIEJgd/TAIFner75ow==",
-      "path": "microsoft.windows.sdk.buildtools.msix/1.7.20250829.1",
-      "hashPath": "microsoft.windows.sdk.buildtools.msix.1.7.20250829.1.nupkg.sha512"
     },
     "Microsoft.WindowsAppSDK/1.8.260317003": {
       "type": "package",
@@ -1035,20 +989,6 @@
       "sha512": "sha512-bRzx+VwQY/OXxFJYML9riOrds7sBrCNpDG6Aok8KiH+TcdE6HnWjNzxJBDe/dQRTXQO5OQa9I7LNjN8NAZ1fjg==",
       "path": "microsoft.windowsappsdk.ai/1.8.53",
       "hashPath": "microsoft.windowsappsdk.ai.1.8.53.nupkg.sha512"
-    },
-    "Microsoft.WindowsAppSDK.Base/1.8.251216001": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-PS1wriuFknz3W2F2P/e6RvOTM35w89Lsj/f0QmUEPrJjKnc+jM0JLX1vfdytI14y1gNRUTm9uclwP0aH/SVU5w==",
-      "path": "microsoft.windowsappsdk.base/1.8.251216001",
-      "hashPath": "microsoft.windowsappsdk.base.1.8.251216001.nupkg.sha512"
-    },
-    "Microsoft.WindowsAppSDK.DWrite/1.8.25122902": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-zFNn07i7Cyz62Y8FnPQAyzeZK7ww3m9t42i9pzy4C04pNbyUDQ4fG7pB6VSh6n4EyFuYtuFQuDzt4mKmXFrkrg==",
-      "path": "microsoft.windowsappsdk.dwrite/1.8.25122902",
-      "hashPath": "microsoft.windowsappsdk.dwrite.1.8.25122902.nupkg.sha512"
     },
     "Microsoft.WindowsAppSDK.Foundation/1.8.260222000": {
       "type": "package",
@@ -1070,13 +1010,6 @@
       "sha512": "sha512-A707h4Fg0Z4y5lWOJMacWUNQxZ01Iceat2iS8cMggLj4pe/NmbtehBQAgvaVKbsHN8V4F+SlJL+c7fAjXJjWJQ==",
       "path": "microsoft.windowsappsdk.ml/1.8.2141",
       "hashPath": "microsoft.windowsappsdk.ml.1.8.2141.nupkg.sha512"
-    },
-    "Microsoft.WindowsAppSDK.Runtime/1.8.260317003": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-sLhPQoFHywDZLMvLTzjErOMvZJkRtzYRW0vQhumT9UqZI700sygbmnbuyCkjyvrmEnsNB9iVAiYbKf93OVBWXA==",
-      "path": "microsoft.windowsappsdk.runtime/1.8.260317003",
-      "hashPath": "microsoft.windowsappsdk.runtime.1.8.260317003.nupkg.sha512"
     },
     "Microsoft.WindowsAppSDK.Widgets/1.8.251231004": {
       "type": "package",

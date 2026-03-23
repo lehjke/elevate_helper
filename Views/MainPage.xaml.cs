@@ -75,7 +75,7 @@ public sealed partial class MainPage : Page
 
     private async void OnReportButtonClick(object sender, RoutedEventArgs e)
     {
-        if (!TryGetInputs(out string path, out _))
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
         {
             return;
         }
@@ -84,14 +84,14 @@ public sealed partial class MainPage : Page
             "Generating report...",
             async () =>
             {
-                ProcessingResult result = await reportService.PrintReportAsync(path);
+                ProcessingResult result = await reportService.PrintReportAsync(path, buildingType);
                 HandleResult(result, "Report generated successfully.");
             });
     }
 
     private async void OnMorningReportButtonClick(object sender, RoutedEventArgs e)
     {
-        if (!TryGetInputs(out string path, out _))
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
         {
             return;
         }
@@ -101,14 +101,14 @@ public sealed partial class MainPage : Page
             async () =>
             {
                 string morningPath = Path.Combine(path, "morning");
-                ProcessingResult result = await reportService.PrintReportAsync(morningPath);
+                ProcessingResult result = await reportService.PrintReportAsync(morningPath, buildingType);
                 HandleResult(result, "Morning report generated successfully.");
             });
     }
 
     private async void OnLunchReportButtonClick(object sender, RoutedEventArgs e)
     {
-        if (!TryGetInputs(out string path, out _))
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
         {
             return;
         }
@@ -118,7 +118,7 @@ public sealed partial class MainPage : Page
             async () =>
             {
                 string lunchPath = Path.Combine(path, "lunch");
-                ProcessingResult result = await reportService.PrintReportAsync(lunchPath);
+                ProcessingResult result = await reportService.PrintReportAsync(lunchPath, buildingType);
                 HandleResult(result, "Lunch report generated successfully.");
             });
     }
@@ -126,11 +126,6 @@ public sealed partial class MainPage : Page
     private void OnExitButtonClick(object sender, RoutedEventArgs e)
     {
         Application.Current.Exit();
-    }
-
-    private void OnRefreshIntegrationButtonClick(object sender, RoutedEventArgs e)
-    {
-        RefreshIntegrationStatus(showStatusMessage: true);
     }
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
@@ -236,7 +231,6 @@ public sealed partial class MainPage : Page
         ReportButton.IsEnabled = !value;
         MorningReportButton.IsEnabled = !value;
         LunchReportButton.IsEnabled = !value;
-        RefreshIntegrationButton.IsEnabled = !value;
     }
 
     private void SetStatus(string message, InfoBarSeverity severity)
@@ -279,7 +273,6 @@ public sealed partial class MainPage : Page
     private bool TryEnsureIntegrationForLaunch()
     {
         ElevateIntegrationInfo info = integrationService.GetIntegrationInfo();
-        ApplyIntegrationInfo(info);
         if (info.IsDetected)
         {
             return true;
@@ -294,7 +287,6 @@ public sealed partial class MainPage : Page
     private void RefreshIntegrationStatus(bool showStatusMessage)
     {
         ElevateIntegrationInfo info = integrationService.GetIntegrationInfo();
-        ApplyIntegrationInfo(info);
 
         if (!showStatusMessage)
         {
@@ -306,34 +298,14 @@ public sealed partial class MainPage : Page
             string versionPart = string.IsNullOrWhiteSpace(info.ProductVersion)
                 ? string.Empty
                 : $" Version: {info.ProductVersion}.";
-            SetStatus($"Elevate integration is active.{versionPart}", InfoBarSeverity.Success);
+            SetStatus(
+                $"Elevate found.{versionPart} Path: {info.ExecutablePath}",
+                InfoBarSeverity.Success);
             return;
         }
 
         SetStatus(
             "Elevate was not found. Check installation or define ELEVATE_EXE_PATH.",
             InfoBarSeverity.Warning);
-    }
-
-    private void ApplyIntegrationInfo(ElevateIntegrationInfo info)
-    {
-        if (info.IsDetected)
-        {
-            string versionPart = string.IsNullOrWhiteSpace(info.ProductVersion)
-                ? "Version unknown"
-                : $"Version {info.ProductVersion}";
-
-            IntegrationStateTextBlock.Text = $"Connected ({versionPart})";
-            IntegrationPathTextBlock.Text =
-                $"Source: {info.DetectionSource}\nPath: {info.ExecutablePath}";
-            return;
-        }
-
-        IntegrationStateTextBlock.Text = "Not connected";
-        string probed = info.ProbedPaths.Count == 0
-            ? "No candidate paths were checked."
-            : string.Join("\n", info.ProbedPaths.Take(6));
-        IntegrationPathTextBlock.Text =
-            $"Source: {info.DetectionSource}\nChecked paths:\n{probed}";
     }
 }

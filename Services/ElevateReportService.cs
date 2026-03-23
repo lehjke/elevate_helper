@@ -1,15 +1,32 @@
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Text;
+using System.Runtime.InteropServices;
 using ElevateHelperWinUI.Models;
 
 namespace ElevateHelperWinUI.Services;
 
 public sealed class ElevateReportService : IElevateReportService
 {
+    private const string TDrive = "T:";
+    private const string SharedRootFolderName =
+        "\u041A\u0440\u0443\u043F\u043D\u044B\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u044B \u0438 \u0432\u044B\u0441\u043E\u0442\u043D\u043E\u0435 \u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u043E";
+    private const string MeteorRelativePath =
+        "\u0421\u043F\u0435\u0446\u0438\u0444\u0438\u043A\u0430\u0446\u0438\u0438\\ELEVATE\\Meteor";
+    private const string TempOutputRelativePath = "_Ele_temp";
+
     public async Task<ProcessingResult> PrintReportAsync(
         string path,
+        BuildingType buildingType,
         CancellationToken cancellationToken = default)
+    {
+        return await Task.Run(
+            () => PrintReportInternal(path, buildingType, cancellationToken),
+            cancellationToken);
+    }
+
+    private static ProcessingResult PrintReportInternal(
+        string path,
+        BuildingType buildingType,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -30,67 +47,109 @@ public sealed class ElevateReportService : IElevateReportService
         string? repositoryRoot = FindRepositoryRoot();
         if (repositoryRoot is null)
         {
-            return ProcessingResult.Fail("Cannot find repository root containing body.py and report_lib.py.");
+            return ProcessingResult.Fail("Cannot find repository root containing .example\\KIP.xlam.");
         }
 
-        if (!TryGetPythonCommand(repositoryRoot, out PythonCommand? pythonCommand))
+        string exampleFolder = Path.Combine(repositoryRoot, ".example");
+        string kipPath = Path.Combine(exampleFolder, "KIP.xlam");
+        if (!File.Exists(kipPath))
         {
-            return ProcessingResult.Fail("Python interpreter not found. Expected .venv\\Scripts\\python.exe or python in PATH.");
+            return ProcessingResult.Fail($"KIP.xlam not found: {kipPath}");
         }
 
-        string escapedRoot = EscapePythonLiteral(repositoryRoot);
-        string escapedPath = EscapePythonLiteral(path);
-        string script = $"""
-            import sys
-            sys.path.insert(0, r'{escapedRoot}')
-            import body
-            body.print_report(r'{escapedPath}')
-            """;
-
-        ProcessStartInfo startInfo = new()
+        string expectedTemplateName = GetTemplateName(buildingType);
+        if (!File.Exists(Path.Combine(exampleFolder, expectedTemplateName)))
         {
-            FileName = pythonCommand.FileName,
-            WorkingDirectory = repositoryRoot,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-
-        foreach (string arg in pythonCommand.PrefixArguments)
-        {
-            startInfo.ArgumentList.Add(arg);
+            return ProcessingResult.Fail($"Template not found: {Path.Combine(exampleFolder, expectedTemplateName)}");
         }
 
-        startInfo.ArgumentList.Add("-c");
-        startInfo.ArgumentList.Add(script);
+        bool mappedByService = false;
+        string tDriveRoot = string.Empty;
+        string runtimeRoot = Path.Combine(Path.GetTempPath(), "ElevateHelperWinUI", "KIPRuntime");
+        string sharedRootPath = string.Empty;
+        string meteorFolder = string.Empty;
+        string outputFolder = string.Empty;
+        object? excel = null;
 
         try
         {
-            using Process process = new()
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!PrepareTDrive(runtimeRoot, out mappedByService, out tDriveRoot, out string mapError))
             {
-                StartInfo = startInfo,
-            };
-
-            _ = process.Start();
-            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-
-            await process.WaitForExitAsync(cancellationToken);
-            string stdout = await stdoutTask;
-            string stderr = await stderrTask;
-
-            if (process.ExitCode != 0)
-            {
-                string message = BuildProcessErrorMessage(process.ExitCode, stdout, stderr);
-                return ProcessingResult.Fail(message);
+                return ProcessingResult.Fail(mapError);
             }
 
-            return ProcessingResult.Ok("Report generated.");
+            sharedRootPath = Path.Combine(tDriveRoot, SharedRootFolderName);
+            meteorFolder = Path.Combine(sharedRootPath, MeteorRelativePath);
+            outputFolder = Path.Combine(sharedRootPath, TempOutputRelativePath);
+            Directory.CreateDirectory(meteorFolder);
+            Directory.CreateDirectory(outputFolder);
+
+            CopyTemplates(exampleFolder, meteorFolder);
+            if (!TrySetBuildingType(batchResultsPath, buildingType, out string setBuildingTypeError))
+            {
+                return ProcessingResult.Fail(setBuildingTypeError);
+            }
+
+            DateTime beforeMacroUtc = DateTime.UtcNow;
+
+            Type? excelType = Type.GetTypeFromProgID("Excel.Application");
+            if (excelType is null)
+            {
+                return ProcessingResult.Fail("Microsoft Excel COM is not available.");
+            }
+
+            excel = Activator.CreateInstance(excelType);
+            if (excel is null)
+            {
+                return ProcessingResult.Fail("Unable to create Excel COM object.");
+            }
+
+            dynamic excelApp = excel;
+            excelApp.Visible = false;
+            excelApp.DisplayAlerts = false;
+            excelApp.ScreenUpdating = false;
+
+            excelApp.Workbooks.Open(kipPath);
+            excelApp.Workbooks.Open(batchResultsPath);
+            excelApp.Run("KIP.xlam!ElevateReportV1");
+            excelApp.Workbooks.Close(false);
+            excelApp.Quit();
+
+            string? generatedReport = FindLatestGeneratedReport(outputFolder, beforeMacroUtc);
+            if (generatedReport is null)
+            {
+                return ProcessingResult.Fail("Macro finished but report file was not generated.");
+            }
+
+            string destinationPath = Path.Combine(path, Path.GetFileName(generatedReport));
+            File.Copy(generatedReport, destinationPath, overwrite: true);
+
+            return ProcessingResult.Ok($"Report generated: {destinationPath}");
         }
         catch (Exception ex)
         {
-            return ProcessingResult.Fail("An exception occurred while running Python report generation.", ex);
+            return ProcessingResult.Fail("An exception occurred while running KIP.xlam VBA report generation.", ex);
+        }
+        finally
+        {
+            if (excel is not null)
+            {
+                try
+                {
+                    Marshal.FinalReleaseComObject(excel);
+                }
+                catch
+                {
+                    // Ignore COM release errors.
+                }
+            }
+
+            if (mappedByService)
+            {
+                _ = ExecuteSubstCommand($"{TDrive} /D", out _);
+            }
         }
     }
 
@@ -99,9 +158,8 @@ public sealed class ElevateReportService : IElevateReportService
         DirectoryInfo? current = new(AppContext.BaseDirectory);
         while (current is not null)
         {
-            string bodyPath = Path.Combine(current.FullName, "body.py");
-            string reportLibPath = Path.Combine(current.FullName, "report_lib.py");
-            if (File.Exists(bodyPath) && File.Exists(reportLibPath))
+            string kipPath = Path.Combine(current.FullName, ".example", "KIP.xlam");
+            if (File.Exists(kipPath))
             {
                 return current.FullName;
             }
@@ -112,94 +170,197 @@ public sealed class ElevateReportService : IElevateReportService
         return null;
     }
 
-    private static bool TryGetPythonCommand(
-        string repositoryRoot,
-        [NotNullWhen(true)] out PythonCommand? command)
+    private static string GetTemplateName(BuildingType buildingType)
     {
-        string venvPython = Path.Combine(repositoryRoot, ".venv", "Scripts", "python.exe");
-        if (File.Exists(venvPython))
+        return buildingType switch
         {
-            command = new PythonCommand(venvPython, []);
-            return true;
-        }
-
-        string? fromPath = FindExecutableInPath("python.exe");
-        if (!string.IsNullOrWhiteSpace(fromPath))
-        {
-            command = new PythonCommand(fromPath, []);
-            return true;
-        }
-
-        string? pyLauncher = FindExecutableInPath("py.exe");
-        if (!string.IsNullOrWhiteSpace(pyLauncher))
-        {
-            command = new PythonCommand(pyLauncher, ["-3"]);
-            return true;
-        }
-
-        command = null;
-        return false;
+            BuildingType.Office => "Office.xlsx",
+            BuildingType.Hotel => "Hotel.xlsx",
+            BuildingType.Residence => "Residential.xlsx",
+            _ => throw new ArgumentOutOfRangeException(nameof(buildingType), buildingType, "Unsupported building type."),
+        };
     }
 
-    private static string? FindExecutableInPath(string executableName)
+    private static string GetBuildingTypeToken(BuildingType buildingType)
     {
-        string? pathVariable = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(pathVariable))
+        return buildingType switch
         {
-            return null;
+            BuildingType.Office => "Office",
+            BuildingType.Hotel => "Hotel",
+            BuildingType.Residence => "Residential",
+            _ => throw new ArgumentOutOfRangeException(nameof(buildingType), buildingType, "Unsupported building type."),
+        };
+    }
+
+    private static bool TrySetBuildingType(
+        string batchResultsPath,
+        BuildingType buildingType,
+        out string error)
+    {
+        error = string.Empty;
+        string[] lines;
+
+        try
+        {
+            lines = File.ReadAllLines(batchResultsPath);
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to read batch_results.csv: {ex.Message}";
+            return false;
         }
 
-        foreach (string rawPart in pathVariable.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        if (lines.Length == 0)
         {
-            string part = rawPart.Trim();
-            if (string.IsNullOrWhiteSpace(part))
+            error = "batch_results.csv is empty.";
+            return false;
+        }
+
+        char delimiter = DetectDelimiter(lines);
+        string buildingTypeToken = GetBuildingTypeToken(buildingType);
+        bool updated = false;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string line = lines[i];
+            if (string.IsNullOrWhiteSpace(line))
             {
                 continue;
             }
 
-            string candidate = Path.Combine(part, executableName);
-            if (File.Exists(candidate))
+            string[] parts = line.Split(delimiter);
+            if (parts.Length < 2)
             {
-                return candidate;
+                continue;
+            }
+
+            string key = parts[0].Trim().Trim('"');
+            if (!key.Equals("BuildingType", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            parts[1] = buildingTypeToken;
+            lines[i] = string.Join(delimiter, parts);
+            updated = true;
+            break;
+        }
+
+        if (!updated)
+        {
+            string newLine = $"BuildingType{delimiter}{buildingTypeToken}";
+            lines = [.. lines, newLine];
+        }
+
+        try
+        {
+            File.WriteAllLines(batchResultsPath, lines);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to write batch_results.csv: {ex.Message}";
+            return false;
+        }
+    }
+
+    private static char DetectDelimiter(IEnumerable<string> lines)
+    {
+        foreach (string line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            if (line.Contains(';'))
+            {
+                return ';';
+            }
+
+            if (line.Contains(','))
+            {
+                return ',';
             }
         }
 
-        return null;
+        return ';';
     }
 
-    private static string EscapePythonLiteral(string input)
+    private static bool PrepareTDrive(
+        string runtimeRoot,
+        out bool mappedByService,
+        out string tDriveRoot,
+        out string error)
     {
-        StringBuilder builder = new(input.Length);
-        foreach (char character in input)
+        mappedByService = false;
+        tDriveRoot = $"{TDrive}\\";
+        error = string.Empty;
+
+        if (Directory.Exists(tDriveRoot))
         {
-            _ = character switch
-            {
-                '\\' => builder.Append(@"\\"),
-                '\'' => builder.Append(@"\'"),
-                _ => builder.Append(character),
-            };
+            return true;
         }
 
-        return builder.ToString();
+        Directory.CreateDirectory(runtimeRoot);
+        if (!ExecuteSubstCommand($"{TDrive} \"{runtimeRoot}\"", out string substError))
+        {
+            error = $"Unable to map {TDrive} for KIP macro runtime. {substError}";
+            return false;
+        }
+
+        mappedByService = true;
+        tDriveRoot = $"{TDrive}\\";
+        return true;
     }
 
-    private static string BuildProcessErrorMessage(int exitCode, string stdout, string stderr)
+    private static void CopyTemplates(string sourceExampleFolder, string meteorFolder)
     {
-        StringBuilder builder = new();
-        _ = builder.Append("Python report command failed with exit code ").Append(exitCode).Append('.');
-
-        if (!string.IsNullOrWhiteSpace(stdout))
+        string[] templateNames = ["Hotel.xlsx", "Office.xlsx", "Residential.xlsx"];
+        foreach (string templateName in templateNames)
         {
-            _ = builder.Append(" stdout: ").Append(stdout.Trim());
+            string source = Path.Combine(sourceExampleFolder, templateName);
+            string destination = Path.Combine(meteorFolder, templateName);
+            File.Copy(source, destination, overwrite: true);
         }
-
-        if (!string.IsNullOrWhiteSpace(stderr))
-        {
-            _ = builder.Append(" stderr: ").Append(stderr.Trim());
-        }
-
-        return builder.ToString();
     }
 
-    private sealed record PythonCommand(string FileName, IReadOnlyList<string> PrefixArguments);
+    private static string? FindLatestGeneratedReport(string outputFolder, DateTime afterUtc)
+    {
+        string[] candidates = Directory.GetFiles(outputFolder, "*.xlsx", SearchOption.TopDirectoryOnly);
+        return candidates
+            .Select(file => new FileInfo(file))
+            .Where(file => file.LastWriteTimeUtc >= afterUtc.AddMinutes(-1))
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Select(file => file.FullName)
+            .FirstOrDefault();
+    }
+
+    private static bool ExecuteSubstCommand(string arguments, out string error)
+    {
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = "cmd.exe",
+            Arguments = $"/c subst {arguments}",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+        };
+
+        using Process process = new() { StartInfo = startInfo };
+        _ = process.Start();
+        string stdOut = process.StandardOutput.ReadToEnd();
+        string stdErr = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        if (process.ExitCode == 0)
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        error = $"{stdOut} {stdErr}".Trim();
+        return false;
+    }
 }

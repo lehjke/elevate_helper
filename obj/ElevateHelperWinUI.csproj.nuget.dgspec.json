@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI\\ElevateHelperWinUI.csproj": {}
+    "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI\\ElevateHelperWinUI.csproj": {
+    "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI\\ElevateHelperWinUI.csproj",
+        "projectUniqueName": "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI.csproj",
         "projectName": "ElevateHelperWinUI",
-        "projectPath": "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI\\ElevateHelperWinUI.csproj",
+        "projectPath": "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI.csproj",
         "packagesPath": "C:\\Users\\Aleskey\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\ElevateHelperWinUI\\obj\\",
+        "outputPath": "C:\\Users\\Aleskey\\Desktop\\Работа\\elevate_helper\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Aleskey\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -37,7 +37,8 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "10.0.200"
       },
       "frameworks": {
         "net8.0-windows10.0.19041": {
@@ -69,6 +70,10 @@
           "warn": true,
           "downloadDependencies": [
             {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
               "name": "Microsoft.AspNetCore.App.Runtime.win-arm64",
               "version": "[8.0.25, 8.0.25]"
             },
@@ -78,6 +83,22 @@
             },
             {
               "name": "Microsoft.AspNetCore.App.Runtime.win-x86",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.win-arm64",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.win-x64",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.win-x86",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
               "version": "[8.0.25, 8.0.25]"
             },
             {
@@ -94,7 +115,11 @@
             },
             {
               "name": "Microsoft.Windows.SDK.NET.Ref",
-              "version": "[10.0.19041.56, 10.0.19041.56]"
+              "version": "[10.0.19041.57, 10.0.19041.57]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
             },
             {
               "name": "Microsoft.WindowsDesktop.App.Runtime.win-arm64",
@@ -113,11 +138,11 @@
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
             },
-            "Microsoft.Windows.SDK.NET.Ref": {
+            "Microsoft.Windows.SDK.NET.Ref.Windows": {
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Users\\Aleskey\\AppData\\Local\\Microsoft\\dotnet\\sdk\\8.0.419\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201\\RuntimeIdentifierGraph.json"
         }
       },
       "runtimes": {

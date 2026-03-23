@@ -220,7 +220,14 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         if (sent != (uint)inputs.Length)
         {
-            throw new InvalidOperationException("Unable to send keyboard input to Elevate.");
+            int errorCode = Marshal.GetLastWin32Error();
+            string message = errorCode switch
+            {
+                5 => "Access denied while sending keyboard input. Run Elevate Helper with the same privileges as Elevate.",
+                87 => "SendInput received invalid parameters (cbSize mismatch).",
+                _ => $"Unable to send keyboard input to Elevate. Win32Error={errorCode}.",
+            };
+            throw new InvalidOperationException(message);
         }
     }
 
@@ -248,7 +255,13 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private struct InputUnion
     {
         [FieldOffset(0)]
+        public MOUSEINPUT MouseInput;
+
+        [FieldOffset(0)]
         public KEYBDINPUT KeyboardInput;
+
+        [FieldOffset(0)]
+        public HARDWAREINPUT HardwareInput;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -259,5 +272,24 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         public uint Flags;
         public uint Time;
         public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HARDWAREINPUT
+    {
+        public uint Message;
+        public ushort ParamL;
+        public ushort ParamH;
     }
 }

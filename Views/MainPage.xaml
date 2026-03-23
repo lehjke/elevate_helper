@@ -17,7 +17,6 @@
     <Grid Padding="24" RowSpacing="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -26,12 +25,7 @@
             FontWeight="SemiBold"
             Text="Elevate Helper" />
 
-        <TextBlock
-            Grid.Row="1"
-            Opacity="0.75"
-            Text="WinUI 3 migration" />
-
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel MaxWidth="960" Spacing="16">
                 <Border Style="{StaticResource SectionCardStyle}">
                     <StackPanel Spacing="10">
@@ -40,23 +34,6 @@
                         <TextBox
                             x:Name="PathTextBox"
                             PlaceholderText="Example: C:\Elevate\ProjectA" />
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource SectionCardStyle}">
-                    <StackPanel Spacing="8">
-                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Peters Research Elevate Integration" />
-                        <TextBlock x:Name="IntegrationStateTextBlock" FontWeight="SemiBold" Text="Checking..." />
-                        <TextBlock
-                            x:Name="IntegrationPathTextBlock"
-                            Opacity="0.8"
-                            TextWrapping="WrapWholeWords"
-                            Text="Checking installation path..." />
-                        <Button
-                            x:Name="RefreshIntegrationButton"
-                            Click="OnRefreshIntegrationButtonClick"
-                            Content="Re-check Integration"
-                            Style="{StaticResource ActionButtonStyle}" />
                     </StackPanel>
                 </Border>
 
