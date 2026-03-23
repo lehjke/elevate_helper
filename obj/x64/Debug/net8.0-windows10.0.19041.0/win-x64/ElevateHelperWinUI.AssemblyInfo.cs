@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ElevateHelperWinUI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9ff1808f7c9e3a7c7487c0359271028666e3e5cb")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6a92dac87031457c2c43cfb6f1de335d768f3737")]
 [assembly: System.Reflection.AssemblyProductAttribute("ElevateHelperWinUI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ElevateHelperWinUI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

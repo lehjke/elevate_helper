@@ -25,6 +25,11 @@
         <RuntimeIdentifiers Condition="$([MSBuild]::GetTargetFrameworkVersion('$(TargetFramework)')) &lt; 8">win10-x86;win10-x64;win10-arm64</RuntimeIdentifiers>
     </PropertyGroup>
 
+    <!-- Allow NuGet restore for Windows-targeting project on Linux/macOS CI runners (e.g. dependency submission). -->
+    <PropertyGroup Condition="'$(OS)' != 'Windows_NT'">
+        <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    </PropertyGroup>
+
     <ItemGroup>
         <Content Include="Assets\SplashScreen.scale-200.png" />
         <Content Include="Assets\LockScreenLogo.scale-200.png" />
@@ -37,6 +42,10 @@
 
     <ItemGroup>
         <None Remove="ElevateHelperWinUI.slnx" />
+        <Compile Remove="tests\**\*.cs" />
+        <EmbeddedResource Remove="tests\**\*" />
+        <Content Remove="tests\**\*" />
+        <None Remove="tests\**\*" />
     </ItemGroup>
 
     <ItemGroup>

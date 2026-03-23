@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../Models/BuildingType.cs" Link="Source/Models/BuildingType.cs" />
+    <Compile Include="../../Models/ProcessingResult.cs" Link="Source/Models/ProcessingResult.cs" />
+    <Compile Include="../../Services/IElevateProcessingService.cs" Link="Source/Services/IElevateProcessingService.cs" />
+    <Compile Include="../../Services/IElevateLauncherService.cs" Link="Source/Services/IElevateLauncherService.cs" />
+    <Compile Include="../../Services/ElevateProcessingService.cs" Link="Source/Services/ElevateProcessingService.cs" />
+  </ItemGroup>
+
+</Project>
