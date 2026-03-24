@@ -109,11 +109,100 @@
                                 Style="{StaticResource ActionButtonStyle}"
                                 Visibility="Collapsed" />
                         </StackPanel>
+                    </StackPanel>
+                </Border>
 
+                <Border Style="{StaticResource SectionCardStyle}">
+                    <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ProgressRing x:Name="BusyRing" Width="18" Height="18" IsActive="False" />
                             <TextBlock x:Name="BusyTextBlock" Opacity="0.7" Text="Ready" />
                         </StackPanel>
+
+                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Run Queue" />
+
+                        <ItemsControl x:Name="JobsItemsControl" ItemsSource="{x:Bind Jobs, Mode=OneWay}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Spacing="12" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="14">
+                                        <StackPanel Spacing="10">
+                                            <Grid ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" Spacing="2">
+                                                    <TextBlock
+                                                        FontSize="16"
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding Title}"
+                                                        TextWrapping="Wrap" />
+                                                    <TextBlock
+                                                        Opacity="0.7"
+                                                        Text="{Binding Details}"
+                                                        TextWrapping="Wrap" />
+                                                </StackPanel>
+
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    HorizontalAlignment="Right"
+                                                    Opacity="0.8"
+                                                    Text="{Binding StatusText}"
+                                                    TextWrapping="Wrap" />
+                                            </Grid>
+
+                                            <ItemsControl ItemsSource="{Binding Scenarios}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Spacing="10" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Spacing="4">
+                                                            <Grid ColumnSpacing="12">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <TextBlock
+                                                                    Grid.Column="0"
+                                                                    FontWeight="Medium"
+                                                                    Text="{Binding Label}" />
+
+                                                                <TextBlock
+                                                                    Grid.Column="1"
+                                                                    HorizontalAlignment="Right"
+                                                                    Opacity="0.7"
+                                                                    Text="{Binding ProgressText}" />
+                                                            </Grid>
+
+                                                            <ProgressBar
+                                                                Height="8"
+                                                                IsIndeterminate="{Binding IsIndeterminate}"
+                                                                Maximum="{Binding Maximum}"
+                                                                Value="{Binding Value}" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </Border>
 

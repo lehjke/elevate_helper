@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Globalization;
 using System.Runtime.InteropServices;
 using ElevateHelperWinUI.Models;
 
@@ -6,12 +6,16 @@ namespace ElevateHelperWinUI.Services;
 
 public sealed class ElevateReportService : IElevateReportService
 {
-    private const string TDrive = "T:";
-    private const string SharedRootFolderName =
-        "\u041A\u0440\u0443\u043F\u043D\u044B\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u044B \u0438 \u0432\u044B\u0441\u043E\u0442\u043D\u043E\u0435 \u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u043E";
-    private const string MeteorRelativePath =
-        "\u0421\u043F\u0435\u0446\u0438\u0444\u0438\u043A\u0430\u0446\u0438\u0438\\ELEVATE\\Meteor";
-    private const string TempOutputRelativePath = "_Ele_temp";
+    private const string SheetTitle = "Титул";
+    private const string SheetBuilding = "Здание";
+    private const string SheetFlow = "Пассажиропоток";
+    private const string SheetGroup = "Лифтовая группа";
+    private const string SheetAssessment = "Оценка";
+    private const string SheetCriteria = "Критерии";
+
+    private const int XlWhole = 1;
+    private const int XlPart = 2;
+    private const int XlValue = 2;
 
     public async Task<ProcessingResult> PrintReportAsync(
         string path,
@@ -28,112 +32,171 @@ public sealed class ElevateReportService : IElevateReportService
         BuildingType buildingType,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(path))
+        try
         {
-            return ProcessingResult.Fail("Path is empty.");
-        }
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return ProcessingResult.Fail("Path is empty.");
+            }
 
-        if (!Directory.Exists(path))
+            if (!Directory.Exists(path))
+            {
+                return ProcessingResult.Fail($"Path does not exist: {path}");
+            }
+
+            string batchResultsPath = Path.Combine(path, "batch_results.csv");
+            if (!File.Exists(batchResultsPath))
+            {
+                return ProcessingResult.Fail($"batch_results.csv not found: {batchResultsPath}");
+            }
+
+            string? repositoryRoot = FindRepositoryRoot();
+            if (repositoryRoot is null)
+            {
+                return ProcessingResult.Fail("Cannot find repository root containing .example folder.");
+            }
+
+            string exampleFolder = Path.Combine(repositoryRoot, ".example");
+            string templatePath = Path.Combine(exampleFolder, GetTemplateName(buildingType));
+            if (!File.Exists(templatePath))
+            {
+                return ProcessingResult.Fail($"Template not found: {templatePath}");
+            }
+
+            MainBatchData mainData = ParseBatchResults(batchResultsPath);
+            if (string.IsNullOrWhiteSpace(mainData.FileName))
+            {
+                return ProcessingResult.Fail("batch_results.csv does not contain valid project file name (A2).");
+            }
+
+            if (string.IsNullOrWhiteSpace(mainData.Folder))
+            {
+                mainData.Folder = path;
+            }
+
+            mainData.Folder = NormalizePath(mainData.Folder);
+            if (!Directory.Exists(mainData.Folder))
+            {
+                return ProcessingResult.Fail($"Project CSV folder does not exist: {mainData.Folder}");
+            }
+
+            string projectCsvPath = Path.Combine(mainData.Folder, $"{mainData.FileName}.csv");
+            if (!File.Exists(projectCsvPath))
+            {
+                return ProcessingResult.Fail($"Project CSV not found: {projectCsvPath}");
+            }
+
+            ProjectParsedData projectData = ParseProjectCsv(projectCsvPath);
+
+            int nSteps = mainData.AWT.Length - 1;
+            if (nSteps < 1)
+            {
+                return ProcessingResult.Fail("No data rows found in batch_results.csv.");
+            }
+
+            double[] ais = new double[nSteps + 1];
+            double[] alw = new double[nSteps + 1];
+            for (int step = 1; step <= nSteps; step++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ParseStepCsv(mainData.FileName, mainData.Folder, projectData.Building, projectData.Elevator, step, ais, alw);
+            }
+
+            string outputPath = BuildReportWorkbook(
+                templatePath,
+                path,
+                mainData.Folder,
+                mainData.AWT,
+                mainData.ATTD,
+                ais,
+                alw,
+                projectData.JobData,
+                projectData.Building,
+                projectData.Elevator,
+                projectData.Passenger,
+                cancellationToken);
+
+            return ProcessingResult.Ok($"Report generated: {outputPath}");
+        }
+        catch (OperationCanceledException)
         {
-            return ProcessingResult.Fail($"Path does not exist: {path}");
+            return ProcessingResult.Fail("Report generation was canceled.");
         }
-
-        string batchResultsPath = Path.Combine(path, "batch_results.csv");
-        if (!File.Exists(batchResultsPath))
+        catch (Exception ex)
         {
-            return ProcessingResult.Fail($"batch_results.csv not found: {batchResultsPath}");
+            return ProcessingResult.Fail("An exception occurred while generating the report without VBA macro.", ex);
         }
+    }
 
-        string? repositoryRoot = FindRepositoryRoot();
-        if (repositoryRoot is null)
-        {
-            return ProcessingResult.Fail("Cannot find repository root containing .example\\KIP.xlam.");
-        }
-
-        string exampleFolder = Path.Combine(repositoryRoot, ".example");
-        string kipPath = Path.Combine(exampleFolder, "KIP.xlam");
-        if (!File.Exists(kipPath))
-        {
-            return ProcessingResult.Fail($"KIP.xlam not found: {kipPath}");
-        }
-
-        string expectedTemplateName = GetTemplateName(buildingType);
-        if (!File.Exists(Path.Combine(exampleFolder, expectedTemplateName)))
-        {
-            return ProcessingResult.Fail($"Template not found: {Path.Combine(exampleFolder, expectedTemplateName)}");
-        }
-
-        bool mappedByService = false;
-        string tDriveRoot = string.Empty;
-        string runtimeRoot = Path.Combine(Path.GetTempPath(), "ElevateHelperWinUI", "KIPRuntime");
-        string sharedRootPath = string.Empty;
-        string meteorFolder = string.Empty;
-        string outputFolder = string.Empty;
+    private static string BuildReportWorkbook(
+        string templatePath,
+        string outputFolder,
+        string xmlFolder,
+        double[] awt,
+        double[] attd,
+        double[] ais,
+        double[] alw,
+        string[] jobData,
+        BuildingDataModel buildingData,
+        ElevatorDataModel elevatorData,
+        PassengerDataModel passengerData,
+        CancellationToken cancellationToken)
+    {
         object? excel = null;
+        dynamic? workbook = null;
 
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (!PrepareTDrive(runtimeRoot, out mappedByService, out tDriveRoot, out string mapError))
-            {
-                return ProcessingResult.Fail(mapError);
-            }
-
-            sharedRootPath = Path.Combine(tDriveRoot, SharedRootFolderName);
-            meteorFolder = Path.Combine(sharedRootPath, MeteorRelativePath);
-            outputFolder = Path.Combine(sharedRootPath, TempOutputRelativePath);
-            Directory.CreateDirectory(meteorFolder);
-            Directory.CreateDirectory(outputFolder);
-
-            CopyTemplates(exampleFolder, meteorFolder);
-            if (!TrySetBuildingType(batchResultsPath, buildingType, out string setBuildingTypeError))
-            {
-                return ProcessingResult.Fail(setBuildingTypeError);
-            }
-
-            DateTime beforeMacroUtc = DateTime.UtcNow;
-
             Type? excelType = Type.GetTypeFromProgID("Excel.Application");
             if (excelType is null)
             {
-                return ProcessingResult.Fail("Microsoft Excel COM is not available.");
+                throw new InvalidOperationException("Microsoft Excel COM is not available.");
             }
 
-            excel = Activator.CreateInstance(excelType);
-            if (excel is null)
-            {
-                return ProcessingResult.Fail("Unable to create Excel COM object.");
-            }
+            excel = Activator.CreateInstance(excelType)
+                ?? throw new InvalidOperationException("Unable to create Excel COM object.");
 
             dynamic excelApp = excel;
             excelApp.Visible = false;
             excelApp.DisplayAlerts = false;
             excelApp.ScreenUpdating = false;
 
-            excelApp.Workbooks.Open(kipPath);
-            excelApp.Workbooks.Open(batchResultsPath);
-            excelApp.Run("KIP.xlam!ElevateReportV1");
-            excelApp.Workbooks.Close(false);
+            workbook = excelApp.Workbooks.Open(templatePath);
+
+            bool[] isServed = CalculateServedFloors(elevatorData, buildingData.NoFloors, out int servedFloors);
+
+            FillTitleSheet(workbook, jobData);
+            FillBuildingSheet(workbook, buildingData, isServed);
+            FillFlowSheet(workbook, buildingData, passengerData, isServed);
+            FillGroupSheet(workbook, xmlFolder, buildingData, elevatorData);
+            FillAssessmentAndCriteriaSheets(workbook, awt, attd, ais, alw, buildingData, elevatorData, passengerData, servedFloors, isServed);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            string outputFileName = SanitizeFileName($"{jobData[1]} {jobData[2]}.xlsx");
+            string outputPath = Path.Combine(outputFolder, outputFileName);
+
+            workbook.Sheets(SheetAssessment).Activate();
+            workbook.SaveAs(outputPath);
+            workbook.Close(false);
             excelApp.Quit();
 
-            string? generatedReport = FindLatestGeneratedReport(outputFolder, beforeMacroUtc);
-            if (generatedReport is null)
-            {
-                return ProcessingResult.Fail("Macro finished but report file was not generated.");
-            }
-
-            string destinationPath = Path.Combine(path, Path.GetFileName(generatedReport));
-            File.Copy(generatedReport, destinationPath, overwrite: true);
-
-            return ProcessingResult.Ok($"Report generated: {destinationPath}");
-        }
-        catch (Exception ex)
-        {
-            return ProcessingResult.Fail("An exception occurred while running KIP.xlam VBA report generation.", ex);
+            return outputPath;
         }
         finally
         {
+            if (workbook is not null)
+            {
+                try
+                {
+                    Marshal.FinalReleaseComObject(workbook);
+                }
+                catch
+                {
+                    // Ignore COM cleanup errors.
+                }
+            }
+
             if (excel is not null)
             {
                 try
@@ -142,29 +205,1208 @@ public sealed class ElevateReportService : IElevateReportService
                 }
                 catch
                 {
-                    // Ignore COM release errors.
+                    // Ignore COM cleanup errors.
                 }
-            }
-
-            if (mappedByService)
-            {
-                _ = ExecuteSubstCommand($"{TDrive} /D", out _);
             }
         }
     }
 
-    private static string? FindRepositoryRoot()
+    private static void FillTitleSheet(dynamic workbook, string[] jobData)
     {
-        DirectoryInfo? current = new(AppContext.BaseDirectory);
-        while (current is not null)
+        dynamic sheet = workbook.Sheets(SheetTitle);
+        sheet.Cells(24, 5).Value = jobData[1];
+        sheet.Cells(26, 5).Value = jobData[3];
+        sheet.Cells(28, 5).Value = jobData[2];
+
+        sheet.Rows(30).Delete();
+        sheet.Rows(30).Delete();
+
+        sheet.Cells(30, 4).Value = "Исполнитель:";
+        sheet.Cells(30, 5).Value = jobData[4];
+
+        sheet.Cells(32, 4).Value = "Дата:";
+        sheet.Cells(32, 5).Value = DateTime.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+    }
+
+    private static void FillBuildingSheet(dynamic workbook, BuildingDataModel buildingData, bool[] isServed)
+    {
+        dynamic sheet = workbook.Sheets(SheetBuilding);
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
         {
-            string kipPath = Path.Combine(current.FullName, ".example", "KIP.xlam");
-            if (File.Exists(kipPath))
+            sheet.Rows(4).Insert();
+            sheet.Cells(4, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
+            sheet.Cells(4, 3).Value = buildingData.FloorHeight[i];
+            sheet.Cells(4, 4).Value = buildingData.FloorLevel[i];
+            sheet.Cells(4, 5).Value = buildingData.FloorType[i];
+            sheet.Cells(4, 6).Value = buildingData.NoPeople[i];
+
+            if (isServed[i] && buildingData.NoPeople[i] != 0)
             {
-                return current.FullName;
+                sheet.Cells(4, 7).Value = buildingData.FloorFactor[i];
+            }
+            else
+            {
+                sheet.Cells(4, 7).Value = 0;
             }
 
-            current = current.Parent;
+            sheet.Cells(4, 8).Value = AsDouble(sheet.Cells(4, 6).Value) * AsDouble(sheet.Cells(4, 7).Value);
+        }
+
+        sheet.Cells(4, 3).Value = "-";
+        sheet.Cells(5 + buildingData.NoFloors, 2).Value = "Итог:";
+        sheet.Cells(5 + buildingData.NoFloors, 2).Font.Bold = true;
+        sheet.Cells(5 + buildingData.NoFloors, 8).Value = buildingData.CTotalPeople;
+        sheet.Cells(5 + buildingData.NoFloors, 8).Font.Bold = true;
+    }
+
+    private static void FillFlowSheet(
+        dynamic workbook,
+        BuildingDataModel buildingData,
+        PassengerDataModel passengerData,
+        bool[] isServed)
+    {
+        dynamic sheet = workbook.Sheets(SheetFlow);
+        sheet.Cells(3, 3).Value = $"Входящий пассажиропоток{Environment.NewLine}({ToShortPercent(passengerData.Incoming)}%)";
+        sheet.Cells(3, 8).Value = $"Выходящий пассажиропоток{Environment.NewLine}({ToShortPercent(passengerData.Outgoing)}%)";
+        sheet.Cells(3, 13).Value = $"Межэтажный пассажиропоток{Environment.NewLine}({ToShortPercent(passengerData.Interfloor)}%)";
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            sheet.Rows(5).Insert();
+            sheet.Cells(5, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
+
+            if (passengerData.Incoming != 0)
+            {
+                if (IsYes(buildingData.EntranceFloor[i]) && buildingData.Bias[i] != 0)
+                {
+                    sheet.Cells(5, 3).Value = buildingData.Bias[i] / 100d;
+                    sheet.Cells(5, 3).NumberFormat = "0%";
+                    sheet.Cells(5, 4).Value = sheet.Cells(2, 19).Value;
+                }
+                else if (!IsYes(buildingData.EntranceFloor[i]) && isServed[i] && buildingData.NoPeople[i] != 0)
+                {
+                    sheet.Cells(5, 6).Value = sheet.Cells(2, 19).Value;
+                    sheet.Cells(5, 7).Value = buildingData.NoPeople[i] / buildingData.TotalPeople;
+                    sheet.Cells(5, 7).NumberFormat = "0.0%";
+                }
+            }
+
+            if (passengerData.Outgoing != 0)
+            {
+                if (!IsYes(buildingData.EntranceFloor[i]) && isServed[i] && buildingData.NoPeople[i] != 0)
+                {
+                    sheet.Cells(5, 8).Value = buildingData.NoPeople[i] / buildingData.TotalPeople;
+                    sheet.Cells(5, 8).NumberFormat = "0.0%";
+                    sheet.Cells(5, 9).Value = sheet.Cells(2, 19).Value;
+                }
+                else if (IsYes(buildingData.EntranceFloor[i]) && buildingData.Bias[i] != 0)
+                {
+                    sheet.Cells(5, 11).Value = sheet.Cells(2, 19).Value;
+                    sheet.Cells(5, 12).Value = buildingData.Bias[i] / 100d;
+                    sheet.Cells(5, 12).NumberFormat = "0%";
+                }
+            }
+
+            if (passengerData.Interfloor != 0)
+            {
+                if (!IsYes(buildingData.EntranceFloor[i]) && isServed[i] && buildingData.NoPeople[i] != 0)
+                {
+                    sheet.Cells(5, 13).Value = buildingData.NoPeople[i] / buildingData.TotalPeople;
+                    sheet.Cells(5, 13).NumberFormat = "0.0%";
+                    sheet.Cells(5, 14).Value = sheet.Cells(2, 19).Value;
+                    sheet.Cells(5, 16).Value = sheet.Cells(2, 19).Value;
+                    sheet.Cells(5, 17).Value = buildingData.NoPeople[i] / buildingData.TotalPeople;
+                    sheet.Cells(5, 17).NumberFormat = "0.0%";
+                }
+            }
+        }
+
+        if (passengerData.Incoming != 0)
+        {
+            dynamic incomingRange = sheet.Range(sheet.Cells(5, 5), sheet.Cells(5 + buildingData.NoFloors - 1, 5));
+            incomingRange.BorderAround();
+        }
+
+        if (passengerData.Outgoing != 0)
+        {
+            dynamic outgoingRange = sheet.Range(sheet.Cells(5, 10), sheet.Cells(5 + buildingData.NoFloors - 1, 10));
+            outgoingRange.BorderAround();
+        }
+
+        if (passengerData.Interfloor != 0)
+        {
+            dynamic interfloorRange = sheet.Range(sheet.Cells(5, 15), sheet.Cells(5 + buildingData.NoFloors - 1, 15));
+            interfloorRange.BorderAround();
+        }
+    }
+
+    private static void FillGroupSheet(
+        dynamic workbook,
+        string xmlFolder,
+        BuildingDataModel buildingData,
+        ElevatorDataModel elevatorData)
+    {
+        dynamic sheet = workbook.Sheets(SheetGroup);
+        string dispatcher = elevatorData.Dispatcher.Contains("ACA", StringComparison.OrdinalIgnoreCase) ||
+                            elevatorData.Dispatcher.Contains("Double", StringComparison.OrdinalIgnoreCase)
+            ? "На этаж назначения (DDS)"
+            : "Собирательная при движении вверх и вниз";
+
+        sheet.Rows(14).Insert();
+        sheet.Cells(14, 2).Value = "Система управления";
+        sheet.Cells(14, 2).HorizontalAlignment = -4131;
+        sheet.Cells(14, 2).Font.Bold = true;
+        sheet.Cells(14, 3).Value = dispatcher;
+        sheet.Cells(14, 3).HorizontalAlignment = -4131;
+        sheet.Cells(14, 3).Font.Bold = true;
+
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            sheet.Cells(4, 2 + i).Value = i;
+            for (int j = 1; j <= 9; j++)
+            {
+                sheet.Cells(4 + j, 2 + i).Value = j < 5
+                    ? elevatorData.Spec[i, j]
+                    : elevatorData.Spec[i, j + 1];
+            }
+        }
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            sheet.Rows(17).Insert();
+            sheet.Cells(17, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
+
+            for (int j = 1; j <= elevatorData.NoElevators; j++)
+            {
+                if (IsYes(elevatorData.FloorsServed[j, i]))
+                {
+                    sheet.Cells(17, 2 + j).Value = sheet.Cells(2, 13).Value;
+                }
+                else
+                {
+                    sheet.Cells(17, 2 + j).Value = sheet.Cells(2, 12).Value;
+                }
+            }
+        }
+
+        sheet.Rows(6).Insert();
+        sheet.Cells(6, 2).Value = "Площадь кабины, м2";
+        double[] areas = ReadFloorAreas(xmlFolder);
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            sheet.Cells(6, 2 + i).Value = GetFloorAreaByIndex(areas, i);
+            sheet.Cells(6, 2 + i).NumberFormat = "0.00";
+        }
+
+        sheet.Rows(11).Insert();
+        sheet.Cells(11, 2).Value = "Ширина дверей, мм";
+        sheet.Rows(12).Insert();
+        sheet.Cells(12, 2).Value = "Тип дверей (ЦО/ТО)*";
+
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            double dOpen = ToDouble(sheet.Cells(14, 2 + i).Value);
+            double dClose = ToDouble(sheet.Cells(15, 2 + i).Value);
+
+            GetDoorType(dOpen, dClose, out string width, out string type);
+            sheet.Cells(11, 2 + i).Value = width;
+            sheet.Cells(12, 2 + i).Value = type;
+        }
+
+        int totalRows = ToInt(sheet.UsedRange.Rows.Count);
+        sheet.Rows(totalRows + 1).Insert();
+        sheet.Cells(totalRows + 2, 2).Value = "*ЦО - центральное открывание, ТО - телескопическое открывание";
+    }
+
+    private static void FillAssessmentAndCriteriaSheets(
+        dynamic workbook,
+        double[] awt,
+        double[] attd,
+        double[] ais,
+        double[] alw,
+        BuildingDataModel buildingData,
+        ElevatorDataModel elevatorData,
+        PassengerDataModel passengerData,
+        int servedFloors,
+        bool[] isServed)
+    {
+        dynamic assessmentSheet = workbook.Sheets(SheetAssessment);
+        dynamic criteriaSheet = workbook.Sheets(SheetCriteria);
+
+        if (buildingData.BuildingType.Equals("Office", StringComparison.OrdinalIgnoreCase))
+        {
+            dynamic targetWtCell = assessmentSheet.UsedRange.Find("Target WT", Type.Missing, Type.Missing, XlWhole);
+            if (targetWtCell is not null)
+            {
+                if (NearlyEquals(passengerData.Incoming, 100))
+                {
+                    targetWtCell.Offset(0, 1).Value = 30;
+                }
+                else if (NearlyEquals(passengerData.Incoming, 85))
+                {
+                    targetWtCell.Offset(0, 1).Value = 35;
+                }
+                else if (NearlyEquals(passengerData.Incoming, 45) || NearlyEquals(passengerData.Incoming, 40))
+                {
+                    targetWtCell.Offset(0, 1).Value = 40;
+                }
+            }
+        }
+
+        int gLimit;
+        int nSteps;
+        if (buildingData.BuildingType.Equals("Residential", StringComparison.OrdinalIgnoreCase))
+        {
+            gLimit = 120;
+            nSteps = 8;
+        }
+        else
+        {
+            gLimit = 80;
+            nSteps = 13;
+        }
+
+        int nStepsFromMain = awt.Length - 1;
+        ResizeMetrics(ref awt, nSteps, gLimit, nStepsFromMain);
+        ResizeMetrics(ref attd, nSteps, gLimit, nStepsFromMain);
+        ResizeMetrics(ref ais, nSteps, gLimit, nStepsFromMain);
+        ResizeMetrics(ref alw, nSteps, gLimit, nStepsFromMain);
+
+        SortOneBased(awt);
+        SortOneBased(attd);
+        SortOneBased(ais);
+        SortOneBased(alw);
+
+        int lastHC5 = nSteps;
+        for (int i = 1; i <= nSteps; i++)
+        {
+            if (awt[i] > gLimit)
+            {
+                lastHC5 = i - 1;
+                break;
+            }
+        }
+
+        if (lastHC5 > 0)
+        {
+            ApplyLinest(ais, lastHC5);
+            ApplyLinest(alw, lastHC5);
+            SortOneBased(ais);
+            SortOneBased(alw);
+        }
+
+        dynamic recordCell = assessmentSheet.UsedRange.Find("Record", Type.Missing, Type.Missing, XlWhole);
+        if (recordCell is null)
+        {
+            throw new InvalidOperationException("Cannot find 'Record' marker on assessment sheet.");
+        }
+
+        int rCol = ToInt(recordCell.Column);
+        int xScale = buildingData.BuildingType.Equals("Residential", StringComparison.OrdinalIgnoreCase) ? 6 : 8;
+
+        int firstOutOfLimitIndex = nSteps + 1;
+        for (int i = 1; i <= nSteps; i++)
+        {
+            if (awt[i] < gLimit)
+            {
+                assessmentSheet.Cells(7, rCol + i).Value = awt[i];
+                assessmentSheet.Cells(9, rCol + i).Value = attd[i];
+                assessmentSheet.Cells(11, rCol + i).Value = ais[i];
+                assessmentSheet.Cells(13, rCol + i).Value = alw[i];
+            }
+            else
+            {
+                firstOutOfLimitIndex = i;
+                break;
+            }
+        }
+
+        int scaleIndex = Math.Max(1, Math.Min(nSteps, firstOutOfLimitIndex - 1));
+        int maxScaleAis = (int.Parse(Math.Floor(ais[scaleIndex] / xScale).ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture) + 2) * xScale;
+        int unitAis = Math.Max(1, maxScaleAis / xScale);
+        int maxScaleAlw = (int.Parse(Math.Floor(alw[scaleIndex] / xScale).ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture) + 2) * xScale;
+        int unitAlw = Math.Max(1, maxScaleAlw / xScale);
+
+        try
+        {
+            dynamic chartIs = assessmentSheet.ChartObjects("IS").Chart;
+            chartIs.Axes(XlValue).MaximumScale = maxScaleAis;
+            chartIs.Axes(XlValue).MajorUnit = unitAis;
+
+            dynamic chartLw = assessmentSheet.ChartObjects("LW").Chart;
+            chartLw.Axes(XlValue).MaximumScale = maxScaleAlw;
+            chartLw.Axes(XlValue).MajorUnit = unitAlw;
+        }
+        catch
+        {
+            // Template may not contain chart objects in some variants.
+        }
+
+        if (firstOutOfLimitIndex <= nSteps)
+        {
+            int prevIndex = Math.Max(1, firstOutOfLimitIndex - 1);
+            assessmentSheet.Cells(8, rCol + prevIndex).Value = awt[prevIndex];
+            assessmentSheet.Cells(10, rCol + prevIndex).Value = attd[prevIndex];
+            assessmentSheet.Cells(12, rCol + prevIndex).Value = ais[prevIndex];
+            assessmentSheet.Cells(14, rCol + prevIndex).Value = alw[prevIndex];
+
+            for (int i = firstOutOfLimitIndex; i <= nSteps; i++)
+            {
+                double hc5 = ToDouble(assessmentSheet.Cells(6, rCol + i).Value);
+                assessmentSheet.Cells(8, rCol + i).Value = hc5 * gLimit;
+                assessmentSheet.Cells(10, rCol + i).Value = hc5 * gLimit;
+                assessmentSheet.Cells(12, rCol + i).Value = hc5 * gLimit;
+                assessmentSheet.Cells(14, rCol + i).Value = hc5 * gLimit;
+            }
+        }
+
+        ApplyServiceFloorsAndExpressZones(workbook, buildingData, isServed);
+        ApplyDoubleDispatcherAdjustments(workbook, buildingData, elevatorData, passengerData);
+
+        EvaluateRating(assessmentSheet, criteriaSheet, awt, attd, ais, alw, buildingData, passengerData, gLimit);
+
+        assessmentSheet.Cells(4, 2).Value = BuildElevatorGroupText(elevatorData, servedFloors, buildingData.NoFloors);
+        criteriaSheet.Cells(10, 2).Value = BuildFlowText(passengerData);
+
+        int bLength = 29 +
+                      ToShortPercent(passengerData.Incoming).Length +
+                      ToShortPercent(passengerData.Outgoing).Length +
+                      ToShortPercent(passengerData.Interfloor).Length;
+        criteriaSheet.Cells(10, 2).Characters(1, bLength).Font.FontStyle = "Bold";
+    }
+
+    private static void ApplyServiceFloorsAndExpressZones(
+        dynamic workbook,
+        BuildingDataModel buildingData,
+        bool[] isServed)
+    {
+        List<int> starts = [];
+        List<int> finishes = [];
+
+        for (int i = 2; i <= buildingData.NoFloors - 1; i++)
+        {
+            if (isServed[i])
+            {
+                continue;
+            }
+
+            if (isServed[i - 1] && isServed[i + 1])
+            {
+                starts.Add(i);
+                finishes.Add(i);
+            }
+            else if (isServed[i - 1] && !isServed[i + 1])
+            {
+                starts.Add(i);
+            }
+            else if (!isServed[i - 1] && isServed[i + 1])
+            {
+                finishes.Add(i);
+            }
+        }
+
+        if (starts.Count == 0 || finishes.Count == 0)
+        {
+            return;
+        }
+
+        int pairs = Math.Min(starts.Count, finishes.Count);
+        int serviceFloorLimit = 2;
+        double expressHeight = 0;
+
+        dynamic buildingSheet = workbook.Sheets(SheetBuilding);
+        dynamic flowSheet = workbook.Sheets(SheetFlow);
+        dynamic groupSheet = workbook.Sheets(SheetGroup);
+
+        for (int i = 0; i < pairs; i++)
+        {
+            int startFloorIndex = starts[i];
+            int finishFloorIndex = finishes[i];
+            if (finishFloorIndex < startFloorIndex)
+            {
+                continue;
+            }
+
+            int rowSpan = finishFloorIndex - startFloorIndex;
+            if (rowSpan <= serviceFloorLimit)
+            {
+                int anchorRow = FindRowByFloorValue(buildingSheet, buildingData.FloorName[startFloorIndex]);
+                if (anchorRow > 0)
+                {
+                    for (int k = 1; k <= rowSpan + 1; k++)
+                    {
+                        buildingSheet.Cells(anchorRow + 1 - k, 5).Value = "Техэтаж";
+                    }
+                }
+
+                continue;
+            }
+
+            string startFloorText = FormatFloorForDisplay(buildingData.FloorName[startFloorIndex]).TrimStart('\'');
+            string finishFloorText = FormatFloorForDisplay(buildingData.FloorName[finishFloorIndex]).TrimStart('\'');
+            string rangeValue = $"'{startFloorText} - {finishFloorText}";
+
+            int rowToHide = FindRowByFloorValue(buildingSheet, buildingData.FloorName[startFloorIndex]);
+            if (rowToHide > 0)
+            {
+                buildingSheet.Cells(rowToHide, 5).Value = "Экспресс зона";
+                buildingSheet.Cells(rowToHide, 4).Value = "-";
+
+                for (int k = 0; k <= rowSpan; k++)
+                {
+                    expressHeight += ToDouble(buildingSheet.Cells(rowToHide - k, 3).Value);
+                }
+
+                buildingSheet.Cells(rowToHide, 3).Value = expressHeight;
+                buildingSheet.Cells(rowToHide, 2).Value = rangeValue;
+
+                int hiddenStart = rowToHide - rowSpan;
+                int hiddenEnd = rowToHide - 1;
+                if (hiddenStart <= hiddenEnd)
+                {
+                    buildingSheet.Rows($"{hiddenStart}:{hiddenEnd}").EntireRow.Hidden = true;
+                }
+            }
+
+            rowToHide = FindRowByFloorValue(flowSheet, buildingData.FloorName[startFloorIndex]);
+            if (rowToHide > 0)
+            {
+                flowSheet.Cells(rowToHide, 2).Value = rangeValue;
+
+                int hiddenStart = rowToHide - rowSpan;
+                int hiddenEnd = rowToHide - 1;
+                if (hiddenStart <= hiddenEnd)
+                {
+                    flowSheet.Rows($"{hiddenStart}:{hiddenEnd}").EntireRow.Hidden = true;
+                }
+            }
+
+            rowToHide = FindRowByFloorValue(groupSheet, buildingData.FloorName[startFloorIndex]);
+            if (rowToHide > 0)
+            {
+                groupSheet.Cells(rowToHide, 2).Value = rangeValue;
+
+                int hiddenStart = rowToHide - rowSpan;
+                int hiddenEnd = rowToHide - 1;
+                if (hiddenStart <= hiddenEnd)
+                {
+                    groupSheet.Rows($"{hiddenStart}:{hiddenEnd}").EntireRow.Hidden = true;
+                }
+            }
+        }
+    }
+
+    private static void ApplyDoubleDispatcherAdjustments(
+        dynamic workbook,
+        BuildingDataModel buildingData,
+        ElevatorDataModel elevatorData,
+        PassengerDataModel passengerData)
+    {
+        bool isDoubleDispatcher = elevatorData.Dispatcher.Contains("Double", StringComparison.OrdinalIgnoreCase);
+        if (!isDoubleDispatcher)
+        {
+            return;
+        }
+
+        dynamic buildingSheet = workbook.Sheets(SheetBuilding);
+        int lobbyNumber = 0;
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            if (!string.Equals(buildingData.FloorType[i], "Лобби", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            lobbyNumber++;
+            int rowLobby = FindRowByFloorValue(buildingSheet, buildingData.FloorName[i]);
+            if (rowLobby > 0)
+            {
+                string current = Convert.ToString(buildingSheet.Cells(rowLobby, 5).Value, CultureInfo.InvariantCulture) ?? string.Empty;
+                buildingSheet.Cells(rowLobby, 5).Value = $"{current} #{lobbyNumber}";
+            }
+        }
+
+        dynamic flowSheet = workbook.Sheets(SheetFlow);
+        if (passengerData.Incoming != 0)
+        {
+            MergeAdjacentLobbyRows(flowSheet, buildingData, 3, 4);
+        }
+
+        if (passengerData.Outgoing != 0)
+        {
+            MergeAdjacentLobbyRows(flowSheet, buildingData, 11, 12);
+        }
+
+        if (passengerData.Interfloor != 0)
+        {
+            MergeAdjacentLobbyRows(flowSheet, buildingData, 16, 17);
+        }
+
+        dynamic groupSheet = workbook.Sheets(SheetGroup);
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            string currentValue5 = Convert.ToString(groupSheet.Cells(5, i + 2).Value, CultureInfo.InvariantCulture) ?? string.Empty;
+            string currentValue6 = Convert.ToString(groupSheet.Cells(6, i + 2).Value, CultureInfo.InvariantCulture) ?? string.Empty;
+
+            groupSheet.Cells(5, i + 2).Value = $"2x{currentValue5}";
+            groupSheet.Cells(6, i + 2).Value = $"2x{currentValue6}";
+        }
+    }
+
+    private static void MergeAdjacentLobbyRows(dynamic flowSheet, BuildingDataModel buildingData, int fromColumn, int toColumn)
+    {
+        for (int i = 2; i <= buildingData.NoFloors; i++)
+        {
+            if (!IsYes(buildingData.EntranceFloor[i]) || !IsYes(buildingData.EntranceFloor[i - 1]))
+            {
+                continue;
+            }
+
+            int rowToMerge = FindRowByFloorValue(flowSheet, buildingData.FloorName[i]);
+            if (rowToMerge > 0)
+            {
+                dynamic mergeRange = flowSheet.Range(
+                    flowSheet.Cells(rowToMerge, fromColumn),
+                    flowSheet.Cells(rowToMerge + 1, fromColumn));
+                mergeRange.Merge();
+
+                dynamic mergeRange2 = flowSheet.Range(
+                    flowSheet.Cells(rowToMerge, toColumn),
+                    flowSheet.Cells(rowToMerge + 1, toColumn));
+                mergeRange2.Merge();
+            }
+
+            i++;
+        }
+    }
+
+    private static void EvaluateRating(
+        dynamic assessmentSheet,
+        dynamic criteriaSheet,
+        double[] awt,
+        double[] attd,
+        double[] ais,
+        double[] alw,
+        BuildingDataModel buildingData,
+        PassengerDataModel passengerData,
+        int gLimit)
+    {
+        assessmentSheet.Cells(47, 2).Value =
+            $"{ToShortPercent(passengerData.Incoming)}%, {ToShortPercent(passengerData.Outgoing)}%, {ToShortPercent(passengerData.Interfloor)}%";
+
+        string currentProfile = Convert.ToString(assessmentSheet.Cells(47, 2).Value, CultureInfo.InvariantCulture) ?? string.Empty;
+
+        if (buildingData.BuildingType.Equals("Office", StringComparison.OrdinalIgnoreCase))
+        {
+            string officeMorning = Convert.ToString(criteriaSheet.Cells(5, 4).Value, CultureInfo.InvariantCulture) ?? string.Empty;
+            string officeLunch = Convert.ToString(criteriaSheet.Cells(6, 4).Value, CultureInfo.InvariantCulture) ?? string.Empty;
+
+            if (ProfilesEqual(currentProfile, officeMorning))
+            {
+                if (awt[13] < 25 && attd[13] < 80)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 13, 5, buildingData);
+                }
+                else if (awt[12] < 30 && attd[12] < 100)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 12, 4, buildingData);
+                }
+                else if (awt[11] < 40 && attd[11] < 120)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 11, 3, buildingData);
+                }
+                else
+                {
+                    PrintWorstRating(assessmentSheet, awt, attd, ais, alw, 13, 1, gLimit, buildingData);
+                }
+            }
+            else if (ProfilesEqual(currentProfile, officeLunch))
+            {
+                if (awt[12] < 25 && attd[12] < 80)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 12, 5, buildingData);
+                }
+                else if (awt[11] < 40 && attd[11] < 100)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 11, 4, buildingData);
+                }
+                else if (awt[10] < 40 && attd[10] < 120)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 10, 3, buildingData);
+                }
+                else
+                {
+                    PrintWorstRating(assessmentSheet, awt, attd, ais, alw, 13, 1, gLimit, buildingData);
+                }
+            }
+
+            return;
+        }
+
+        if (buildingData.BuildingType.Equals("Hotel", StringComparison.OrdinalIgnoreCase))
+        {
+            string hotelProfile = Convert.ToString(criteriaSheet.Cells(7, 4).Value, CultureInfo.InvariantCulture) ?? string.Empty;
+            if (ProfilesEqual(currentProfile, hotelProfile))
+            {
+                if (awt[13] < 25 && attd[13] < 80)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 13, 5, buildingData);
+                }
+                else if (awt[12] < 40 && attd[12] < 100)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 12, 4, buildingData);
+                }
+                else if (awt[11] < 40 && attd[11] < 120)
+                {
+                    PrintAssessment(assessmentSheet, awt, attd, ais, alw, 11, 3, buildingData);
+                }
+                else
+                {
+                    PrintWorstRating(assessmentSheet, awt, attd, ais, alw, 13, 1, gLimit, buildingData);
+                }
+            }
+
+            return;
+        }
+
+        if (!buildingData.BuildingType.Equals("Residential", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        string residentialProfile = Convert.ToString(criteriaSheet.Cells(8, 4).Value, CultureInfo.InvariantCulture) ?? string.Empty;
+        if (!ProfilesEqual(currentProfile, residentialProfile))
+        {
+            return;
+        }
+
+        if (awt[8] < 40 && attd[8] < 90)
+        {
+            PrintAssessment(assessmentSheet, awt, attd, ais, alw, 8, 5, buildingData);
+        }
+        else if (awt[7] < 60 && attd[7] < 120)
+        {
+            PrintAssessment(assessmentSheet, awt, attd, ais, alw, 7, 4, buildingData);
+        }
+        else if (awt[6] < 60 && attd[6] < 150)
+        {
+            PrintAssessment(assessmentSheet, awt, attd, ais, alw, 6, 3, buildingData);
+        }
+        else
+        {
+            PrintWorstRating(assessmentSheet, awt, attd, ais, alw, 8, 1, gLimit, buildingData);
+        }
+    }
+
+    private static void PrintWorstRating(
+        dynamic assessmentSheet,
+        double[] awt,
+        double[] attd,
+        double[] ais,
+        double[] alw,
+        int maxHc5,
+        int rating,
+        int gLimit,
+        BuildingDataModel buildingData)
+    {
+        for (int i = maxHc5; i >= 1; i--)
+        {
+            if (awt[i] < gLimit)
+            {
+                PrintAssessment(assessmentSheet, awt, attd, ais, alw, i, rating, buildingData);
+                return;
+            }
+        }
+
+        PrintAssessment(assessmentSheet, awt, attd, ais, alw, 1, rating, buildingData);
+    }
+
+    private static void PrintAssessment(
+        dynamic assessmentSheet,
+        double[] awt,
+        double[] attd,
+        double[] ais,
+        double[] alw,
+        int hc5,
+        int rating,
+        BuildingDataModel buildingData)
+    {
+        if (buildingData.BuildingType.Equals("Residential", StringComparison.OrdinalIgnoreCase))
+        {
+            assessmentSheet.Cells(47, 5).Value = hc5;
+            assessmentSheet.Cells(47, 9).Value = awt[hc5];
+            assessmentSheet.Cells(47, 13).Value = attd[hc5];
+            assessmentSheet.Cells(47, 17).Value = ais[hc5];
+            assessmentSheet.Cells(47, 21).Value = alw[hc5];
+            assessmentSheet.Cells(47, 25).Value = assessmentSheet.Cells(45, 29 + rating).Value;
+
+            if (rating == 1)
+            {
+                assessmentSheet.Cells(47, 25).Font.Color = 255;
+            }
+
+            return;
+        }
+
+        assessmentSheet.Cells(47, 4).Value = hc5;
+        assessmentSheet.Cells(47, 6).Value = awt[hc5];
+        assessmentSheet.Cells(47, 8).Value = attd[hc5];
+        assessmentSheet.Cells(47, 10).Value = ais[hc5];
+        assessmentSheet.Cells(47, 12).Value = alw[hc5];
+        assessmentSheet.Cells(47, 14).Value = assessmentSheet.Cells(45, 16 + rating).Value;
+
+        if (rating == 1)
+        {
+            assessmentSheet.Cells(47, 14).Font.Color = 255;
+        }
+    }
+
+    private static string BuildElevatorGroupText(ElevatorDataModel elevatorData, int servedFloors, int floors)
+    {
+        Dictionary<string, int> capacityCounts = new(StringComparer.Ordinal);
+
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            string capacity = elevatorData.Spec[i, 1];
+            if (!capacityCounts.TryAdd(capacity, 1))
+            {
+                capacityCounts[capacity]++;
+            }
+        }
+
+        string x2 = elevatorData.Dispatcher.Contains("Double", StringComparison.OrdinalIgnoreCase)
+            ? "2x"
+            : string.Empty;
+
+        System.Text.StringBuilder elevatorsText = new();
+        foreach ((string cap, int count) in capacityCounts)
+        {
+            string noun = count switch
+            {
+                < 2 => "лифт",
+                < 5 => "лифта",
+                _ => "лифтов",
+            };
+
+            elevatorsText.Append($" {count} {noun} с грузоподъемностью {x2}{cap} кг,");
+        }
+
+        return $"Лифтовая группа:{elevatorsText} со скоростью {elevatorData.Spec[1, 2]} м/с. Количество остановок {servedFloors}/{floors}.";
+    }
+
+    private static string BuildFlowText(PassengerDataModel passengerData)
+    {
+        string incoming = ToShortPercent(passengerData.Incoming);
+        string outgoing = ToShortPercent(passengerData.Outgoing);
+        string interfloor = ToShortPercent(passengerData.Interfloor);
+
+        return
+            $"Тип пассажиропотока ({incoming}%, {outgoing}%, {interfloor}%): направление движения пассажиров во время часа пик.{Environment.NewLine}" +
+            $"Входной пассажиропоток ({incoming}%) - пассажиропоток с конкретного посадочного этажа при входе в здание.{Environment.NewLine}" +
+            $"Выходной пассажиропоток ({outgoing}%) - пассажиропоток с этажей здания на выход из здания.{Environment.NewLine}" +
+            $"Межэтажный пассажиропоток ({interfloor}%) - одновременное перемещение пассажиров между этажами здания.";
+    }
+
+    private static void ResizeMetrics(ref double[] data, int nSteps, int gLimit, int nStepsFromMain)
+    {
+        double[] resized = new double[nSteps + 1];
+
+        int copyLength = Math.Min(nSteps, Math.Max(0, data.Length - 1));
+        for (int i = 1; i <= copyLength; i++)
+        {
+            resized[i] = data[i];
+        }
+
+        for (int i = Math.Max(1, nStepsFromMain + 1); i <= nSteps; i++)
+        {
+            resized[i] = i * gLimit;
+        }
+
+        data = resized;
+    }
+
+    private static bool[] CalculateServedFloors(ElevatorDataModel elevatorData, int noFloors, out int servedFloors)
+    {
+        bool[] isServed = new bool[noFloors + 1];
+        servedFloors = 0;
+
+        for (int floor = 1; floor <= noFloors; floor++)
+        {
+            for (int elevator = 1; elevator <= elevatorData.NoElevators; elevator++)
+            {
+                if (!IsYes(elevatorData.FloorsServed[elevator, floor]))
+                {
+                    continue;
+                }
+
+                isServed[floor] = true;
+                servedFloors++;
+                break;
+            }
+        }
+
+        return isServed;
+    }
+
+    private static void ParseStepCsv(
+        string fileName,
+        string folder,
+        BuildingDataModel buildingData,
+        ElevatorDataModel elevatorData,
+        int step,
+        double[] ais,
+        double[] alw)
+    {
+        string stepCsvPath = Path.Combine(folder, BuildStepFileName(fileName, step));
+        if (!File.Exists(stepCsvPath))
+        {
+            throw new FileNotFoundException($"Step CSV not found: {stepCsvPath}", stepCsvPath);
+        }
+
+        CsvSheet sheet = CsvSheet.Load(stepCsvPath);
+
+        int breakdownRow = sheet.FindRowContains("breakdown");
+        int spatialRow = sheet.FindRowContains("spatial");
+        if (breakdownRow == 0 || spatialRow == 0)
+        {
+            ais[step] = 0;
+            alw[step] = 0;
+            return;
+        }
+
+        int sRow = breakdownRow + 12;
+        int eRow = spatialRow - 2;
+
+        int tPass = 0;
+        double lw = 0;
+
+        for (int row = sRow; row <= eRow && row <= sheet.RowCount; row++)
+        {
+            tPass++;
+            if (ParseDoubleFlexible(sheet.Get(row, 11)) >= 90)
+            {
+                lw += 1;
+            }
+        }
+
+        alw[step] = tPass > 0 ? (100 * lw) / tPass : 0;
+
+        int cRow = spatialRow + 2;
+        double[] sAis = new double[elevatorData.NoElevators + 1];
+
+        for (int elevator = 1; elevator <= elevatorData.NoElevators; elevator++)
+        {
+            double homeFloor = ParseLevelValue(elevatorData.Spec[elevator, 5]);
+            int homeFloorIndex = 0;
+
+            for (int j = 1; j <= buildingData.NoFloors; j++)
+            {
+                if (!NearlyEquals(homeFloor, buildingData.FloorName[j]))
+                {
+                    continue;
+                }
+
+                homeFloorIndex = j;
+                break;
+            }
+
+            int nrTrip = 0;
+            List<int> nrStop = [0];
+
+            while (cRow + 1 <= sheet.RowCount &&
+                   ToInt(sheet.Get(cRow, 1)) == elevator &&
+                   ToInt(sheet.Get(cRow + 1, 1)) == elevator)
+            {
+                if (ToInt(sheet.Get(cRow, 3)) == homeFloorIndex &&
+                    ToInt(sheet.Get(cRow + 1, 3)) == homeFloorIndex)
+                {
+                    nrTrip++;
+                    nrStop.Add(0);
+
+                    while (cRow + 3 <= sheet.RowCount &&
+                           ToInt(sheet.Get(cRow + 2, 3)) != homeFloorIndex &&
+                           ToInt(sheet.Get(cRow + 2, 1)) == elevator)
+                    {
+                        if (ToInt(sheet.Get(cRow + 2, 3)) != ToInt(sheet.Get(cRow + 3, 3)))
+                        {
+                            nrStop[nrTrip]++;
+                        }
+
+                        cRow++;
+                    }
+                }
+
+                cRow++;
+            }
+
+            cRow++;
+
+            int sumStop = 0;
+            for (int x = 1; x < nrStop.Count; x++)
+            {
+                sumStop += nrStop[x];
+            }
+
+            sAis[elevator] = nrTrip > 0 ? ((double)sumStop / nrTrip) - 1 : 0;
+        }
+
+        double sumAis = 0;
+        for (int x = 1; x <= elevatorData.NoElevators; x++)
+        {
+            sumAis += sAis[x];
+        }
+
+        ais[step] = elevatorData.NoElevators > 0 ? sumAis / elevatorData.NoElevators : 0;
+    }
+
+    private static ProjectParsedData ParseProjectCsv(string projectCsvPath)
+    {
+        CsvSheet sheet = CsvSheet.Load(projectCsvPath);
+
+        int jobDataRow = sheet.FindRowExactInColumn(1, "JOB DATA");
+        int analysisDataRow = sheet.FindRowExactInColumn(1, "ANALYSIS DATA");
+        int buildingDataRow = sheet.FindRowExactInColumn(1, "BUILDING DATA");
+        int elevatorDataRow = sheet.FindRowExactInColumn(1, "ELEVATOR DATA");
+        int passengerDataRow = sheet.FindRowExactInColumn(1, "PASSENGER DATA");
+
+        if (jobDataRow == 0 || analysisDataRow == 0 || buildingDataRow == 0 || elevatorDataRow == 0 || passengerDataRow == 0)
+        {
+            throw new InvalidOperationException("Required sections were not found in project CSV.");
+        }
+
+        string[] jobData = new string[8];
+        for (int i = 1; i <= 7; i++)
+        {
+            jobData[i] = sheet.Get(jobDataRow + i, 4);
+        }
+
+        BuildingDataModel buildingData = new();
+        buildingData.BuildingType = sheet.Get(elevatorDataRow - 8, 6);
+        buildingData.Absenteeism = ParseDoubleFlexible(sheet.Get(elevatorDataRow - 9, 6));
+
+        double absenteeism = (100 - buildingData.Absenteeism) / 100d;
+
+        buildingData.NoFloors = ToInt(sheet.Get(elevatorDataRow - 2, 6));
+        if (buildingData.NoFloors < 1)
+        {
+            throw new InvalidOperationException("No floors found in project CSV.");
+        }
+
+        buildingData.TotalPeople = 0;
+        buildingData.CTotalPeople = 0;
+        buildingData.NoExitFloors = 0;
+
+        buildingData.FloorName = new double[buildingData.NoFloors + 1];
+        buildingData.FloorHeight = new double[buildingData.NoFloors + 1];
+        buildingData.FloorLevel = new double[buildingData.NoFloors + 1];
+        buildingData.FloorType = new string[buildingData.NoFloors + 1];
+        buildingData.FloorFactor = new double[buildingData.NoFloors + 1];
+        buildingData.NoPeople = new double[buildingData.NoFloors + 1];
+        buildingData.EntranceFloor = new string[buildingData.NoFloors + 1];
+        buildingData.Bias = new double[buildingData.NoFloors + 1];
+
+        string buildingTypeLabel = buildingData.BuildingType switch
+        {
+            "Office" => "Офис",
+            "Residential" => "Жилье",
+            "Hotel" => "Отель",
+            _ => "БКТ",
+        };
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            string floorNameToken = sheet.Get(buildingDataRow + i + 1, 1);
+            buildingData.FloorName[i] = ParseLevelValue(floorNameToken);
+            buildingData.FloorHeight[i] = ParseDoubleFlexible(sheet.Get(buildingDataRow + i + 1, 3));
+            buildingData.NoPeople[i] = ParseDoubleFlexible(sheet.Get(buildingDataRow + i + 1, 5));
+            buildingData.EntranceFloor[i] = sheet.Get(buildingDataRow + i + 1, 11);
+
+            if (buildingData.FloorName[i] < 0)
+            {
+                buildingData.FloorType[i] = "Парковка";
+                buildingData.FloorFactor[i] = 1.2;
+            }
+            else if (buildingData.FloorName[i] > 0 && IsYes(buildingData.EntranceFloor[i]))
+            {
+                buildingData.FloorType[i] = "Лобби";
+                buildingData.FloorFactor[i] = 0;
+            }
+            else
+            {
+                buildingData.FloorType[i] = buildingTypeLabel;
+                buildingData.FloorFactor[i] = absenteeism;
+                buildingData.NoExitFloors++;
+            }
+
+            if (IsYes(buildingData.EntranceFloor[i]))
+            {
+                for (int j = 1; j <= buildingData.NoFloors; j++)
+                {
+                    string passengerRowFloor = sheet.Get(passengerDataRow + 15 + j, 1);
+                    if (string.Equals(passengerRowFloor, floorNameToken, StringComparison.OrdinalIgnoreCase))
+                    {
+                        buildingData.Bias[i] = ParseDoubleFlexible(sheet.Get(passengerDataRow + 15 + j, 4));
+                        break;
+                    }
+
+                    if (!passengerRowFloor.Contains('&'))
+                    {
+                        continue;
+                    }
+
+                    string[] floorParts = passengerRowFloor
+                        .Split('&', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+                    if (floorParts.Any(part => string.Equals(part, floorNameToken, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        buildingData.Bias[i] = ParseDoubleFlexible(sheet.Get(passengerDataRow + 15 + j, 4));
+                        break;
+                    }
+                }
+            }
+
+            buildingData.TotalPeople += buildingData.NoPeople[i];
+            buildingData.CTotalPeople += buildingData.NoPeople[i] * buildingData.FloorFactor[i];
+        }
+
+        double lowerLevel = 0;
+        if (buildingData.FloorName[1] < 1)
+        {
+            for (int i = 1; i <= Math.Abs((int)buildingData.FloorName[1]) && i <= buildingData.NoFloors; i++)
+            {
+                lowerLevel -= buildingData.FloorHeight[i];
+            }
+        }
+
+        buildingData.FloorLevel[1] = lowerLevel;
+        for (int i = 2; i <= buildingData.NoFloors; i++)
+        {
+            buildingData.FloorLevel[i] = buildingData.FloorLevel[i - 1] + buildingData.FloorHeight[i - 1];
+        }
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            if (string.Equals(buildingData.FloorType[i], "Парковка", StringComparison.Ordinal))
+            {
+                buildingData.NoPeople[i] = (buildingData.TotalPeople * buildingData.Bias[i]) / 120d;
+            }
+        }
+
+        ElevatorDataModel elevatorData = new();
+        elevatorData.Dispatcher = sheet.Get(analysisDataRow + 3, 6);
+
+        elevatorData.NoElevators = 0;
+        for (int i = 1; i <= sheet.ColumnCount; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(sheet.Get(elevatorDataRow + 1, 3 + i)))
+            {
+                elevatorData.NoElevators++;
+            }
+        }
+
+        if (elevatorData.NoElevators < 1)
+        {
+            throw new InvalidOperationException("No elevators were found in project CSV.");
+        }
+
+        elevatorData.Spec = new string[elevatorData.NoElevators + 1, 11];
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            for (int j = 1; j <= 10; j++)
+            {
+                elevatorData.Spec[i, j] = sheet.Get(elevatorDataRow + 1 + j, 3 + i);
+            }
+        }
+
+        elevatorData.FloorsServed = new string[elevatorData.NoElevators + 1, buildingData.NoFloors + 1];
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            for (int j = 1; j <= buildingData.NoFloors; j++)
+            {
+                elevatorData.FloorsServed[i, j] = sheet.Get(elevatorDataRow + 14 + j, 3 + i);
+            }
+        }
+
+        PassengerDataModel passengerData = new()
+        {
+            Incoming = ParseDoubleFlexible(sheet.Get(passengerDataRow + 4, 4)),
+            Outgoing = ParseDoubleFlexible(sheet.Get(passengerDataRow + 5, 4)),
+            Interfloor = ParseDoubleFlexible(sheet.Get(passengerDataRow + 6, 4)),
+        };
+
+        return new ProjectParsedData(jobData, buildingData, elevatorData, passengerData);
+    }
+
+    private static MainBatchData ParseBatchResults(string batchResultsPath)
+    {
+        CsvSheet sheet = CsvSheet.Load(batchResultsPath);
+
+        List<int> dataRows = [];
+        for (int row = 2; row <= sheet.RowCount; row++)
+        {
+            if (!string.IsNullOrWhiteSpace(sheet.Get(row, 1)) ||
+                !string.IsNullOrWhiteSpace(sheet.Get(row, 7)) ||
+                !string.IsNullOrWhiteSpace(sheet.Get(row, 11)))
+            {
+                dataRows.Add(row);
+            }
+        }
+
+        if (dataRows.Count == 0 && sheet.RowCount >= 2)
+        {
+            dataRows.Add(2);
+        }
+
+        int steps = dataRows.Count;
+        double[] awt = new double[steps + 1];
+        double[] attd = new double[steps + 1];
+
+        for (int i = 1; i <= steps; i++)
+        {
+            int row = dataRows[i - 1];
+            awt[i] = ParseDoubleFlexible(sheet.Get(row, 7));
+            attd[i] = ParseDoubleFlexible(sheet.Get(row, 11));
+        }
+
+        int keyRow = dataRows.Count > 0 ? dataRows[0] : 2;
+        string fileName = sheet.Get(keyRow, 1);
+        if (fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            fileName = Path.GetFileNameWithoutExtension(fileName);
+        }
+
+        return new MainBatchData
+        {
+            FileName = fileName,
+            Folder = sheet.Get(keyRow, 2),
+            AWT = awt,
+            ATTD = attd,
+        };
+    }
+
+    private static string? FindRepositoryRoot()
+    {
+        string[] roots =
+        [
+            AppContext.BaseDirectory,
+            Directory.GetCurrentDirectory(),
+        ];
+
+        foreach (string root in roots)
+        {
+            DirectoryInfo? current = new(root);
+            while (current is not null)
+            {
+                string exampleDir = Path.Combine(current.FullName, ".example");
+                if (Directory.Exists(exampleDir))
+                {
+                    return current.FullName;
+                }
+
+                current = current.Parent;
+            }
         }
 
         return null;
@@ -181,186 +1423,679 @@ public sealed class ElevateReportService : IElevateReportService
         };
     }
 
-    private static string GetBuildingTypeToken(BuildingType buildingType)
+    private static string BuildStepFileName(string fileName, int step)
     {
-        return buildingType switch
+        string cleanFileName = fileName.Trim();
+        if (cleanFileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
         {
-            BuildingType.Office => "Office",
-            BuildingType.Hotel => "Hotel",
-            BuildingType.Residence => "Residential",
-            _ => throw new ArgumentOutOfRangeException(nameof(buildingType), buildingType, "Unsupported building type."),
-        };
+            cleanFileName = Path.GetFileNameWithoutExtension(cleanFileName);
+        }
+
+        string prefix = cleanFileName.Length > 3
+            ? cleanFileName[..^3]
+            : cleanFileName;
+
+        prefix = prefix.TrimEnd();
+        return step < 10
+            ? $"{prefix} 0{step}.csv"
+            : $"{prefix} {step}.csv";
     }
 
-    private static bool TrySetBuildingType(
-        string batchResultsPath,
-        BuildingType buildingType,
-        out string error)
+    private static string NormalizePath(string path)
     {
-        error = string.Empty;
-        string[] lines;
+        string normalized = path.Trim().Trim('"').Replace('/', '\\');
+        return normalized.TrimEnd('\\');
+    }
 
-        try
+    private static string SanitizeFileName(string name)
+    {
+        string result = name;
+        foreach (char invalid in Path.GetInvalidFileNameChars())
         {
-            lines = File.ReadAllLines(batchResultsPath);
-        }
-        catch (Exception ex)
-        {
-            error = $"Failed to read batch_results.csv: {ex.Message}";
-            return false;
-        }
-
-        if (lines.Length == 0)
-        {
-            error = "batch_results.csv is empty.";
-            return false;
+            result = result.Replace(invalid, '_');
         }
 
-        char delimiter = DetectDelimiter(lines);
-        string buildingTypeToken = GetBuildingTypeToken(buildingType);
-        bool updated = false;
-
-        for (int i = 0; i < lines.Length; i++)
+        if (string.IsNullOrWhiteSpace(result))
         {
-            string line = lines[i];
-            if (string.IsNullOrWhiteSpace(line))
+            return "report.xlsx";
+        }
+
+        return result;
+    }
+
+    private static double[] ReadFloorAreas(string xmlFolder)
+    {
+        string path = Path.Combine(xmlFolder, "floor_area.csv");
+        if (!File.Exists(path))
+        {
+            return [0];
+        }
+
+        CsvSheet sheet = CsvSheet.Load(path);
+        List<double> values = [0];
+
+        for (int row = 2; row <= sheet.RowCount; row++)
+        {
+            values.Add(ParseDoubleFlexible(sheet.Get(row, 2)));
+        }
+
+        return values.ToArray();
+    }
+
+    private static double GetFloorAreaByIndex(double[] areas, int index)
+    {
+        return index >= 1 && index < areas.Length
+            ? areas[index]
+            : 0;
+    }
+
+    private static void GetDoorType(double dOpen, double dClose, out string width, out string type)
+    {
+        (double Open, double Close, string Width, string Type)[] map =
+        [
+            (2.1, 3.7, "700", "ТО"),
+            (2.2, 3.9, "750", "ТО"),
+            (2.3, 4.1, "800", "ТО"),
+            (2.4, 4.3, "850", "ТО"),
+            (2.5, 4.5, "900", "ТО"),
+            (2.6, 4.7, "950", "ТО"),
+            (2.6, 4.9, "1000", "ТО"),
+            (2.7, 5.1, "1050", "ТО"),
+            (2.8, 5.3, "1100", "ТО"),
+            (2.9, 5.5, "1150", "ТО"),
+            (2.9, 5.7, "1200", "ТО"),
+            (3.0, 5.9, "1250", "ТО"),
+            (3.1, 6.0, "1300", "ТО"),
+            (1.5, 2.2, "600", "ЦО"),
+            (1.6, 2.3, "650", "ЦО"),
+            (1.6, 2.4, "700", "ЦО"),
+            (1.7, 2.5, "750", "ЦО"),
+            (1.7, 2.6, "800", "ЦО"),
+            (1.7, 2.7, "850", "ЦО"),
+            (1.7, 2.8, "900", "ЦО"),
+            (1.8, 2.9, "1000", "ЦО"),
+            (1.9, 3.0, "1050", "ЦО"),
+            (1.9, 3.1, "1100", "ЦО"),
+            (2.0, 3.2, "1150", "ЦО"),
+            (2.0, 3.3, "1200", "ЦО"),
+            (2.1, 3.4, "1250", "ЦО"),
+            (2.1, 3.5, "1300", "ЦО"),
+        ];
+
+        foreach ((double open, double close, string doorWidth, string doorType) in map)
+        {
+            if (!NearlyEquals(open, dOpen, 0.11) || !NearlyEquals(close, dClose, 0.11))
             {
                 continue;
             }
 
-            string[] parts = line.Split(delimiter);
-            if (parts.Length < 2)
+            width = $"'{doorWidth}";
+            type = doorType;
+            return;
+        }
+
+        width = "-";
+        type = "-";
+    }
+
+    private static void SortOneBased(double[] arr)
+    {
+        if (arr.Length <= 2)
+        {
+            return;
+        }
+
+        Array.Sort(arr, 1, arr.Length - 1);
+    }
+
+    private static void ApplyLinest(double[] data, int lastHc5)
+    {
+        int n = Math.Min(lastHc5, data.Length - 1);
+        if (n <= 1)
+        {
+            return;
+        }
+
+        const int p = 5;
+        double[,] xtx = new double[p, p];
+        double[] xty = new double[p];
+
+        for (int i = 1; i <= n; i++)
+        {
+            double x = i;
+            double x2 = x * x;
+            double x3 = x2 * x;
+            double x4 = x3 * x;
+            double[] row = [x4, x3, x2, x, 1.0];
+
+            for (int r = 0; r < p; r++)
             {
-                continue;
+                xty[r] += row[r] * data[i];
+                for (int c = 0; c < p; c++)
+                {
+                    xtx[r, c] += row[r] * row[c];
+                }
             }
-
-            string key = parts[0].Trim().Trim('"');
-            if (!key.Equals("BuildingType", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            parts[1] = buildingTypeToken;
-            lines[i] = string.Join(delimiter, parts);
-            updated = true;
-            break;
         }
 
-        if (!updated)
+        if (!SolveLinearSystem(xtx, xty, out double[] coeff))
         {
-            string newLine = $"BuildingType{delimiter}{buildingTypeToken}";
-            lines = [.. lines, newLine];
+            return;
         }
 
-        try
+        for (int i = 1; i <= n; i++)
         {
-            File.WriteAllLines(batchResultsPath, lines);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            error = $"Failed to write batch_results.csv: {ex.Message}";
-            return false;
+            double x = i;
+            double x2 = x * x;
+            double x3 = x2 * x;
+            double x4 = x3 * x;
+
+            double value = coeff[0] * x4 + coeff[1] * x3 + coeff[2] * x2 + coeff[3] * x + coeff[4];
+            data[i] = value < 0.1 ? 0 : value;
         }
     }
 
-    private static char DetectDelimiter(IEnumerable<string> lines)
+    private static bool SolveLinearSystem(double[,] matrix, double[] vector, out double[] solution)
     {
-        foreach (string line in lines)
+        int n = vector.Length;
+        solution = new double[n];
+
+        double[,] a = (double[,])matrix.Clone();
+        double[] b = (double[])vector.Clone();
+
+        for (int col = 0; col < n; col++)
         {
-            if (string.IsNullOrWhiteSpace(line))
+            int pivotRow = col;
+            double pivotValue = Math.Abs(a[col, col]);
+
+            for (int row = col + 1; row < n; row++)
             {
-                continue;
+                double candidate = Math.Abs(a[row, col]);
+                if (candidate <= pivotValue)
+                {
+                    continue;
+                }
+
+                pivotValue = candidate;
+                pivotRow = row;
             }
 
-            if (line.Contains(';'))
+            if (pivotValue < 1e-9)
             {
-                return ';';
+                return false;
             }
 
-            if (line.Contains(','))
+            if (pivotRow != col)
             {
-                return ',';
+                SwapRows(a, b, col, pivotRow);
+            }
+
+            double pivot = a[col, col];
+            for (int j = col; j < n; j++)
+            {
+                a[col, j] /= pivot;
+            }
+
+            b[col] /= pivot;
+
+            for (int row = 0; row < n; row++)
+            {
+                if (row == col)
+                {
+                    continue;
+                }
+
+                double factor = a[row, col];
+                if (Math.Abs(factor) < 1e-12)
+                {
+                    continue;
+                }
+
+                for (int j = col; j < n; j++)
+                {
+                    a[row, j] -= factor * a[col, j];
+                }
+
+                b[row] -= factor * b[col];
             }
         }
 
-        return ';';
-    }
-
-    private static bool PrepareTDrive(
-        string runtimeRoot,
-        out bool mappedByService,
-        out string tDriveRoot,
-        out string error)
-    {
-        mappedByService = false;
-        tDriveRoot = $"{TDrive}\\";
-        error = string.Empty;
-
-        if (Directory.Exists(tDriveRoot))
-        {
-            return true;
-        }
-
-        Directory.CreateDirectory(runtimeRoot);
-        if (!ExecuteSubstCommand($"{TDrive} \"{runtimeRoot}\"", out string substError))
-        {
-            error = $"Unable to map {TDrive} for KIP macro runtime. {substError}";
-            return false;
-        }
-
-        mappedByService = true;
-        tDriveRoot = $"{TDrive}\\";
+        Array.Copy(b, solution, n);
         return true;
     }
 
-    private static void CopyTemplates(string sourceExampleFolder, string meteorFolder)
+    private static void SwapRows(double[,] matrix, double[] vector, int rowA, int rowB)
     {
-        string[] templateNames = ["Hotel.xlsx", "Office.xlsx", "Residential.xlsx"];
-        foreach (string templateName in templateNames)
+        int n = vector.Length;
+        for (int j = 0; j < n; j++)
         {
-            string source = Path.Combine(sourceExampleFolder, templateName);
-            string destination = Path.Combine(meteorFolder, templateName);
-            File.Copy(source, destination, overwrite: true);
+            (matrix[rowA, j], matrix[rowB, j]) = (matrix[rowB, j], matrix[rowA, j]);
         }
+
+        (vector[rowA], vector[rowB]) = (vector[rowB], vector[rowA]);
     }
 
-    private static string? FindLatestGeneratedReport(string outputFolder, DateTime afterUtc)
+    private static int FindRowByFloorValue(dynamic sheet, double floorValue)
     {
-        string[] candidates = Directory.GetFiles(outputFolder, "*.xlsx", SearchOption.TopDirectoryOnly);
-        return candidates
-            .Select(file => new FileInfo(file))
-            .Where(file => file.LastWriteTimeUtc >= afterUtc.AddMinutes(-1))
-            .OrderByDescending(file => file.LastWriteTimeUtc)
-            .Select(file => file.FullName)
-            .FirstOrDefault();
+        for (int row = 1; row <= 1000; row++)
+        {
+            object? cellValue = sheet.Cells(row, 2).Value;
+            if (cellValue is null)
+            {
+                continue;
+            }
+
+            if (TryParseFloorCell(cellValue, out double parsed) && NearlyEquals(parsed, floorValue, 0.001))
+            {
+                return row;
+            }
+        }
+
+        return 0;
     }
 
-    private static bool ExecuteSubstCommand(string arguments, out string error)
+    private static bool TryParseFloorCell(object value, out double parsed)
     {
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = "cmd.exe",
-            Arguments = $"/c subst {arguments}",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-        };
+        parsed = 0;
 
-        using Process process = new() { StartInfo = startInfo };
-        _ = process.Start();
-        string stdOut = process.StandardOutput.ReadToEnd();
-        string stdErr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
-
-        if (process.ExitCode == 0)
+        if (value is double d)
         {
-            error = string.Empty;
+            parsed = d;
             return true;
         }
 
-        error = $"{stdOut} {stdErr}".Trim();
-        return false;
+        string text = Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        if (text.StartsWith('\''))
+        {
+            text = text[1..];
+        }
+
+        if (text.Contains(" - ", StringComparison.Ordinal))
+        {
+            text = text.Split(" - ", StringSplitOptions.TrimEntries)[0];
+        }
+
+        return double.TryParse(text.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out parsed);
+    }
+
+    private static string FormatFloorForDisplay(double floor)
+    {
+        string text = floor.ToString("0.###", CultureInfo.InvariantCulture);
+        return text.Contains('.', StringComparison.Ordinal)
+            ? $"'{text}"
+            : text;
+    }
+
+    private static string ToShortPercent(double value)
+    {
+        return NearlyEquals(value, Math.Round(value))
+            ? Math.Round(value).ToString(CultureInfo.InvariantCulture)
+            : value.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private static bool IsYes(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string trimmed = value.Trim();
+        return trimmed.Equals("Yes", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.Equals("True", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.Equals("1", StringComparison.Ordinal);
+    }
+
+    private static bool ProfilesEqual(string left, string right)
+    {
+        return string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool NearlyEquals(double a, double b, double epsilon = 0.0001)
+    {
+        return Math.Abs(a - b) <= epsilon;
+    }
+
+    private static double AsDouble(object? value)
+    {
+        return ParseDoubleFlexible(value);
+    }
+
+    private static double ToDouble(object? value)
+    {
+        return ParseDoubleFlexible(value);
+    }
+
+    private static int ToInt(object? value)
+    {
+        return (int)Math.Round(ParseDoubleFlexible(value));
+    }
+
+    private static int ToInt(string value)
+    {
+        return ToInt((object?)value);
+    }
+
+    private static double ParseDoubleFlexible(object? value)
+    {
+        if (value is null)
+        {
+            return 0;
+        }
+
+        if (value is double d)
+        {
+            return d;
+        }
+
+        if (value is float f)
+        {
+            return f;
+        }
+
+        if (value is decimal m)
+        {
+            return (double)m;
+        }
+
+        if (value is int or long or short or byte)
+        {
+            return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+        }
+
+        string text = Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 0;
+        }
+
+        text = text.Trim();
+        if (text.StartsWith('\''))
+        {
+            text = text[1..];
+        }
+
+        text = text.Replace(" ", string.Empty, StringComparison.Ordinal)
+                   .Replace("%", string.Empty, StringComparison.Ordinal)
+                   .Trim();
+
+        if (double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out double result))
+        {
+            return result;
+        }
+
+        if (double.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("ru-RU"), out result))
+        {
+            return result;
+        }
+
+        string normalized = text.Replace(',', '.');
+        return double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out result)
+            ? result
+            : 0;
+    }
+
+    private static double ParseLevelValue(string raw)
+    {
+        string value = raw;
+        if (value.StartsWith("Level ", StringComparison.OrdinalIgnoreCase) && value.Length > 6)
+        {
+            value = value[6..];
+        }
+
+        return ParseDoubleFlexible(value);
+    }
+
+    private sealed class MainBatchData
+    {
+        public string FileName { get; set; } = string.Empty;
+
+        public string Folder { get; set; } = string.Empty;
+
+        public double[] AWT { get; set; } = [0];
+
+        public double[] ATTD { get; set; } = [0];
+    }
+
+    private sealed class ProjectParsedData
+    {
+        public ProjectParsedData(
+            string[] jobData,
+            BuildingDataModel building,
+            ElevatorDataModel elevator,
+            PassengerDataModel passenger)
+        {
+            JobData = jobData;
+            Building = building;
+            Elevator = elevator;
+            Passenger = passenger;
+        }
+
+        public string[] JobData { get; }
+
+        public BuildingDataModel Building { get; }
+
+        public ElevatorDataModel Elevator { get; }
+
+        public PassengerDataModel Passenger { get; }
+    }
+
+    private sealed class BuildingDataModel
+    {
+        public string BuildingType { get; set; } = string.Empty;
+
+        public double Absenteeism { get; set; }
+
+        public int NoFloors { get; set; }
+
+        public double TotalPeople { get; set; }
+
+        public double CTotalPeople { get; set; }
+
+        public int NoExitFloors { get; set; }
+
+        public double[] FloorName { get; set; } = [0];
+
+        public double[] FloorHeight { get; set; } = [0];
+
+        public double[] FloorLevel { get; set; } = [0];
+
+        public string[] FloorType { get; set; } = [string.Empty];
+
+        public double[] FloorFactor { get; set; } = [0];
+
+        public double[] NoPeople { get; set; } = [0];
+
+        public string[] EntranceFloor { get; set; } = [string.Empty];
+
+        public double[] Bias { get; set; } = [0];
+    }
+
+    private sealed class ElevatorDataModel
+    {
+        public string Dispatcher { get; set; } = string.Empty;
+
+        public int NoElevators { get; set; }
+
+        public string[,] Spec { get; set; } = new string[1, 1];
+
+        public string[,] FloorsServed { get; set; } = new string[1, 1];
+    }
+
+    private sealed class PassengerDataModel
+    {
+        public double Incoming { get; set; }
+
+        public double Outgoing { get; set; }
+
+        public double Interfloor { get; set; }
+    }
+
+    private sealed class CsvSheet
+    {
+        private readonly List<string[]> rows;
+
+        private CsvSheet(List<string[]> rows, int columnCount)
+        {
+            this.rows = rows;
+            ColumnCount = columnCount;
+        }
+
+        public int RowCount => rows.Count;
+
+        public int ColumnCount { get; }
+
+        public static CsvSheet Load(string path)
+        {
+            string[] lines = File.ReadAllLines(path);
+            char delimiter = DetectDelimiter(lines);
+
+            List<string[]> rows = new(lines.Length);
+            int columnCount = 0;
+
+            foreach (string line in lines)
+            {
+                string[] parsed = ParseCsvLine(line, delimiter);
+                rows.Add(parsed);
+                columnCount = Math.Max(columnCount, parsed.Length);
+            }
+
+            return new CsvSheet(rows, columnCount);
+        }
+
+        public string Get(int row, int column)
+        {
+            if (row < 1 || row > rows.Count || column < 1)
+            {
+                return string.Empty;
+            }
+
+            string[] rowData = rows[row - 1];
+            return column <= rowData.Length
+                ? rowData[column - 1]
+                : string.Empty;
+        }
+
+        public int FindRowExactInColumn(int column, string value)
+        {
+            for (int row = 1; row <= RowCount; row++)
+            {
+                if (string.Equals(Get(row, column).Trim(), value, StringComparison.OrdinalIgnoreCase))
+                {
+                    return row;
+                }
+            }
+
+            return 0;
+        }
+
+        public int FindRowContains(string pattern)
+        {
+            for (int row = 1; row <= RowCount; row++)
+            {
+                for (int column = 1; column <= ColumnCount; column++)
+                {
+                    if (Get(row, column).Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return row;
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        private static char DetectDelimiter(IEnumerable<string> lines)
+        {
+            int semicolon = 0;
+            int comma = 0;
+
+            foreach (string line in lines.Take(20))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                semicolon += CountCharOutsideQuotes(line, ';');
+                comma += CountCharOutsideQuotes(line, ',');
+            }
+
+            return semicolon >= comma
+                ? ';'
+                : ',';
+        }
+
+        private static int CountCharOutsideQuotes(string text, char target)
+        {
+            bool inQuotes = false;
+            int count = 0;
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c == '"')
+                {
+                    if (inQuotes && i + 1 < text.Length && text[i + 1] == '"')
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    inQuotes = !inQuotes;
+                    continue;
+                }
+
+                if (!inQuotes && c == target)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static string[] ParseCsvLine(string line, char delimiter)
+        {
+            List<string> values = [];
+            System.Text.StringBuilder current = new();
+            bool inQuotes = false;
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (c == '"')
+                {
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        current.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        inQuotes = !inQuotes;
+                    }
+
+                    continue;
+                }
+
+                if (!inQuotes && c == delimiter)
+                {
+                    values.Add(current.ToString().Trim());
+                    current.Clear();
+                    continue;
+                }
+
+                current.Append(c);
+            }
+
+            values.Add(current.ToString().Trim());
+            return values.ToArray();
+        }
     }
 }

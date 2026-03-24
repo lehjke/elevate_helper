@@ -36,8 +36,29 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         bool includeLunchPeak,
         CancellationToken cancellationToken = default)
     {
+        return RunAsync(path, buildingType, includeLunchPeak, progress: null, cancellationToken);
+    }
+
+    public Task<ProcessingResult> RunAsync(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return RunAsync(path, buildingType, includeLunchPeak, progress, progress, cancellationToken);
+    }
+
+    public async Task<ProcessingResult> RunAsync(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
+        CancellationToken cancellationToken = default)
+    {
         int copiesCount = GetDefaultCopies(buildingType);
-        return RunAsync(copiesCount, path, buildingType, includeLunchPeak, cancellationToken);
+        return await RunAsync(copiesCount, path, buildingType, includeLunchPeak, morningProgress, lunchProgress, cancellationToken);
     }
 
     public async Task<ProcessingResult> RunAsync(
@@ -45,6 +66,29 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         string path,
         BuildingType buildingType,
         bool includeLunchPeak,
+        CancellationToken cancellationToken = default)
+    {
+        return await RunAsync(copiesCount, path, buildingType, includeLunchPeak, progress: null, cancellationToken);
+    }
+
+    public Task<ProcessingResult> RunAsync(
+        int copiesCount,
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return RunAsync(copiesCount, path, buildingType, includeLunchPeak, progress, progress, cancellationToken);
+    }
+
+    public async Task<ProcessingResult> RunAsync(
+        int copiesCount,
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -64,7 +108,14 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 
         try
         {
-            await MakeCopiesAndRunAsync(buildingType, path, copiesCount, includeLunchPeak, cancellationToken);
+            await MakeCopiesAndRunAsync(
+                buildingType,
+                path,
+                copiesCount,
+                includeLunchPeak,
+                morningProgress,
+                lunchProgress,
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -205,8 +256,8 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         {
             string currentTitle = (string?)jobData.Attribute("JobTitle") ?? string.Empty;
             string suffix = string.Equals(peak, "Lunch", StringComparison.Ordinal)
-                ? " (lunch peak)"
-                : " (morning peak)";
+                ? " (обеденный пик)"
+                : " (утренний пик)";
             jobData.SetAttributeValue("JobTitle", currentTitle + suffix);
         }
 
@@ -268,6 +319,8 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         string path,
         int copiesCount,
         bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
         CancellationToken cancellationToken)
     {
         List<string> files = GetElvxFiles(path);
@@ -296,7 +349,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
                 ModifyHandlingCapacity(Path.Combine(path, fileForCapacity), i);
             }
 
-            await launcherService.LaunchResidenceAsync(path, cancellationToken);
+            await launcherService.LaunchResidenceAsync(path, morningProgress, cancellationToken);
             return;
         }
 
@@ -350,7 +403,12 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             }
         }
 
-        await launcherService.LaunchOfficeAsync(path, includeLunchPeak, cancellationToken);
+        await launcherService.LaunchOfficeAsync(
+            path,
+            includeLunchPeak,
+            morningProgress,
+            lunchProgress,
+            cancellationToken);
     }
 
     private static string BuildCopyFileName(string sourceFileName, int copyIndex)

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ElevateHelper.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6a92dac87031457c2c43cfb6f1de335d768f3737")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f48e9eb02394d6adccb70c42cc255287307bb665")]
 [assembly: System.Reflection.AssemblyProductAttribute("ElevateHelper.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ElevateHelper.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

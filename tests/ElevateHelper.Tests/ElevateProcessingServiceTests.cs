@@ -113,7 +113,7 @@ public sealed class ElevateProcessingServiceTests
         XDocument xml = XDocument.Load(elvxPath);
         XElement jobData = xml.Descendants("JobData").First();
 
-        Assert.Equal("Test Project (morning peak)", (string?)jobData.Attribute("JobTitle"));
+        Assert.Equal("Test Project (утренний пик)", (string?)jobData.Attribute("JobTitle"));
     }
 
     [Fact]

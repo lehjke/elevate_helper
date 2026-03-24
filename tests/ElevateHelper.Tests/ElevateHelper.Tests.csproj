@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Compile Include="../../Models/BuildingType.cs" Link="Source/Models/BuildingType.cs" />
+    <Compile Include="../../Models/ElevateProgressInfo.cs" Link="Source/Models/ElevateProgressInfo.cs" />
     <Compile Include="../../Models/ProcessingResult.cs" Link="Source/Models/ProcessingResult.cs" />
     <Compile Include="../../Services/IElevateProcessingService.cs" Link="Source/Services/IElevateProcessingService.cs" />
     <Compile Include="../../Services/IElevateLauncherService.cs" Link="Source/Services/IElevateLauncherService.cs" />

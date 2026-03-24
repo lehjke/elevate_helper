@@ -13,9 +13,53 @@ public interface IElevateProcessingService
         CancellationToken cancellationToken = default);
 
     Task<ProcessingResult> RunAsync(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return RunAsync(path, buildingType, includeLunchPeak, cancellationToken);
+    }
+
+    Task<ProcessingResult> RunAsync(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
+        CancellationToken cancellationToken = default)
+    {
+        return RunAsync(path, buildingType, includeLunchPeak, cancellationToken);
+    }
+
+    Task<ProcessingResult> RunAsync(
         int copiesCount,
         string path,
         BuildingType buildingType,
         bool includeLunchPeak,
         CancellationToken cancellationToken = default);
+
+    Task<ProcessingResult> RunAsync(
+        int copiesCount,
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return RunAsync(copiesCount, path, buildingType, includeLunchPeak, cancellationToken);
+    }
+
+    Task<ProcessingResult> RunAsync(
+        int copiesCount,
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
+        CancellationToken cancellationToken = default)
+    {
+        return RunAsync(copiesCount, path, buildingType, includeLunchPeak, cancellationToken);
+    }
 }
