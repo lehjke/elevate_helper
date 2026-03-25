@@ -15,3 +15,10 @@ wheels/
 *.bat
 
 .example
+.vs/
+artifacts/
+bin/
+obj/
+tests/**/bin/
+tests/**/obj/
+build_diag.log
