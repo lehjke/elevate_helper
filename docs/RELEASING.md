@@ -6,4 +6,9 @@
 4. Create a tag in the `v<major>.<minor>` format, for example `v1.17`.
 5. Push the branch and the tag to GitHub.
 
-The `release.yml` workflow builds a self-contained WinUI x64 archive and publishes it to GitHub Releases.
+The `release.yml` workflow builds:
+
+- a self-contained WinUI x64 zip archive
+- an Inno Setup installer `.exe`
+
+Both assets are published to GitHub Releases.
