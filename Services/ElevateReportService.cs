@@ -18,6 +18,7 @@ public sealed class ElevateReportService : IElevateReportService
     private const int XlFormatFromLeftOrAbove = 0;
     private const int XlFormatFromRightOrBelow = 1;
     private const int XlFixedFormatTypePdf = 0;
+    private const int XlOpenXmlWorkbook = 51;
     private const int XlWhole = 1;
     private const int XlPart = 2;
     private const int XlValue = 2;
@@ -168,7 +169,6 @@ public sealed class ElevateReportService : IElevateReportService
             excelApp.ScreenUpdating = false;
 
             workbook = excelApp.Workbooks.Open(templatePath);
-            Dictionary<string, SheetPrintLayout> templatePrintLayout = CaptureTemplatePrintLayout(workbook);
 
             bool[] isServed = CalculateServedFloors(elevatorData, buildingData.NoFloors, out int servedFloors);
 
@@ -177,7 +177,7 @@ public sealed class ElevateReportService : IElevateReportService
             FillFlowSheet(workbook, buildingData, passengerData, isServed);
             FillGroupSheet(workbook, xmlFolder, buildingData, elevatorData);
             FillAssessmentAndCriteriaSheets(workbook, awt, attd, ais, alw, buildingData, elevatorData, passengerData, servedFloors, isServed);
-            ApplyPrintLayout(workbook, templatePrintLayout);
+            ApplyPrintLayout(workbook);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -186,26 +186,24 @@ public sealed class ElevateReportService : IElevateReportService
             workbook.Sheets(SheetAssessment).Activate();
             TryDeleteFile(outputPaths.ExcelPath);
             TryDeleteFile(outputPaths.PdfPath);
-            workbook.SaveCopyAs(outputPaths.ExcelPath);
-            workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, outputPaths.PdfPath);
+            workbook.SaveAs(outputPaths.ExcelPath, XlOpenXmlWorkbook);
             workbook.Close(false);
+            ReleaseComObject(ref workbook);
+
+            workbook = excelApp.Workbooks.Open(outputPaths.ExcelPath);
+            ApplyPrintLayout(workbook);
+            workbook.Sheets(SheetAssessment).Activate();
+            workbook.Save();
+            workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, outputPaths.PdfPath, Type.Missing, true, false);
+            workbook.Close(false);
+            ReleaseComObject(ref workbook);
             excelApp.Quit();
 
             return outputPaths;
         }
         finally
         {
-            if (workbook is not null)
-            {
-                try
-                {
-                    Marshal.FinalReleaseComObject(workbook);
-                }
-                catch
-                {
-                    // Ignore COM cleanup errors.
-                }
-            }
+            ReleaseComObject(ref workbook);
 
             if (excel is not null)
             {
@@ -238,61 +236,44 @@ public sealed class ElevateReportService : IElevateReportService
         sheet.Cells(32, 5).Value = DateTime.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
     }
 
-    private static Dictionary<string, SheetPrintLayout> CaptureTemplatePrintLayout(dynamic workbook)
-    {
-        Dictionary<string, SheetPrintLayout> layouts = new(StringComparer.OrdinalIgnoreCase);
-        foreach (string sheetName in new[] { SheetTitle, SheetBuilding, SheetFlow, SheetGroup, SheetAssessment, SheetCriteria })
-        {
-            dynamic sheet = workbook.Sheets(sheetName);
-            dynamic pageSetup = sheet.PageSetup;
-            layouts[sheetName] = new SheetPrintLayout(
-                Convert.ToString(pageSetup.PrintArea, CultureInfo.InvariantCulture) ?? string.Empty,
-                Convert.ToString(pageSetup.PrintTitleRows, CultureInfo.InvariantCulture) ?? string.Empty);
-        }
-
-        return layouts;
-    }
-
-    private static void ApplyPrintLayout(dynamic workbook, IReadOnlyDictionary<string, SheetPrintLayout> templatePrintLayout)
+    private static void ApplyPrintLayout(dynamic workbook)
     {
         int titleLastRow = GetUsedRangeLastRow(workbook.Sheets(SheetTitle));
         ApplySheetPrintLayout(
             workbook.Sheets(SheetTitle),
-            UpdateRangeEndRow(templatePrintLayout[SheetTitle].PrintArea, titleLastRow),
-            templatePrintLayout[SheetTitle].PrintTitleRows);
+            BuildPrintArea("B", "H", 2, titleLastRow),
+            string.Empty);
 
         ApplySheetPrintLayout(
             workbook.Sheets(SheetAssessment),
-            templatePrintLayout[SheetAssessment].PrintArea,
-            templatePrintLayout[SheetAssessment].PrintTitleRows);
+            BuildPrintArea("B", "AB", 2, 47),
+            string.Empty);
 
         dynamic groupSheet = workbook.Sheets(SheetGroup);
         int groupLastRow = GetUsedRangeLastRow(groupSheet);
         ApplySheetPrintLayout(
             groupSheet,
-            UpdateRangeEndRow(templatePrintLayout[SheetGroup].PrintArea, groupLastRow),
-            UpdateRangeEndRow(
-                templatePrintLayout[SheetGroup].PrintTitleRows,
-                ExtractRangeEndRow(templatePrintLayout[SheetGroup].PrintTitleRows) + 4));
+            BuildPrintArea("B", "J", 2, groupLastRow),
+            "$2:$19");
 
         dynamic buildingSheet = workbook.Sheets(SheetBuilding);
         int buildingLastRow = GetUsedRangeLastRow(buildingSheet);
         ApplySheetPrintLayout(
             buildingSheet,
-            UpdateRangeEndRow(templatePrintLayout[SheetBuilding].PrintArea, buildingLastRow),
-            templatePrintLayout[SheetBuilding].PrintTitleRows);
+            BuildPrintArea("B", "H", 2, buildingLastRow),
+            "$2:$3");
 
         dynamic flowSheet = workbook.Sheets(SheetFlow);
         int flowLastRow = GetUsedRangeLastRow(flowSheet);
         ApplySheetPrintLayout(
             flowSheet,
-            UpdateRangeEndRow(templatePrintLayout[SheetFlow].PrintArea, flowLastRow),
-            templatePrintLayout[SheetFlow].PrintTitleRows);
+            BuildPrintArea("B", "Q", 2, flowLastRow),
+            "$2:$4");
 
         ApplySheetPrintLayout(
             workbook.Sheets(SheetCriteria),
-            templatePrintLayout[SheetCriteria].PrintArea,
-            templatePrintLayout[SheetCriteria].PrintTitleRows);
+            BuildPrintArea("B", "O", 2, 22),
+            string.Empty);
     }
 
     private static void ApplySheetPrintLayout(dynamic sheet, string printArea, string printTitleRows)
@@ -306,6 +287,48 @@ public sealed class ElevateReportService : IElevateReportService
     {
         dynamic usedRange = sheet.UsedRange;
         return ToInt(usedRange.Row) + ToInt(usedRange.Rows.Count) - 1;
+    }
+
+    internal static string BuildPrintArea(string startColumn, string endColumn, int startRow, int endRow)
+    {
+        if (string.IsNullOrWhiteSpace(startColumn) || string.IsNullOrWhiteSpace(endColumn))
+        {
+            throw new ArgumentException("Print area columns must be specified.");
+        }
+
+        if (startRow < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(startRow));
+        }
+
+        if (endRow < startRow)
+        {
+            endRow = startRow;
+        }
+
+        return $"${startColumn}${startRow}:${endColumn}${endRow}";
+    }
+
+    private static void ReleaseComObject<T>(ref T? comObject)
+        where T : class
+    {
+        if (comObject is null)
+        {
+            return;
+        }
+
+        try
+        {
+            Marshal.FinalReleaseComObject(comObject);
+        }
+        catch
+        {
+            // Ignore COM cleanup errors.
+        }
+        finally
+        {
+            comObject = null;
+        }
     }
 
     private static void FillBuildingSheet(dynamic workbook, BuildingDataModel buildingData, bool[] isServed)
@@ -1591,24 +1614,6 @@ public sealed class ElevateReportService : IElevateReportService
         return $"{parts[0]}:{prefix}${endRow}";
     }
 
-    private static int ExtractRangeEndRow(string rangeAddress)
-    {
-        if (string.IsNullOrWhiteSpace(rangeAddress))
-        {
-            return 0;
-        }
-
-        int lastDollar = rangeAddress.LastIndexOf('$');
-        if (lastDollar < 0)
-        {
-            return 0;
-        }
-
-        return int.TryParse(rangeAddress[(lastDollar + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int endRow)
-            ? endRow
-            : 0;
-    }
-
     private static string SanitizeFileName(string name)
     {
         string result = name;
@@ -2254,8 +2259,6 @@ public sealed class ElevateReportService : IElevateReportService
     }
 
     internal readonly record struct GeneratedReportPaths(string ExcelPath, string PdfPath);
-
-    private sealed record SheetPrintLayout(string PrintArea, string PrintTitleRows);
 
     private sealed class ProjectParsedData
     {

@@ -52,6 +52,22 @@ public sealed class ElevateReportServiceTests
     }
 
     [Theory]
+    [InlineData("B", "H", 2, 47, "$B$2:$H$47")]
+    [InlineData("B", "AB", 2, 47, "$B$2:$AB$47")]
+    [InlineData("B", "Q", 2, 53, "$B$2:$Q$53")]
+    public void BuildPrintArea_UsesExactSheetColumns(
+        string startColumn,
+        string endColumn,
+        int startRow,
+        int endRow,
+        string expected)
+    {
+        string actual = ElevateReportService.BuildPrintArea(startColumn, endColumn, startRow, endRow);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("3,60", 3.6)]
     [InlineData("3.60", 3.6)]
     [InlineData("1.234,56", 1234.56)]
