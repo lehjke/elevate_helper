@@ -183,6 +183,7 @@ public sealed partial class MainPage : Page
             string message = BuildExceptionMessage(ex);
             job.MarkFailed(message);
             SetStatus(message, InfoBarSeverity.Error);
+            ScheduleFinishedJobRemoval(job);
         }
         finally
         {
@@ -220,12 +221,14 @@ public sealed partial class MainPage : Page
         {
             job.MarkCompleted();
             SetStatus($"{job.Title} completed successfully.", InfoBarSeverity.Success);
+            ScheduleFinishedJobRemoval(job);
             return;
         }
 
         string message = FormatResultMessage(result);
         job.MarkFailed(message);
         SetStatus(message, InfoBarSeverity.Error);
+        ScheduleFinishedJobRemoval(job);
     }
 
     private async Task<ProcessingResult> InvokeProcessingAsync(
@@ -446,6 +449,37 @@ public sealed partial class MainPage : Page
             : "Ready";
     }
 
+    private void ScheduleFinishedJobRemoval(JobProgressViewModel job)
+    {
+        _ = RemoveFinishedJobAsync(job);
+    }
+
+    private async Task RemoveFinishedJobAsync(JobProgressViewModel job)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(3));
+
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => RemoveFinishedJob(job));
+            return;
+        }
+
+        RemoveFinishedJob(job);
+    }
+
+    private void RemoveFinishedJob(JobProgressViewModel job)
+    {
+        if (!job.IsFinished || job.IsRunning)
+        {
+            return;
+        }
+
+        if (Jobs.Remove(job))
+        {
+            RefreshJobsSummary();
+        }
+    }
+
     private void UpdateModeButtons(BuildingType buildingType)
     {
         bool isOffice = buildingType == BuildingType.Office;
@@ -564,6 +598,7 @@ public sealed partial class MainPage : Page
         private string details;
         private string statusText;
         private bool isRunning;
+        private bool isFinished;
 
         public JobProgressViewModel(
             string title,
@@ -670,8 +705,11 @@ public sealed partial class MainPage : Page
 
         public ObservableCollection<ScenarioProgressViewModel> Scenarios { get; }
 
+        public bool IsFinished => isFinished;
+
         public void MarkRunning()
         {
+            isFinished = false;
             IsRunning = true;
             StatusText = "Running";
             refreshSummary();
@@ -679,6 +717,7 @@ public sealed partial class MainPage : Page
 
         public void MarkCompleted()
         {
+            isFinished = true;
             IsRunning = false;
             StatusText = "Completed";
             refreshSummary();
@@ -686,6 +725,7 @@ public sealed partial class MainPage : Page
 
         public void MarkFailed(string message)
         {
+            isFinished = true;
             IsRunning = false;
             StatusText = message;
             refreshSummary();
@@ -693,6 +733,11 @@ public sealed partial class MainPage : Page
 
         public void UpdateProgress(string? scenario, int completed, int total)
         {
+            if (isFinished)
+            {
+                return;
+            }
+
             ScenarioProgressViewModel target = ResolveScenario(scenario);
             target.Update(completed, total);
             StatusText = string.IsNullOrWhiteSpace(target.Label)

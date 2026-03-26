@@ -1,3 +1,4 @@
+﻿using System.Text;
 using ElevateHelperWinUI.Services;
 
 namespace ElevateHelper.Tests;
@@ -38,6 +39,46 @@ public sealed class ElevateReportServiceTests
 
         Assert.Equal(Path.Combine(outputFolder, "Project_ 1 Tower_A.xlsx"), outputPaths.ExcelPath);
         Assert.Equal(Path.Combine(outputFolder, "Project_ 1 Tower_A.pdf"), outputPaths.PdfPath);
+    }
+
+    [Theory]
+    [InlineData("$B$2:$H$49", 53, "$B$2:$H$53")]
+    [InlineData("$2:$15", 19, "$2:$19")]
+    public void UpdateRangeEndRow_UpdatesPrintAddresses(string address, int endRow, string expected)
+    {
+        string actual = ElevateReportService.UpdateRangeEndRow(address, endRow);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("3,60", 3.6)]
+    [InlineData("3.60", 3.6)]
+    [InlineData("1.234,56", 1234.56)]
+    public void ParseDoubleFlexible_ParsesLocalizedDecimals(string raw, double expected)
+    {
+        double actual = ElevateReportService.ParseDoubleFlexible(raw);
+
+        Assert.Equal(expected, actual, 3);
+    }
+
+    [Fact]
+    public void ReadCsvLines_ReadsWindows1251WithoutMojibake()
+    {
+        using ReportTestWorkspace workspace = new();
+        string csvPath = Path.Combine(workspace.RootPath, "report.csv");
+        string expectedLine =
+            "\u041C\u0418\u0413 6 \u0416\u0438\u043B\u044C\u0435;\u0433. \u041C\u043E\u0441\u043A\u0432\u0430, \u041B\u0435\u043D\u0438\u043D\u0433\u0440\u0430\u0434\u0441\u043A\u0438\u0439 \u043F\u0440.";
+
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding encoding1251 = Encoding.GetEncoding(1251);
+        File.WriteAllBytes(
+            csvPath,
+            encoding1251.GetBytes("A;B\r\n" + expectedLine + "\r\n"));
+
+        string[] lines = ElevateReportService.ReadCsvLines(csvPath);
+
+        Assert.Equal(expectedLine, lines[1]);
     }
 
     private sealed class ReportTestWorkspace : IDisposable

@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
 using ElevateHelperWinUI.Models;
 
 namespace ElevateHelperWinUI.Services;
@@ -17,7 +18,6 @@ public sealed class ElevateReportService : IElevateReportService
     private const int XlFormatFromLeftOrAbove = 0;
     private const int XlFormatFromRightOrBelow = 1;
     private const int XlFixedFormatTypePdf = 0;
-    private const int XlOpenXmlWorkbook = 51;
     private const int XlWhole = 1;
     private const int XlPart = 2;
     private const int XlValue = 2;
@@ -168,6 +168,7 @@ public sealed class ElevateReportService : IElevateReportService
             excelApp.ScreenUpdating = false;
 
             workbook = excelApp.Workbooks.Open(templatePath);
+            Dictionary<string, SheetPrintLayout> templatePrintLayout = CaptureTemplatePrintLayout(workbook);
 
             bool[] isServed = CalculateServedFloors(elevatorData, buildingData.NoFloors, out int servedFloors);
 
@@ -176,6 +177,7 @@ public sealed class ElevateReportService : IElevateReportService
             FillFlowSheet(workbook, buildingData, passengerData, isServed);
             FillGroupSheet(workbook, xmlFolder, buildingData, elevatorData);
             FillAssessmentAndCriteriaSheets(workbook, awt, attd, ais, alw, buildingData, elevatorData, passengerData, servedFloors, isServed);
+            ApplyPrintLayout(workbook, templatePrintLayout);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -184,7 +186,7 @@ public sealed class ElevateReportService : IElevateReportService
             workbook.Sheets(SheetAssessment).Activate();
             TryDeleteFile(outputPaths.ExcelPath);
             TryDeleteFile(outputPaths.PdfPath);
-            workbook.SaveAs(outputPaths.ExcelPath, XlOpenXmlWorkbook);
+            workbook.SaveCopyAs(outputPaths.ExcelPath);
             workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, outputPaths.PdfPath);
             workbook.Close(false);
             excelApp.Quit();
@@ -234,6 +236,76 @@ public sealed class ElevateReportService : IElevateReportService
 
         sheet.Cells(32, 4).Value = "Дата:";
         sheet.Cells(32, 5).Value = DateTime.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+    }
+
+    private static Dictionary<string, SheetPrintLayout> CaptureTemplatePrintLayout(dynamic workbook)
+    {
+        Dictionary<string, SheetPrintLayout> layouts = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string sheetName in new[] { SheetTitle, SheetBuilding, SheetFlow, SheetGroup, SheetAssessment, SheetCriteria })
+        {
+            dynamic sheet = workbook.Sheets(sheetName);
+            dynamic pageSetup = sheet.PageSetup;
+            layouts[sheetName] = new SheetPrintLayout(
+                Convert.ToString(pageSetup.PrintArea, CultureInfo.InvariantCulture) ?? string.Empty,
+                Convert.ToString(pageSetup.PrintTitleRows, CultureInfo.InvariantCulture) ?? string.Empty);
+        }
+
+        return layouts;
+    }
+
+    private static void ApplyPrintLayout(dynamic workbook, IReadOnlyDictionary<string, SheetPrintLayout> templatePrintLayout)
+    {
+        int titleLastRow = GetUsedRangeLastRow(workbook.Sheets(SheetTitle));
+        ApplySheetPrintLayout(
+            workbook.Sheets(SheetTitle),
+            UpdateRangeEndRow(templatePrintLayout[SheetTitle].PrintArea, titleLastRow),
+            templatePrintLayout[SheetTitle].PrintTitleRows);
+
+        ApplySheetPrintLayout(
+            workbook.Sheets(SheetAssessment),
+            templatePrintLayout[SheetAssessment].PrintArea,
+            templatePrintLayout[SheetAssessment].PrintTitleRows);
+
+        dynamic groupSheet = workbook.Sheets(SheetGroup);
+        int groupLastRow = GetUsedRangeLastRow(groupSheet);
+        ApplySheetPrintLayout(
+            groupSheet,
+            UpdateRangeEndRow(templatePrintLayout[SheetGroup].PrintArea, groupLastRow),
+            UpdateRangeEndRow(
+                templatePrintLayout[SheetGroup].PrintTitleRows,
+                ExtractRangeEndRow(templatePrintLayout[SheetGroup].PrintTitleRows) + 4));
+
+        dynamic buildingSheet = workbook.Sheets(SheetBuilding);
+        int buildingLastRow = GetUsedRangeLastRow(buildingSheet);
+        ApplySheetPrintLayout(
+            buildingSheet,
+            UpdateRangeEndRow(templatePrintLayout[SheetBuilding].PrintArea, buildingLastRow),
+            templatePrintLayout[SheetBuilding].PrintTitleRows);
+
+        dynamic flowSheet = workbook.Sheets(SheetFlow);
+        int flowLastRow = GetUsedRangeLastRow(flowSheet);
+        ApplySheetPrintLayout(
+            flowSheet,
+            UpdateRangeEndRow(templatePrintLayout[SheetFlow].PrintArea, flowLastRow),
+            templatePrintLayout[SheetFlow].PrintTitleRows);
+
+        ApplySheetPrintLayout(
+            workbook.Sheets(SheetCriteria),
+            templatePrintLayout[SheetCriteria].PrintArea,
+            templatePrintLayout[SheetCriteria].PrintTitleRows);
+    }
+
+    private static void ApplySheetPrintLayout(dynamic sheet, string printArea, string printTitleRows)
+    {
+        dynamic pageSetup = sheet.PageSetup;
+        pageSetup.PrintArea = printArea;
+        pageSetup.PrintTitleRows = printTitleRows;
+    }
+
+    private static int GetUsedRangeLastRow(dynamic sheet)
+    {
+        dynamic usedRange = sheet.UsedRange;
+        return ToInt(usedRange.Row) + ToInt(usedRange.Rows.Count) - 1;
     }
 
     private static void FillBuildingSheet(dynamic workbook, BuildingDataModel buildingData, bool[] isServed)
@@ -1495,6 +1567,48 @@ public sealed class ElevateReportService : IElevateReportService
             : string.Join("; ", roots);
     }
 
+    internal static string UpdateRangeEndRow(string rangeAddress, int endRow)
+    {
+        if (string.IsNullOrWhiteSpace(rangeAddress) || endRow < 1)
+        {
+            return rangeAddress;
+        }
+
+        string[] parts = rangeAddress.Split(':', 2);
+        if (parts.Length != 2)
+        {
+            return rangeAddress;
+        }
+
+        string endPart = parts[1];
+        int lastDollar = endPart.LastIndexOf('$');
+        if (lastDollar < 0)
+        {
+            return rangeAddress;
+        }
+
+        string prefix = endPart[..lastDollar];
+        return $"{parts[0]}:{prefix}${endRow}";
+    }
+
+    private static int ExtractRangeEndRow(string rangeAddress)
+    {
+        if (string.IsNullOrWhiteSpace(rangeAddress))
+        {
+            return 0;
+        }
+
+        int lastDollar = rangeAddress.LastIndexOf('$');
+        if (lastDollar < 0)
+        {
+            return 0;
+        }
+
+        return int.TryParse(rangeAddress[(lastDollar + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int endRow)
+            ? endRow
+            : 0;
+    }
+
     private static string SanitizeFileName(string name)
     {
         string result = name;
@@ -1970,7 +2084,7 @@ public sealed class ElevateReportService : IElevateReportService
         return ToInt((object?)value);
     }
 
-    private static double ParseDoubleFlexible(object? value)
+    internal static double ParseDoubleFlexible(object? value)
     {
         if (value is null)
         {
@@ -2013,18 +2127,7 @@ public sealed class ElevateReportService : IElevateReportService
                    .Replace("%", string.Empty, StringComparison.Ordinal)
                    .Trim();
 
-        if (double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out double result))
-        {
-            return result;
-        }
-
-        if (double.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("ru-RU"), out result))
-        {
-            return result;
-        }
-
-        string normalized = text.Replace(',', '.');
-        return double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out result)
+        return TryParseLocalizedDecimal(text, out double result)
             ? result
             : 0;
     }
@@ -2040,6 +2143,105 @@ public sealed class ElevateReportService : IElevateReportService
         return ParseDoubleFlexible(value);
     }
 
+    internal static string[] ReadCsvLines(string path)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        Encoding encoding = DetectCsvEncoding(bytes);
+
+        using MemoryStream stream = new(bytes);
+        using StreamReader reader = new(stream, encoding, detectEncodingFromByteOrderMarks: true);
+
+        List<string> lines = [];
+        while (!reader.EndOfStream)
+        {
+            lines.Add(reader.ReadLine() ?? string.Empty);
+        }
+
+        return lines.ToArray();
+    }
+
+    private static Encoding DetectCsvEncoding(byte[] bytes)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        if (HasPrefix(bytes, Encoding.UTF8.GetPreamble()))
+        {
+            return Encoding.UTF8;
+        }
+
+        if (HasPrefix(bytes, Encoding.Unicode.GetPreamble()))
+        {
+            return Encoding.Unicode;
+        }
+
+        if (HasPrefix(bytes, Encoding.BigEndianUnicode.GetPreamble()))
+        {
+            return Encoding.BigEndianUnicode;
+        }
+
+        try
+        {
+            _ = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes);
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        }
+        catch
+        {
+            return Encoding.GetEncoding(1251);
+        }
+    }
+
+    private static bool HasPrefix(byte[] bytes, byte[] prefix)
+    {
+        if (prefix.Length == 0 || bytes.Length < prefix.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < prefix.Length; i++)
+        {
+            if (bytes[i] != prefix[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryParseLocalizedDecimal(string text, out double result)
+    {
+        result = 0;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        string normalized = text.Trim();
+
+        int lastComma = normalized.LastIndexOf(',');
+        int lastDot = normalized.LastIndexOf('.');
+
+        if (lastComma >= 0 && lastDot >= 0)
+        {
+            char decimalSeparator = lastComma > lastDot ? ',' : '.';
+            char groupSeparator = decimalSeparator == ',' ? '.' : ',';
+            normalized = normalized.Replace(groupSeparator.ToString(), string.Empty, StringComparison.Ordinal);
+        }
+
+        if (normalized.Contains(',', StringComparison.Ordinal))
+        {
+            if (double.TryParse(normalized, NumberStyles.Any, CultureInfo.GetCultureInfo("ru-RU"), out result))
+            {
+                return true;
+            }
+
+            normalized = normalized.Replace(',', '.');
+        }
+
+        return double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
+    }
+
     private sealed class MainBatchData
     {
         public string FileName { get; set; } = string.Empty;
@@ -2052,6 +2254,8 @@ public sealed class ElevateReportService : IElevateReportService
     }
 
     internal readonly record struct GeneratedReportPaths(string ExcelPath, string PdfPath);
+
+    private sealed record SheetPrintLayout(string PrintArea, string PrintTitleRows);
 
     private sealed class ProjectParsedData
     {
@@ -2143,7 +2347,7 @@ public sealed class ElevateReportService : IElevateReportService
 
         public static CsvSheet Load(string path)
         {
-            string[] lines = File.ReadAllLines(path);
+            string[] lines = ReadCsvLines(path);
             char delimiter = DetectDelimiter(lines);
 
             List<string[]> rows = new(lines.Length);
