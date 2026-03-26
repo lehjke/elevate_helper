@@ -120,6 +120,7 @@ public sealed class ElevateReportService : IElevateReportService
                 projectData.Building,
                 projectData.Elevator,
                 projectData.Passenger,
+                buildingType,
                 cancellationToken);
 
             return ProcessingResult.Ok(
@@ -147,6 +148,7 @@ public sealed class ElevateReportService : IElevateReportService
         BuildingDataModel buildingData,
         ElevatorDataModel elevatorData,
         PassengerDataModel passengerData,
+        BuildingType buildingType,
         CancellationToken cancellationToken)
     {
         object? excel = null;
@@ -178,7 +180,7 @@ public sealed class ElevateReportService : IElevateReportService
             FillGroupSheet(workbook, xmlFolder, buildingData, elevatorData);
             FillAssessmentAndCriteriaSheets(workbook, awt, attd, ais, alw, buildingData, elevatorData, passengerData, servedFloors, isServed);
             RemovePrintLayoutNames(workbook);
-            ApplyPrintLayout(workbook);
+            ApplyPrintLayout(workbook, buildingType);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -231,7 +233,7 @@ public sealed class ElevateReportService : IElevateReportService
         sheet.Cells(32, 5).Value = DateTime.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
     }
 
-    private static void ApplyPrintLayout(dynamic workbook)
+    private static void ApplyPrintLayout(dynamic workbook, BuildingType buildingType)
     {
         int titleLastRow = GetUsedRangeLastRow(workbook.Sheets(SheetTitle));
         ApplySheetPrintLayout(
@@ -241,7 +243,7 @@ public sealed class ElevateReportService : IElevateReportService
 
         ApplySheetPrintLayout(
             workbook.Sheets(SheetAssessment),
-            BuildPrintArea("B", "AB", 2, 47),
+            BuildPrintArea("B", GetAssessmentEndColumn(buildingType), 2, 47),
             string.Empty);
 
         dynamic groupSheet = workbook.Sheets(SheetGroup);
@@ -302,6 +304,13 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         return $"${startColumn}${startRow}:${endColumn}${endRow}";
+    }
+
+    internal static string GetAssessmentEndColumn(BuildingType buildingType)
+    {
+        return buildingType == BuildingType.Office
+            ? "O"
+            : "AB";
     }
 
     private static void RemovePrintLayoutNames(dynamic workbook)

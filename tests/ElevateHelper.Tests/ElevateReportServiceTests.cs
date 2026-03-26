@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
 
 namespace ElevateHelper.Tests;
@@ -63,6 +64,17 @@ public sealed class ElevateReportServiceTests
         string expected)
     {
         string actual = ElevateReportService.BuildPrintArea(startColumn, endColumn, startRow, endRow);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(BuildingType.Office, "O")]
+    [InlineData(BuildingType.Residence, "AB")]
+    [InlineData(BuildingType.Hotel, "AB")]
+    public void GetAssessmentEndColumn_ReturnsOfficeSpecificRange(BuildingType buildingType, string expected)
+    {
+        string actual = ElevateReportService.GetAssessmentEndColumn(buildingType);
 
         Assert.Equal(expected, actual);
     }
