@@ -6,8 +6,20 @@ namespace ElevateHelperWinUI.Services;
 
 public sealed class ElevateIntegrationService : IElevateIntegrationService
 {
+    private static readonly object CacheSync = new();
+    private static readonly TimeSpan PositiveCacheDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan NegativeCacheDuration = TimeSpan.FromSeconds(2);
+    private static ElevateIntegrationInfo? cachedInfo;
+    private static DateTimeOffset cachedAt;
+
     public ElevateIntegrationInfo GetIntegrationInfo()
     {
+        ElevateIntegrationInfo? snapshot = TryGetCachedInfo();
+        if (snapshot is not null)
+        {
+            return snapshot;
+        }
+
         List<string> probedPaths = [];
         HashSet<string> visitedPaths = new(StringComparer.OrdinalIgnoreCase);
 
@@ -28,21 +40,61 @@ public sealed class ElevateIntegrationService : IElevateIntegrationService
             if (File.Exists(normalizedPath))
             {
                 string? version = GetProductVersion(normalizedPath);
-                return new ElevateIntegrationInfo(
+                ElevateIntegrationInfo detectedInfo = new(
                     IsDetected: true,
                     ExecutablePath: normalizedPath,
                     ProductVersion: version,
                     DetectionSource: source,
                     ProbedPaths: probedPaths);
+                UpdateCache(detectedInfo);
+                return detectedInfo;
             }
         }
 
-        return new ElevateIntegrationInfo(
+        ElevateIntegrationInfo notFoundInfo = new(
             IsDetected: false,
             ExecutablePath: null,
             ProductVersion: null,
             DetectionSource: "Not found",
             ProbedPaths: probedPaths);
+        UpdateCache(notFoundInfo);
+        return notFoundInfo;
+    }
+
+    private static ElevateIntegrationInfo? TryGetCachedInfo()
+    {
+        lock (CacheSync)
+        {
+            if (cachedInfo is null)
+            {
+                return null;
+            }
+
+            TimeSpan cacheDuration = cachedInfo.IsDetected ? PositiveCacheDuration : NegativeCacheDuration;
+            if (DateTimeOffset.UtcNow - cachedAt > cacheDuration)
+            {
+                cachedInfo = null;
+                return null;
+            }
+
+            if (cachedInfo.IsDetected &&
+                (!string.IsNullOrWhiteSpace(cachedInfo.ExecutablePath) && !File.Exists(cachedInfo.ExecutablePath)))
+            {
+                cachedInfo = null;
+                return null;
+            }
+
+            return cachedInfo;
+        }
+    }
+
+    private static void UpdateCache(ElevateIntegrationInfo info)
+    {
+        lock (CacheSync)
+        {
+            cachedInfo = info;
+            cachedAt = DateTimeOffset.UtcNow;
+        }
     }
 
     private static IEnumerable<(string Path, string Source)> EnumerateCandidates()

@@ -2,7 +2,7 @@ namespace ElevateHelperWinUI
 {
     public partial class App : Application
     {
-        private Window? window;
+        public static Window? MainWindow { get; private set; }
 
         public App()
         {
@@ -11,8 +11,8 @@ namespace ElevateHelperWinUI
 
         protected override void OnLaunched(LaunchActivatedEventArgs e)
         {
-            window ??= new MainWindow();
-            window.Activate();
+            MainWindow ??= new MainWindow();
+            MainWindow.Activate();
         }
     }
 }

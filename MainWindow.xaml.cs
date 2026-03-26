@@ -1,3 +1,4 @@
+using System.IO;
 using Microsoft.UI.Windowing;
 using Windows.Graphics;
 
@@ -12,7 +13,24 @@ public sealed partial class MainWindow : Window
     {
         this.InitializeComponent();
         this.Title = "Elevate Helper";
+        ConfigureWindowIcon();
         ConfigureWindowSize();
+    }
+
+    private void ConfigureWindowIcon()
+    {
+        try
+        {
+            string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+            if (File.Exists(iconPath))
+            {
+                AppWindow.SetIcon(iconPath);
+            }
+        }
+        catch
+        {
+            // Keep startup resilient if the icon cannot be applied at runtime.
+        }
     }
 
     private void ConfigureWindowSize()

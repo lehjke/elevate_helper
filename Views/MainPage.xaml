@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <Page
     x:Class="ElevateHelperWinUI.Views.MainPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -6,55 +6,106 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <Page.Resources>
-        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="18" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Margin" Value="0,0,0,8" />
-        </Style>
-    </Page.Resources>
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
+            <StackPanel
+                MaxWidth="860"
+                HorizontalAlignment="Center"
+                Spacing="16"
+                Margin="20,18,20,24">
+                <Border Style="{StaticResource HeroCardStyle}">
+                    <Grid ColumnSpacing="18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="180" />
+                        </Grid.ColumnDefinitions>
 
-    <Grid Padding="24" RowSpacing="16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource HeroTitleTextStyle}"
+                            Text="{x:Bind Text.AppTitle, Mode=OneWay}" />
 
-        <TextBlock
-            FontSize="32"
-            FontWeight="SemiBold"
-            Text="Elevate Helper" />
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <TextBlock
+                                Style="{StaticResource SectionHintStyle}"
+                                Text="{x:Bind Text.LanguageLabel, Mode=OneWay}" />
+                            <ComboBox
+                                x:Name="LanguageComboBox"
+                                DisplayMemberPath="DisplayName"
+                                HorizontalAlignment="Stretch"
+                                ItemsSource="{x:Bind LanguageOptions, Mode=OneWay}"
+                                SelectionChanged="OnLanguageComboBoxSelectionChanged" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel MaxWidth="960" Spacing="16">
                 <Border Style="{StaticResource SectionCardStyle}">
                     <StackPanel Spacing="10">
-                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Elevate Folder" />
-                        <TextBlock Opacity="0.8" Text="Path to folder containing source .elvx files" />
-                        <TextBox
-                            x:Name="PathTextBox"
-                            PlaceholderText="Example: C:\Elevate\ProjectA" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                <SymbolIcon Symbol="Folder" />
+                            </Border>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.FolderTitle, Mode=OneWay}" />
+                        </StackPanel>
+
+                        <TextBlock
+                            Style="{StaticResource SectionHintStyle}"
+                            Text="{x:Bind Text.FolderHint, Mode=OneWay}" />
+
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox
+                                x:Name="PathTextBox"
+                                Grid.Column="0"
+                                Header="{x:Bind Text.WorkingFolderHeader, Mode=OneWay}"
+                                PlaceholderText="{x:Bind Text.WorkingFolderPlaceholder, Mode=OneWay}" />
+
+                            <Button
+                                Grid.Column="1"
+                                Margin="0,30,0,0"
+                                Click="OnBrowseFolderButtonClick"
+                                Content="{x:Bind Text.BrowseButton, Mode=OneWay}"
+                                Style="{StaticResource ActionButtonStyle}" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 
                 <Border Style="{StaticResource SectionCardStyle}">
                     <StackPanel Spacing="10">
-                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Building Type" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                <SymbolIcon Symbol="Home" />
+                            </Border>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.BuildingTypeTitle, Mode=OneWay}" />
+                        </StackPanel>
+
+                        <TextBlock
+                            Style="{StaticResource SectionHintStyle}"
+                            Text="{x:Bind Text.BuildingTypeHint, Mode=OneWay}" />
+
                         <StackPanel Orientation="Horizontal" Spacing="20">
                             <RadioButton
                                 x:Name="OfficeRadioButton"
                                 Checked="OnBuildingTypeRadioButtonChecked"
-                                Content="Office"
+                                Content="{x:Bind Text.BuildingTypeOffice, Mode=OneWay}"
+                                FontWeight="SemiBold"
                                 GroupName="BuildingTypeGroup" />
                             <RadioButton
                                 x:Name="ResidenceRadioButton"
                                 Checked="OnBuildingTypeRadioButtonChecked"
-                                Content="Residence"
+                                Content="{x:Bind Text.BuildingTypeResidence, Mode=OneWay}"
+                                FontWeight="SemiBold"
                                 GroupName="BuildingTypeGroup" />
                             <RadioButton
                                 x:Name="HotelRadioButton"
                                 Checked="OnBuildingTypeRadioButtonChecked"
-                                Content="Hotel"
+                                Content="{x:Bind Text.BuildingTypeHotel, Mode=OneWay}"
+                                FontWeight="SemiBold"
                                 GroupName="BuildingTypeGroup" />
                         </StackPanel>
                     </StackPanel>
@@ -62,10 +113,15 @@
 
                 <Border Style="{StaticResource SectionCardStyle}">
                     <StackPanel Spacing="12">
-                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Actions" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                <SymbolIcon Symbol="Play" />
+                            </Border>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ActionsTitle, Mode=OneWay}" />
+                        </StackPanel>
 
                         <CommandBar DefaultLabelPosition="Right" IsDynamicOverflowEnabled="True">
-                            <AppBarButton x:Name="RunButton" Click="OnRunButtonClick" Label="Run">
+                            <AppBarButton x:Name="RunButton" Click="OnRunButtonClick" Label="{x:Bind Text.RunButton, Mode=OneWay}">
                                 <AppBarButton.Icon>
                                     <SymbolIcon Symbol="Play" />
                                 </AppBarButton.Icon>
@@ -74,7 +130,7 @@
                             <AppBarButton
                                 x:Name="RunMorningOnlyButton"
                                 Click="OnRunMorningOnlyButtonClick"
-                                Label="Run Morning Only"
+                                Label="{x:Bind Text.RunMorningButton, Mode=OneWay}"
                                 Visibility="Collapsed">
                                 <AppBarButton.Icon>
                                     <SymbolIcon Symbol="Forward" />
@@ -83,29 +139,33 @@
 
                             <AppBarSeparator />
 
-                            <AppBarButton x:Name="ExitButton" Click="OnExitButtonClick" Label="Exit">
+                            <AppBarButton x:Name="ExitButton" Click="OnExitButtonClick" Label="{x:Bind Text.ExitButton, Mode=OneWay}">
                                 <AppBarButton.Icon>
                                     <SymbolIcon Symbol="Cancel" />
                                 </AppBarButton.Icon>
                             </AppBarButton>
                         </CommandBar>
 
+                        <TextBlock
+                            Style="{StaticResource SectionHintStyle}"
+                            Text="{x:Bind Text.ActionsHint, Mode=OneWay}" />
+
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Button
                                 x:Name="ReportButton"
                                 Click="OnReportButtonClick"
-                                Content="Print Report"
-                                Style="{StaticResource ActionButtonStyle}" />
+                                Content="{x:Bind Text.ReportButton, Mode=OneWay}"
+                                Style="{StaticResource PrimaryActionButtonStyle}" />
                             <Button
                                 x:Name="MorningReportButton"
                                 Click="OnMorningReportButtonClick"
-                                Content="Print Morning Report"
+                                Content="{x:Bind Text.MorningReportButton, Mode=OneWay}"
                                 Style="{StaticResource ActionButtonStyle}"
                                 Visibility="Collapsed" />
                             <Button
                                 x:Name="LunchReportButton"
                                 Click="OnLunchReportButtonClick"
-                                Content="Print Lunch Report"
+                                Content="{x:Bind Text.LunchReportButton, Mode=OneWay}"
                                 Style="{StaticResource ActionButtonStyle}"
                                 Visibility="Collapsed" />
                         </StackPanel>
@@ -114,14 +174,50 @@
 
                 <Border Style="{StaticResource SectionCardStyle}">
                     <StackPanel Spacing="12">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ProgressRing x:Name="BusyRing" Width="18" Height="18" IsActive="False" />
-                            <TextBlock x:Name="BusyTextBlock" Opacity="0.7" Text="Ready" />
-                        </StackPanel>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Run Queue" />
+                            <ProgressRing
+                                x:Name="BusyRing"
+                                Width="18"
+                                Height="18"
+                                IsActive="False"
+                                VerticalAlignment="Center" />
 
-                        <ItemsControl x:Name="JobsItemsControl" ItemsSource="{x:Bind Jobs, Mode=OneWay}">
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.QueueTitle, Mode=OneWay}" />
+                                <TextBlock
+                                    x:Name="BusyTextBlock"
+                                    Style="{StaticResource SectionHintStyle}"
+                                    Text="{x:Bind Text.Ready, Mode=OneWay}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border
+                            x:Name="EmptyQueueBorder"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="16"
+                            Padding="16">
+                            <StackPanel Spacing="4">
+                                <TextBlock
+                                    FontSize="14"
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind Text.NoActiveJobsTitle, Mode=OneWay}" />
+                                <TextBlock
+                                    Style="{StaticResource SectionHintStyle}"
+                                    Text="{x:Bind Text.NoActiveJobsHint, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+
+                        <ItemsControl
+                            x:Name="JobsItemsControl"
+                            ItemsSource="{x:Bind Jobs, Mode=OneWay}"
+                            Visibility="Collapsed">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Spacing="12" />
@@ -130,10 +226,10 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border
-                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                         BorderThickness="1"
-                                        CornerRadius="10"
+                                        CornerRadius="16"
                                         Padding="14">
                                         <StackPanel Spacing="10">
                                             <Grid ColumnSpacing="12">
@@ -149,7 +245,7 @@
                                                         Text="{Binding Title}"
                                                         TextWrapping="Wrap" />
                                                     <TextBlock
-                                                        Opacity="0.7"
+                                                        Opacity="0.72"
                                                         Text="{Binding Details}"
                                                         TextWrapping="Wrap" />
                                                 </StackPanel>
@@ -190,7 +286,7 @@
                                                             </Grid>
 
                                                             <ProgressBar
-                                                                Height="8"
+                                                                Height="6"
                                                                 IsIndeterminate="{Binding IsIndeterminate}"
                                                                 Maximum="{Binding Maximum}"
                                                                 Value="{Binding Value}" />
@@ -208,12 +304,13 @@
 
                 <InfoBar
                     x:Name="StatusInfoBar"
-                    IsOpen="True"
+                    IsOpen="False"
                     IsClosable="False"
-                    Title="Checkup"
-                    Message="OK!"
+                    Title="{x:Bind Text.StatusTitle, Mode=OneWay}"
+                    Message="{x:Bind Text.Ready, Mode=OneWay}"
                     Severity="Success" />
             </StackPanel>
         </ScrollViewer>
     </Grid>
 </Page>
+

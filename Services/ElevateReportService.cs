@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
 
 namespace ElevateHelperWinUI.Services;
@@ -45,6 +46,7 @@ public sealed class ElevateReportService : IElevateReportService
                 return ProcessingResult.Fail("Path is empty.");
             }
 
+            path = NormalizePath(path);
             if (!Directory.Exists(path))
             {
                 return ProcessingResult.Fail($"Path does not exist: {path}");
@@ -82,17 +84,17 @@ public sealed class ElevateReportService : IElevateReportService
 
             mainData.Folder = NormalizePath(mainData.Folder);
             string? resolvedBatchFolder = ResolveSearchRoot(path, mainData.Folder);
-            string? projectCsvPath = ResolveExistingCsvPath($"{mainData.FileName}.csv", path, mainData.Folder, resolvedBatchFolder);
-            if (projectCsvPath is null)
+            string? projectSourcePath = ResolveProjectSourcePath(mainData.FileName, mainData.SourceFileName, path, resolvedBatchFolder);
+            if (projectSourcePath is null)
             {
                 return ProcessingResult.Fail(
-                    $"Project CSV not found: {mainData.FileName}.csv. Searched under: {DescribeSearchRoots(path, mainData.Folder, resolvedBatchFolder)}");
+                    $"Project source not found: {DescribeProjectSourceCandidates(mainData.FileName, mainData.SourceFileName)}. Searched under: {DescribeSearchRoots(path, mainData.Folder, resolvedBatchFolder)}");
             }
 
-            mainData.Folder = Path.GetDirectoryName(projectCsvPath)
-                ?? throw new InvalidOperationException($"Cannot resolve project CSV folder for {projectCsvPath}.");
+            mainData.Folder = Path.GetDirectoryName(projectSourcePath)
+                ?? throw new InvalidOperationException($"Cannot resolve project source folder for {projectSourcePath}.");
 
-            ProjectParsedData projectData = ParseProjectCsv(projectCsvPath);
+            ProjectParsedData projectData = ParseProjectSource(projectSourcePath);
 
             int nSteps = mainData.AWT.Length - 1;
             if (nSteps < 1)
@@ -105,7 +107,7 @@ public sealed class ElevateReportService : IElevateReportService
             for (int step = 1; step <= nSteps; step++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                ParseStepCsv(mainData.FileName, path, mainData.Folder, projectData.Building, projectData.Elevator, step, ais, alw);
+                ParseStepCsv(mainData.FileName, mainData.SourceFileName, path, mainData.Folder, projectData.Building, projectData.Elevator, step, ais, alw);
             }
 
             GeneratedReportPaths outputPaths = BuildReportWorkbook(
@@ -1200,6 +1202,7 @@ public sealed class ElevateReportService : IElevateReportService
 
     private static void ParseStepCsv(
         string fileName,
+        string sourceFileName,
         string reportRoot,
         string projectCsvFolder,
         BuildingDataModel buildingData,
@@ -1209,11 +1212,13 @@ public sealed class ElevateReportService : IElevateReportService
         double[] alw)
     {
         string stepFileName = BuildStepFileName(fileName, step);
+        string batchResultStepFileName = BuildElevateResultCsvFileName(sourceFileName, step);
         string? stepCsvPath = ResolveExistingCsvPath(stepFileName, reportRoot, projectCsvFolder);
+        stepCsvPath ??= ResolveExistingCsvPath(batchResultStepFileName, reportRoot, projectCsvFolder);
         if (stepCsvPath is null)
         {
             throw new FileNotFoundException(
-                $"Step CSV not found: {stepFileName}. Searched under: {DescribeSearchRoots(reportRoot, projectCsvFolder)}",
+                $"Step CSV not found: {stepFileName} or {batchResultStepFileName}. Searched under: {DescribeSearchRoots(reportRoot, projectCsvFolder)}",
                 stepFileName);
         }
 
@@ -1311,6 +1316,50 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         ais[step] = elevatorData.NoElevators > 0 ? sumAis / elevatorData.NoElevators : 0;
+    }
+
+    private static ProjectParsedData ParseProjectSource(string projectSourcePath)
+    {
+        string extension = Path.GetExtension(projectSourcePath);
+        if (extension.Equals(".elvx", StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseProjectElvx(projectSourcePath);
+        }
+
+        return ParseProjectCsv(projectSourcePath);
+    }
+
+    private static ProjectParsedData ParseProjectElvx(string projectElvxPath)
+    {
+        XDocument document = XDocument.Load(projectElvxPath, LoadOptions.None);
+        XElement root = document.Root
+            ?? throw new InvalidOperationException("Project ELVX does not contain a root XML element.");
+
+        XElement jobDataElement = root.Element("JobData")
+            ?? throw new InvalidOperationException("JobData was not found in project ELVX.");
+        XElement analysisElement = root.Element("AnalysisData")
+            ?? throw new InvalidOperationException("AnalysisData was not found in project ELVX.");
+        XElement buildingElement = root.Element("BuildingData")
+            ?? throw new InvalidOperationException("BuildingData was not found in project ELVX.");
+        XElement elevatorElement = root.Element("ElevatorData")
+            ?? throw new InvalidOperationException("ElevatorData was not found in project ELVX.");
+        XElement passengerElement = root.Element("PassengerData")
+            ?? throw new InvalidOperationException("PassengerData was not found in project ELVX.");
+
+        string[] jobData = new string[8];
+        jobData[1] = NormalizeElevateText((string?)jobDataElement.Attribute("JobTitle"));
+        jobData[2] = NormalizeElevateText((string?)jobDataElement.Attribute("JobNo"));
+        jobData[3] = NormalizeElevateText((string?)jobDataElement.Attribute("CalculationTitle"));
+        jobData[4] = NormalizeElevateText((string?)jobDataElement.Attribute("MadeBy"));
+        jobData[5] = NormalizeElevateText((string?)jobDataElement.Attribute("CheckedBy"));
+        jobData[6] = NormalizeElevateText((string?)jobDataElement.Attribute("Company"));
+        jobData[7] = string.Empty;
+
+        BuildingDataModel buildingData = ParseBuildingDataFromElvx(buildingElement, passengerElement);
+        ElevatorDataModel elevatorData = ParseElevatorDataFromElvx(analysisElement, elevatorElement, buildingData);
+        PassengerDataModel passengerData = ParsePassengerDataFromElvx(passengerElement);
+
+        return new ProjectParsedData(jobData, buildingData, elevatorData, passengerData);
     }
 
     private static ProjectParsedData ParseProjectCsv(string projectCsvPath)
@@ -1491,6 +1540,277 @@ public sealed class ElevateReportService : IElevateReportService
         return new ProjectParsedData(jobData, buildingData, elevatorData, passengerData);
     }
 
+    private static BuildingDataModel ParseBuildingDataFromElvx(XElement buildingElement, XElement passengerElement)
+    {
+        BuildingDataModel buildingData = new();
+        buildingData.BuildingType = NormalizeBuildingType((string?)buildingElement.Attribute("BuildingType"));
+        buildingData.Absenteeism = ParseDoubleFlexible((string?)buildingElement.Attribute("AbsenteeismPercent"));
+
+        List<XElement> floorElements = buildingElement.Elements("Floor").ToList();
+        if (floorElements.Count == 0)
+        {
+            throw new InvalidOperationException("No floors were found in project ELVX.");
+        }
+
+        buildingData.NoFloors = floorElements.Count;
+        buildingData.FloorName = new double[buildingData.NoFloors + 1];
+        buildingData.FloorHeight = new double[buildingData.NoFloors + 1];
+        buildingData.FloorLevel = new double[buildingData.NoFloors + 1];
+        buildingData.FloorType = new string[buildingData.NoFloors + 1];
+        buildingData.FloorFactor = new double[buildingData.NoFloors + 1];
+        buildingData.NoPeople = new double[buildingData.NoFloors + 1];
+        buildingData.EntranceFloor = new string[buildingData.NoFloors + 1];
+        buildingData.Bias = new double[buildingData.NoFloors + 1];
+
+        List<XElement> biasElements = passengerElement
+            .Element("Standard")?
+            .Elements("Floor")
+            .ToList() ?? [];
+
+        double absenteeismFactor = (100 - buildingData.Absenteeism) / 100d;
+        string buildingTypeLabel = buildingData.BuildingType switch
+        {
+            "Office" => "Офис",
+            "Residential" => "Жилье",
+            "Hotel" => "Гостиница",
+            _ => "Здание",
+        };
+
+        double[] absoluteLevels = new double[buildingData.NoFloors + 1];
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            XElement floorElement = floorElements[i - 1];
+            buildingData.FloorName[i] = ParseLevelValue((string?)floorElement.Attribute("FloorName") ?? string.Empty);
+            absoluteLevels[i] = ParseDoubleFlexible((string?)floorElement.Attribute("FloorLevel"));
+            buildingData.NoPeople[i] = ParseDoubleFlexible((string?)floorElement.Attribute("NoOfPeople"));
+            buildingData.EntranceFloor[i] = ((string?)floorElement.Attribute("EntranceFloor")) ?? string.Empty;
+            buildingData.Bias[i] = i <= biasElements.Count
+                ? ParseDoubleFlexible((string?)biasElements[i - 1].Attribute("EntranceBias"))
+                : 0;
+
+            if (buildingData.FloorName[i] < 0)
+            {
+                buildingData.FloorType[i] = "Парковка";
+                buildingData.FloorFactor[i] = 1.2;
+            }
+            else if (buildingData.FloorName[i] > 0 && IsYes(buildingData.EntranceFloor[i]))
+            {
+                buildingData.FloorType[i] = "Лобби";
+                buildingData.FloorFactor[i] = 0;
+            }
+            else
+            {
+                buildingData.FloorType[i] = buildingTypeLabel;
+                buildingData.FloorFactor[i] = absenteeismFactor;
+                buildingData.NoExitFloors++;
+            }
+
+            buildingData.TotalPeople += buildingData.NoPeople[i];
+            buildingData.CTotalPeople += buildingData.NoPeople[i] * buildingData.FloorFactor[i];
+        }
+
+        int referenceFloorIndex = Enumerable.Range(1, buildingData.NoFloors)
+            .FirstOrDefault(i => NearlyEquals(buildingData.FloorName[i], 1) && IsYes(buildingData.EntranceFloor[i]));
+        if (referenceFloorIndex == 0)
+        {
+            referenceFloorIndex = Enumerable.Range(1, buildingData.NoFloors)
+                .FirstOrDefault(i => IsYes(buildingData.EntranceFloor[i]));
+        }
+
+        if (referenceFloorIndex == 0)
+        {
+            referenceFloorIndex = 1;
+        }
+
+        double referenceLevel = absoluteLevels[referenceFloorIndex];
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            buildingData.FloorLevel[i] = absoluteLevels[i] - referenceLevel;
+            if (i < buildingData.NoFloors)
+            {
+                buildingData.FloorHeight[i] = Math.Abs(absoluteLevels[i + 1] - absoluteLevels[i]);
+            }
+            else
+            {
+                buildingData.FloorHeight[i] = i > 1
+                    ? buildingData.FloorHeight[i - 1]
+                    : 0;
+            }
+        }
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            if (string.Equals(buildingData.FloorType[i], "Парковка", StringComparison.Ordinal))
+            {
+                buildingData.NoPeople[i] = (buildingData.TotalPeople * buildingData.Bias[i]) / 120d;
+            }
+        }
+
+        return buildingData;
+    }
+
+    private static ElevatorDataModel ParseElevatorDataFromElvx(
+        XElement analysisElement,
+        XElement elevatorElement,
+        BuildingDataModel buildingData)
+    {
+        XElement configurationElement = elevatorElement
+            .Element("Advanced")?
+            .Element("Configuration")
+            ?? throw new InvalidOperationException("Advanced elevator configuration was not found in project ELVX.");
+
+        List<XElement> carElements = configurationElement.Elements("Car").ToList();
+        if (carElements.Count == 0)
+        {
+            throw new InvalidOperationException("No elevators were found in project ELVX.");
+        }
+
+        ElevatorDataModel elevatorData = new();
+        elevatorData.Dispatcher = NormalizeElevateText(
+            (string?)analysisElement.Element("Dispatcher")?.Element("Algorithm")?.Attribute("AlgorithmName"));
+        elevatorData.NoElevators = carElements.Count;
+        elevatorData.Spec = new string[elevatorData.NoElevators + 1, 11];
+        elevatorData.FloorsServed = new string[elevatorData.NoElevators + 1, buildingData.NoFloors + 1];
+
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            XElement carElement = carElements[i - 1];
+            elevatorData.Spec[i, 1] = FormatNumericSpec((string?)carElement.Attribute("Capacity"), "0");
+            elevatorData.Spec[i, 2] = FormatNumericSpec((string?)carElement.Attribute("Speed"), "0.00");
+            elevatorData.Spec[i, 3] = FormatNumericSpec((string?)carElement.Attribute("Acceleration"), "0.00");
+            elevatorData.Spec[i, 4] = FormatNumericSpec((string?)carElement.Attribute("Jerk"), "0.00");
+
+            int homeFloorIndex = ToInt(((string?)carElement.Attribute("HomeFloor")) ?? string.Empty);
+            elevatorData.Spec[i, 5] = homeFloorIndex >= 1 && homeFloorIndex <= buildingData.NoFloors
+                ? FormatFloorForDisplay(buildingData.FloorName[homeFloorIndex])
+                : ((string?)carElement.Attribute("HomeFloor")) ?? string.Empty;
+
+            elevatorData.Spec[i, 6] = FormatNumericSpec((string?)carElement.Attribute("DoorOpenTime"), "0.00");
+            elevatorData.Spec[i, 7] = FormatNumericSpec((string?)carElement.Attribute("DoorCloseTime"), "0.00");
+            elevatorData.Spec[i, 8] = FormatNumericSpec((string?)carElement.Attribute("DoorDwell1"), "0.00");
+            elevatorData.Spec[i, 9] = FormatNumericSpec((string?)carElement.Attribute("MotorStartDelay"), "0.00");
+            elevatorData.Spec[i, 10] = FormatNumericSpec((string?)carElement.Attribute("LevelingDelay"), "0.00");
+
+            foreach (XElement floorServedElement in carElement.Elements("FloorServed"))
+            {
+                int floorIndex = ToInt(((string?)floorServedElement.Attribute("FloorIndex")) ?? string.Empty);
+                if (floorIndex >= 1 && floorIndex <= buildingData.NoFloors)
+                {
+                    elevatorData.FloorsServed[i, floorIndex] = "Yes";
+                }
+            }
+        }
+
+        return elevatorData;
+    }
+
+    private static PassengerDataModel ParsePassengerDataFromElvx(XElement passengerElement)
+    {
+        XElement? trafficPeriod = passengerElement
+            .Element("Traffic")?
+            .Elements("Period")
+            .FirstOrDefault(period => string.Equals((string?)period.Attribute("Id"), "0", StringComparison.Ordinal));
+        XElement? standardElement = passengerElement.Element("Standard");
+
+        return new PassengerDataModel
+        {
+            Incoming = trafficPeriod is not null
+                ? ParseDoubleFlexible((string?)trafficPeriod.Attribute("SplitUp"))
+                : ParseDoubleFlexible(standardElement?.Element("Incoming")?.Value),
+            Outgoing = trafficPeriod is not null
+                ? ParseDoubleFlexible((string?)trafficPeriod.Attribute("SplitDown"))
+                : ParseDoubleFlexible(standardElement?.Element("Outgoing")?.Value),
+            Interfloor = trafficPeriod is not null
+                ? ParseDoubleFlexible((string?)trafficPeriod.Attribute("SplitInterfloor"))
+                : ParseDoubleFlexible(standardElement?.Element("Interfloor")?.Value),
+        };
+    }
+
+    private static string NormalizeBuildingType(string? rawValue)
+    {
+        return (rawValue ?? string.Empty).Trim() switch
+        {
+            "1" => "Office",
+            "2" => "Hotel",
+            "3" => "Residential",
+            string value when value.Equals("Office", StringComparison.OrdinalIgnoreCase) => "Office",
+            string value when value.Equals("Hotel", StringComparison.OrdinalIgnoreCase) => "Hotel",
+            string value when value.Equals("Residential", StringComparison.OrdinalIgnoreCase) => "Residential",
+            _ => string.Empty,
+        };
+    }
+
+    private static string FormatNumericSpec(string? rawValue, string format)
+    {
+        double value = ParseDoubleFlexible(rawValue);
+        return value.ToString(format, CultureInfo.GetCultureInfo("ru-RU"));
+    }
+
+    internal static string NormalizeElevateText(string? rawValue)
+    {
+        string value = rawValue?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        if (!LooksLikeUtf8Mojibake(value))
+        {
+            return value;
+        }
+
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        string repaired = Encoding.UTF8.GetString(Encoding.GetEncoding(1251).GetBytes(value));
+        return CountMojibakeMarkers(repaired) < CountMojibakeMarkers(value) ||
+               CountCyrillicLetters(repaired) > CountCyrillicLetters(value)
+            ? repaired
+            : value;
+    }
+
+    private static bool LooksLikeUtf8Mojibake(string value)
+    {
+        return value.Contains('Р') || value.Contains('С');
+    }
+
+    private static int CountCyrillicLetters(string value)
+    {
+        int count = 0;
+        foreach (char c in value)
+        {
+            if ((c >= '\u0400' && c <= '\u04FF') || c == 'Ё' || c == 'ё')
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static int CountMojibakeMarkers(string value)
+    {
+        int count = 0;
+        for (int index = 0; index < value.Length; index++)
+        {
+            char current = value[index];
+            if (current == '\uFFFD' || current == 'Ð' || current == 'Ñ')
+            {
+                count += 3;
+                continue;
+            }
+
+            if (current is 'Р' or 'С')
+            {
+                count++;
+                if (index + 1 < value.Length && !char.IsWhiteSpace(value[index + 1]) && !char.IsLetter(value[index + 1]))
+                {
+                    count += 2;
+                }
+            }
+        }
+
+        return count;
+    }
+
     private static MainBatchData ParseBatchResults(string batchResultsPath)
     {
         CsvSheet sheet = CsvSheet.Load(batchResultsPath);
@@ -1523,11 +1843,13 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         int keyRow = dataRows.Count > 0 ? dataRows[0] : 2;
-        string fileName = Path.GetFileNameWithoutExtension(sheet.Get(keyRow, 1));
+        string sourceFileName = Path.GetFileName(sheet.Get(keyRow, 1).Trim());
+        string fileName = Path.GetFileNameWithoutExtension(sourceFileName);
 
         return new MainBatchData
         {
             FileName = fileName,
+            SourceFileName = sourceFileName,
             Folder = sheet.Get(keyRow, 2),
             AWT = awt,
             ATTD = attd,
@@ -1583,6 +1905,17 @@ public sealed class ElevateReportService : IElevateReportService
         return step < 10
             ? $"{prefix} 0{step}.csv"
             : $"{prefix} {step}.csv";
+    }
+
+    internal static string BuildElevateResultCsvFileName(string sourceFileName, int? step = null)
+    {
+        string cleanSourceFileName = Path.GetFileName(sourceFileName.Trim());
+        string sourceStem = Path.GetFileNameWithoutExtension(cleanSourceFileName);
+        string targetStem = step.HasValue
+            ? BuildSequentialStem(sourceStem, step.Value)
+            : sourceStem;
+
+        return $"{targetStem}_elvx.csv";
     }
 
     private static string NormalizePath(string path)
@@ -2303,11 +2636,67 @@ public sealed class ElevateReportService : IElevateReportService
     {
         public string FileName { get; set; } = string.Empty;
 
+        public string SourceFileName { get; set; } = string.Empty;
+
         public string Folder { get; set; } = string.Empty;
 
         public double[] AWT { get; set; } = [0];
 
         public double[] ATTD { get; set; } = [0];
+    }
+
+    internal static string? ResolveProjectSourcePath(string fileName, string? sourceFileName, params string?[] searchRoots)
+    {
+        foreach (string candidate in GetProjectSourceCandidates(fileName, sourceFileName))
+        {
+            string? resolvedPath = ResolveExistingCsvPath(candidate, searchRoots);
+            if (!string.IsNullOrWhiteSpace(resolvedPath))
+            {
+                return resolvedPath;
+            }
+        }
+
+        return null;
+    }
+
+    internal static string DescribeProjectSourceCandidates(string fileName, string? sourceFileName)
+    {
+        return string.Join(" or ", GetProjectSourceCandidates(fileName, sourceFileName));
+    }
+
+    private static IEnumerable<string> GetProjectSourceCandidates(string fileName, string? sourceFileName)
+    {
+        yield return $"{fileName}.csv";
+        yield return $"{fileName}.elvx";
+
+        if (!string.IsNullOrWhiteSpace(sourceFileName))
+        {
+            string sourceProjectFileName = Path.GetFileName(sourceFileName);
+            if (!sourceProjectFileName.Equals($"{fileName}.elvx", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return sourceProjectFileName;
+            }
+        }
+    }
+
+    private static string BuildSequentialStem(string sourceStem, int step)
+    {
+        int endIndex = sourceStem.Length;
+        while (endIndex > 0 && char.IsDigit(sourceStem[endIndex - 1]))
+        {
+            endIndex--;
+        }
+
+        string prefix = sourceStem[..endIndex];
+        string digits = sourceStem[endIndex..];
+        if (digits.Length > 0)
+        {
+            return prefix + step.ToString($"D{digits.Length}", CultureInfo.InvariantCulture);
+        }
+
+        return step == 1
+            ? sourceStem
+            : $"{sourceStem}{step.ToString(CultureInfo.InvariantCulture)}";
     }
 
     internal readonly record struct GeneratedReportPaths(string ExcelPath, string PdfPath);

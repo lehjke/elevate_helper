@@ -8,15 +8,18 @@ namespace ElevateHelperWinUI.Services;
 
 public sealed class ElevateLauncherService : IElevateLauncherService
 {
-    private const uint InputKeyboard = 1;
-    private const uint KeyEventFKeyUp = 0x0002;
-    private const uint KeyEventFUnicode = 0x0004;
-    private const ushort VkAlt = 0x12;
-    private const ushort VkA = 0x41;
-    private const ushort VkDown = 0x28;
-    private const ushort VkEnter = 0x0D;
-    private const ushort VkTab = 0x09;
-    private static readonly SemaphoreSlim UiAutomationLock = new(1, 1);
+    private const int RunBatchCommandId = 32819;
+    private const int DialogOkControlId = 1;
+    private const int DialogFolderEditControlId = 14148;
+    private const uint WmCommand = 0x0111;
+    private const uint WmSetText = 0x000C;
+    private const uint BmClick = 0x00F5;
+    private static readonly SemaphoreSlim BatchSubmissionLock = new(1, 1);
+    private static readonly TimeSpan StartupDelay = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan WindowPollDelay = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan ProgressPollDelay = TimeSpan.FromMilliseconds(600);
+    private static readonly TimeSpan DialogCloseTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan BatchStartTimeout = TimeSpan.FromSeconds(30);
 
     private readonly IElevateIntegrationService integrationService;
 
@@ -81,17 +84,22 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         ProgressContext progressContext = BuildProgressContext(path);
         ReportProgress(progress, progressContext, 0, "window", null, isFinal: false);
 
+        ElevateIntegrationInfo integrationInfo = integrationService.GetIntegrationInfo();
+        if (!integrationInfo.IsDetected || string.IsNullOrWhiteSpace(integrationInfo.ExecutablePath))
+        {
+            throw new FileNotFoundException(
+                BuildIntegrationNotFoundMessage(integrationInfo),
+                integrationInfo.ExecutablePath);
+        }
+
         Process? process = null;
-        await UiAutomationLock.WaitAsync(cancellationToken);
+        ResultFileBaseline? resultBaseline = null;
+        bool submissionLockAcquired = false;
+
         try
         {
-            ElevateIntegrationInfo integrationInfo = integrationService.GetIntegrationInfo();
-            if (!integrationInfo.IsDetected || string.IsNullOrWhiteSpace(integrationInfo.ExecutablePath))
-            {
-                throw new FileNotFoundException(
-                    BuildIntegrationNotFoundMessage(integrationInfo),
-                    integrationInfo.ExecutablePath);
-            }
+            await BatchSubmissionLock.WaitAsync(cancellationToken);
+            submissionLockAcquired = true;
 
             process = Process.Start(new ProcessStartInfo
             {
@@ -110,41 +118,35 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             }
             catch
             {
-                // Some app startup modes do not support WaitForInputIdle.
+                // Some startup modes do not support WaitForInputIdle.
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(1500), cancellationToken);
-
-            IntPtr windowHandle = await WaitForMainWindowAsync(process, cancellationToken);
-            if (windowHandle != IntPtr.Zero)
-            {
-                _ = SetForegroundWindow(windowHandle);
-            }
-
-            SetEnglishKeyboardLayout();
-
-            await SendAltAAsync(cancellationToken);
-            await PressRepeatedAsync(VkDown, 5, cancellationToken);
-            await PressKeyAsync(VkEnter, cancellationToken);
-
-            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
-            await PressRepeatedAsync(VkTab, 3, cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
-
-            TypeUnicodeText(path);
-            await PressKeyAsync(VkEnter, cancellationToken);
+            await Task.Delay(StartupDelay, cancellationToken);
+            resultBaseline = CaptureResultFileBaseline(path);
+            await SubmitBatchFolderAsync(process, path, progressContext, resultBaseline, cancellationToken);
         }
         finally
         {
-            _ = UiAutomationLock.Release();
+            if (submissionLockAcquired)
+            {
+                _ = BatchSubmissionLock.Release();
+            }
         }
 
-        if (process is null)
+        try
         {
-            throw new InvalidOperationException("Unable to start Elevate.exe.");
+            await MonitorProgressAsync(
+                process,
+                path,
+                progressContext,
+                resultBaseline ?? new ResultFileBaseline(DateTimeOffset.UtcNow, new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase)),
+                progress,
+                cancellationToken);
         }
-
-        await MonitorProgressAsync(process, path, progressContext, progress, cancellationToken);
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     private static ProgressContext BuildProgressContext(string path)
@@ -170,63 +172,206 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         return new ProgressContext(projectPrefix, scenario, elvxBaseNames, elvxFiles.Count);
     }
 
+    private static async Task SubmitBatchFolderAsync(
+        Process process,
+        string path,
+        ProgressContext progressContext,
+        ResultFileBaseline resultBaseline,
+        CancellationToken cancellationToken)
+    {
+        IntPtr windowHandle = await WaitForMainWindowAsync(process, cancellationToken);
+        if (windowHandle == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("Elevate main window did not appear.");
+        }
+
+        if (!PostMessage(windowHandle, WmCommand, (IntPtr)RunBatchCommandId, IntPtr.Zero))
+        {
+            throw new InvalidOperationException("Unable to open the Elevate Run Batch dialog.");
+        }
+
+        IntPtr dialogHandle = await WaitForRunBatchDialogAsync(process.Id, cancellationToken);
+        IntPtr editHandle = GetDlgItem(dialogHandle, DialogFolderEditControlId);
+        IntPtr okHandle = GetDlgItem(dialogHandle, DialogOkControlId);
+
+        if (editHandle == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("Run Batch folder input was not found.");
+        }
+
+        if (okHandle == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("Run Batch confirmation button was not found.");
+        }
+
+        _ = SendMessage(editHandle, WmSetText, IntPtr.Zero, path);
+        _ = SendMessage(okHandle, BmClick, IntPtr.Zero, IntPtr.Zero);
+
+        await WaitForDialogToCloseAsync(dialogHandle, cancellationToken);
+        await WaitForBatchStartAsync(process, path, progressContext, resultBaseline, cancellationToken);
+    }
+
+    private static async Task<IntPtr> WaitForRunBatchDialogAsync(
+        int processId,
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 0; attempt < 100; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            IntPtr dialogHandle = FindRunBatchDialog(processId);
+            if (dialogHandle != IntPtr.Zero)
+            {
+                return dialogHandle;
+            }
+
+            await Task.Delay(WindowPollDelay, cancellationToken);
+        }
+
+        throw new InvalidOperationException("Run Batch dialog did not open.");
+    }
+
+    private static async Task WaitForDialogToCloseAsync(
+        IntPtr dialogHandle,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + DialogCloseTimeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsWindow(dialogHandle))
+            {
+                return;
+            }
+
+            await Task.Delay(WindowPollDelay, cancellationToken);
+        }
+
+        throw new InvalidOperationException("Run Batch dialog did not close after folder submission.");
+    }
+
+    private static async Task WaitForBatchStartAsync(
+        Process process,
+        string path,
+        ProgressContext progressContext,
+        ResultFileBaseline resultBaseline,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + BatchStartTimeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            process.Refresh();
+            ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
+            if (observation.HasStarted)
+            {
+                return;
+            }
+
+            if (process.HasExited)
+            {
+                throw new InvalidOperationException("Elevate exited before batch processing started.");
+            }
+
+            await Task.Delay(ProgressPollDelay, cancellationToken);
+        }
+
+        throw new InvalidOperationException("Run Batch was submitted but calculation did not start.");
+    }
+
     private static async Task MonitorProgressAsync(
         Process process,
         string path,
         ProgressContext progressContext,
+        ResultFileBaseline resultBaseline,
         IProgress<ElevateProgressInfo>? progress,
         CancellationToken cancellationToken)
     {
         int observedMaximum = 0;
+        int observedCompletedCsvFiles = 0;
         string? observedTitle = null;
-        bool hasObservedWindowProgress = false;
+        bool hasStarted = false;
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            process.Refresh();
 
-            List<string> titles = GetWindowTitles(process.Id);
-            string? finalTitle = titles.FirstOrDefault(
-                title => title.Contains("Design 1", StringComparison.OrdinalIgnoreCase));
-            if (finalTitle is not null)
+            ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
+            hasStarted |= observation.HasStarted;
+            observedMaximum = Math.Max(observedMaximum, observation.HighestWindowNumber);
+            observedCompletedCsvFiles = Math.Max(observedCompletedCsvFiles, observation.CompletedCsvFiles);
+
+            if (!string.IsNullOrWhiteSpace(observation.HighestWindowTitle))
             {
-                ReportProgress(progress, progressContext, progressContext.Total, "window", finalTitle, isFinal: true);
+                observedTitle = observation.HighestWindowTitle;
+            }
+            else if (!string.IsNullOrWhiteSpace(observation.ActiveDocumentTitle))
+            {
+                observedTitle = observation.ActiveDocumentTitle;
+            }
+
+            int completed = Math.Clamp(Math.Max(observedMaximum, observedCompletedCsvFiles), 0, progressContext.Total);
+            string source = observedMaximum > 0
+                ? "window"
+                : observedCompletedCsvFiles > 0
+                    ? "csv"
+                    : "window";
+
+            ReportProgress(progress, progressContext, completed, source, observedTitle, isFinal: false);
+
+            if (hasStarted &&
+                observation.DesignVisible &&
+                observation.HasBatchResults &&
+                observation.CompletedCsvFiles >= progressContext.Total)
+            {
+                ReportProgress(progress, progressContext, progressContext.Total, source, observation.DesignWindowTitle, isFinal: true);
                 return;
             }
 
-            (int currentMaximum, string? currentTitle) = GetHighestWindowNumber(titles, progressContext.ProjectPrefix);
-            if (currentMaximum > 0)
-            {
-                hasObservedWindowProgress = true;
-                if (currentMaximum >= observedMaximum)
-                {
-                    observedMaximum = currentMaximum;
-                    observedTitle = currentTitle;
-                }
-            }
-
-            int completed = hasObservedWindowProgress
-                ? observedMaximum
-                : CountCompletedCsvFiles(path, progressContext.ElvxBaseNames);
-            completed = Math.Min(completed, progressContext.Total);
-
-            string source = hasObservedWindowProgress ? "window" : "csv";
-            ReportProgress(progress, progressContext, completed, source, observedTitle, isFinal: false);
-
             if (process.HasExited)
             {
-                int csvCompleted = CountCompletedCsvFiles(path, progressContext.ElvxBaseNames);
-                if (csvCompleted >= progressContext.Total)
+                if (observation.HasBatchResults && observation.CompletedCsvFiles >= progressContext.Total)
                 {
-                    ReportProgress(progress, progressContext, progressContext.Total, "csv", null, isFinal: true);
+                    ReportProgress(progress, progressContext, progressContext.Total, "csv", observedTitle, isFinal: true);
                     return;
                 }
 
-                throw new InvalidOperationException("Elevate exited before the Design 1 window was detected.");
+                throw new InvalidOperationException("Elevate exited before batch processing completed.");
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
+            await Task.Delay(ProgressPollDelay, cancellationToken);
         }
+    }
+
+    private static ProgressObservation ObserveProgress(
+        int processId,
+        string path,
+        ProgressContext progressContext,
+        ResultFileBaseline resultBaseline)
+    {
+        List<string> titles = GetObservedWindowTitles(processId);
+        string? designTitle = titles.FirstOrDefault(IsDesignWindowTitle);
+        (int highestWindowNumber, string? highestWindowTitle) = GetHighestWindowNumber(titles, progressContext.ProjectPrefix);
+        string? activeDocumentTitle = titles
+            .Where(title => IsProjectWindowTitle(title, progressContext.ProjectPrefix))
+            .OrderByDescending(title => title.EndsWith(".elvx", StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault();
+        int completedFiles = CountCompletedResultFiles(path, progressContext.ElvxBaseNames, resultBaseline);
+        int completedCsvFiles = CountCompletedCsvFiles(path, progressContext.ElvxBaseNames, resultBaseline);
+        bool hasBatchResults = HasFreshBatchResults(path, resultBaseline);
+        bool hasStarted = highestWindowNumber > 0 || completedFiles > 0 || !string.IsNullOrWhiteSpace(activeDocumentTitle);
+
+        return new ProgressObservation(
+            highestWindowNumber,
+            highestWindowTitle,
+            activeDocumentTitle,
+            designTitle,
+            completedFiles,
+            completedCsvFiles,
+            hasBatchResults,
+            hasStarted);
     }
 
     private static void ReportProgress(
@@ -263,28 +408,126 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         return "main";
     }
 
-    private static int CountCompletedCsvFiles(string path, IReadOnlyCollection<string> elvxBaseNames)
+    internal static int CountCompletedResultFiles(string path, IReadOnlyCollection<string> elvxBaseNames)
+    {
+        return CountCompletedResultFiles(path, elvxBaseNames, baseline: null);
+    }
+
+    internal static int CountCompletedResultFiles(
+        string path,
+        IReadOnlyCollection<string> elvxBaseNames,
+        ResultFileBaseline? baseline)
+    {
+        return CountCompletedFiles(path, elvxBaseNames, baseline, includeElvr: true);
+    }
+
+    internal static int CountCompletedCsvFiles(
+        string path,
+        IReadOnlyCollection<string> elvxBaseNames,
+        ResultFileBaseline? baseline)
+    {
+        return CountCompletedFiles(path, elvxBaseNames, baseline, includeElvr: false);
+    }
+
+    private static int CountCompletedFiles(
+        string path,
+        IReadOnlyCollection<string> elvxBaseNames,
+        ResultFileBaseline? baseline,
+        bool includeElvr)
     {
         HashSet<string> allowedBaseNames = new(elvxBaseNames, StringComparer.OrdinalIgnoreCase);
-        int count = 0;
+        HashSet<string> completed = new(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string csvFile in Directory.GetFiles(path, "*.csv"))
+        foreach (string file in Directory.EnumerateFiles(path))
         {
-            string fileName = Path.GetFileName(csvFile);
-            if (fileName.Equals("batch_results.csv", StringComparison.OrdinalIgnoreCase) ||
-                fileName.Equals("floor_area.csv", StringComparison.OrdinalIgnoreCase))
+            if (!IsTrackableResultFile(file, includeElvr) || !IsFreshResultFile(file, baseline))
             {
                 continue;
             }
 
-            string? csvBaseName = Path.GetFileNameWithoutExtension(fileName);
-            if (!string.IsNullOrWhiteSpace(csvBaseName) && allowedBaseNames.Contains(csvBaseName))
+            string fileName = Path.GetFileName(file);
+            string normalizedBaseName = NormalizeResultBaseName(Path.GetFileNameWithoutExtension(fileName));
+            if (allowedBaseNames.Contains(normalizedBaseName))
             {
-                count++;
+                completed.Add(normalizedBaseName);
             }
         }
 
-        return count;
+        return completed.Count;
+    }
+
+    private static ResultFileBaseline CaptureResultFileBaseline(string path)
+    {
+        Dictionary<string, DateTime> existingFiles = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string file in Directory.EnumerateFiles(path))
+        {
+            if (!IsTrackableResultFile(file, includeElvr: true) && !IsBatchResultsFile(file))
+            {
+                continue;
+            }
+
+            existingFiles[file] = File.GetLastWriteTimeUtc(file);
+        }
+
+        return new ResultFileBaseline(DateTimeOffset.UtcNow, existingFiles);
+    }
+
+    private static bool IsTrackableResultFile(string file, bool includeElvr)
+    {
+        string extension = Path.GetExtension(file);
+        if (!extension.Equals(".csv", StringComparison.OrdinalIgnoreCase) &&
+            (!includeElvr || !extension.Equals(".elvr", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        string fileName = Path.GetFileName(file);
+        return !fileName.Equals("batch_results.csv", StringComparison.OrdinalIgnoreCase) &&
+               !fileName.Equals("floor_area.csv", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBatchResultsFile(string file)
+    {
+        return Path.GetFileName(file).Equals("batch_results.csv", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasFreshBatchResults(string path, ResultFileBaseline? baseline)
+    {
+        string batchResultsPath = Path.Combine(path, "batch_results.csv");
+        return File.Exists(batchResultsPath) && IsFreshResultFile(batchResultsPath, baseline);
+    }
+
+    private static bool IsFreshResultFile(string file, ResultFileBaseline? baseline)
+    {
+        if (baseline is null)
+        {
+            return true;
+        }
+
+        DateTime lastWriteTimeUtc = File.GetLastWriteTimeUtc(file);
+        if (!baseline.ExistingFileWriteTimesUtc.TryGetValue(file, out DateTime previousWriteTimeUtc))
+        {
+            return true;
+        }
+
+        return lastWriteTimeUtc > previousWriteTimeUtc;
+    }
+
+    internal static string NormalizeResultBaseName(string? baseName)
+    {
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            return string.Empty;
+        }
+
+        string normalized = baseName.Trim();
+        if (normalized.EndsWith("_elvx", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[..^5];
+        }
+
+        return normalized.Trim();
     }
 
     private static (int Maximum, string? Title) GetHighestWindowNumber(
@@ -313,19 +556,21 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         return (maximum, title);
     }
 
-    private static bool TryParseWindowNumber(
+    internal static bool TryParseWindowNumber(
         string title,
         string projectPrefix,
         out int number)
     {
         number = 0;
 
-        if (!title.StartsWith(projectPrefix, StringComparison.OrdinalIgnoreCase))
+        string normalizedTitle = NormalizeWindowTitle(title);
+        string normalizedPrefix = NormalizeWindowTitle(projectPrefix);
+        if (!normalizedTitle.StartsWith(normalizedPrefix, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        ReadOnlySpan<char> suffix = title.AsSpan(projectPrefix.Length).TrimStart();
+        ReadOnlySpan<char> suffix = normalizedTitle.AsSpan(normalizedPrefix.Length).TrimStart();
         if (suffix.IsEmpty || !char.IsDigit(suffix[0]))
         {
             return false;
@@ -338,6 +583,77 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
 
         return int.TryParse(suffix[..digitLength], NumberStyles.Integer, CultureInfo.InvariantCulture, out number);
+    }
+
+    internal static bool IsProjectWindowTitle(string? title, string projectPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        string normalizedTitle = NormalizeWindowTitle(title);
+        if (string.IsNullOrWhiteSpace(normalizedTitle) || IsDesignWindowTitle(normalizedTitle))
+        {
+            return false;
+        }
+
+        string normalizedPrefix = NormalizeWindowTitle(projectPrefix);
+        return normalizedTitle.StartsWith(normalizedPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsDesignWindowTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        string normalized = NormalizeWindowTitle(title).Replace(" ", string.Empty, StringComparison.Ordinal);
+        return normalized.Equals("Design1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static string NormalizeWindowTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return string.Empty;
+        }
+
+        string normalized = title.Trim();
+        if (TryExtractDocumentTitle(normalized, out string documentTitle))
+        {
+            normalized = documentTitle;
+        }
+
+        if (normalized.EndsWith(".elvx", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = Path.GetFileNameWithoutExtension(normalized) ?? normalized;
+        }
+
+        return normalized.Trim();
+    }
+
+    internal static bool TryExtractDocumentTitle(string? title, out string documentTitle)
+    {
+        documentTitle = string.Empty;
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        int closingBracket = title.LastIndexOf(']');
+        int openingBracket = closingBracket > 0
+            ? title.LastIndexOf('[', closingBracket)
+            : -1;
+
+        if (openingBracket < 0 || closingBracket <= openingBracket + 1)
+        {
+            return false;
+        }
+
+        documentTitle = title[(openingBracket + 1)..closingBracket].Trim();
+        return !string.IsNullOrWhiteSpace(documentTitle);
     }
 
     private static string GetProjectPrefix(IReadOnlyList<string> elvxFiles)
@@ -414,119 +730,84 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 return process.MainWindowHandle;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+            await Task.Delay(WindowPollDelay, cancellationToken);
         }
 
         return IntPtr.Zero;
     }
 
-    private static void SetEnglishKeyboardLayout()
+    private static IntPtr FindRunBatchDialog(int processId)
     {
-        // 00000409 is English (US).
-        IntPtr hkl = LoadKeyboardLayout("00000409", 1);
-        if (hkl != IntPtr.Zero)
+        IntPtr dialogHandle = IntPtr.Zero;
+
+        EnumWindows((windowHandle, _) =>
         {
-            _ = ActivateKeyboardLayout(hkl, 0);
-        }
-    }
-
-    private static async Task SendAltAAsync(CancellationToken cancellationToken)
-    {
-        SendKeyDown(VkAlt);
-        await Task.Delay(30, cancellationToken);
-        PressKey(VkA);
-        await Task.Delay(30, cancellationToken);
-        SendKeyUp(VkAlt);
-        await Task.Delay(50, cancellationToken);
-    }
-
-    private static async Task PressRepeatedAsync(
-        ushort keyCode,
-        int count,
-        CancellationToken cancellationToken)
-    {
-        for (int i = 0; i < count; i++)
-        {
-            await PressKeyAsync(keyCode, cancellationToken);
-        }
-    }
-
-    private static async Task PressKeyAsync(ushort keyCode, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        PressKey(keyCode);
-        await Task.Delay(40, cancellationToken);
-    }
-
-    private static void PressKey(ushort keyCode)
-    {
-        SendKeyDown(keyCode);
-        SendKeyUp(keyCode);
-    }
-
-    private static void SendKeyDown(ushort keyCode)
-    {
-        SendKeyboardInput(keyCode, 0, 0);
-    }
-
-    private static void SendKeyUp(ushort keyCode)
-    {
-        SendKeyboardInput(keyCode, 0, KeyEventFKeyUp);
-    }
-
-    private static void TypeUnicodeText(string text)
-    {
-        foreach (char character in text)
-        {
-            SendKeyboardInput(0, character, KeyEventFUnicode);
-            SendKeyboardInput(0, character, KeyEventFUnicode | KeyEventFKeyUp);
-        }
-    }
-
-    private static void SendKeyboardInput(ushort virtualKey, ushort scanCode, uint flags)
-    {
-        INPUT[] inputs =
-        [
-            new INPUT
+            GetWindowThreadProcessId(windowHandle, out uint windowProcessId);
+            if (windowProcessId != (uint)processId)
             {
-                Type = InputKeyboard,
-                Union = new InputUnion
-                {
-                    KeyboardInput = new KEYBDINPUT
-                    {
-                        VirtualKey = virtualKey,
-                        ScanCode = scanCode,
-                        Flags = flags,
-                        Time = 0,
-                        ExtraInfo = IntPtr.Zero,
-                    },
-                },
-            },
-        ];
+                return true;
+            }
 
-        uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
-        if (sent != (uint)inputs.Length)
-        {
-            int errorCode = Marshal.GetLastWin32Error();
-            string message = errorCode switch
+            if (!IsWindowVisible(windowHandle))
             {
-                5 => "Access denied while sending keyboard input. Run Elevate Helper with the same privileges as Elevate.",
-                87 => "SendInput received invalid parameters (cbSize mismatch).",
-                _ => $"Unable to send keyboard input to Elevate. Win32Error={errorCode}.",
-            };
-            throw new InvalidOperationException(message);
-        }
+                return true;
+            }
+
+            string windowClass = GetWindowClass(windowHandle);
+            if (!windowClass.Equals("#32770", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (GetDlgItem(windowHandle, DialogFolderEditControlId) == IntPtr.Zero ||
+                GetDlgItem(windowHandle, DialogOkControlId) == IntPtr.Zero)
+            {
+                return true;
+            }
+
+            dialogHandle = windowHandle;
+            return false;
+        }, IntPtr.Zero);
+
+        return dialogHandle;
+    }
+
+    private static string GetWindowClass(IntPtr windowHandle)
+    {
+        StringBuilder builder = new(256);
+        _ = GetClassName(windowHandle, builder, builder.Capacity);
+        return builder.ToString().Trim();
     }
 
     private static List<string> GetElvxFiles(string path)
     {
         return Directory
-            .GetFiles(path)
-            .Where(file => file.EndsWith(".elvx", StringComparison.OrdinalIgnoreCase))
+            .EnumerateFiles(path, "*.elvx")
             .Select(Path.GetFileName)
             .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
             .Cast<string>()
+            .OrderBy(fileName => fileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static List<string> GetObservedWindowTitles(int processId)
+    {
+        HashSet<string> titles = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string title in GetWindowTitles(processId))
+        {
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                titles.Add(title);
+            }
+
+            if (TryExtractDocumentTitle(title, out string documentTitle))
+            {
+                titles.Add(documentTitle);
+            }
+        }
+
+        return titles.ToList();
     }
 
     private static List<string> GetWindowTitles(int processId)
@@ -567,17 +848,17 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     }
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint SendInput(uint numberOfInputs, INPUT[] inputs, int sizeOfInputStructure);
-
-    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(IntPtr windowHandle);
+    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr LoadKeyboardLayout(string keyboardLayoutId, uint flags);
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, string lParam);
 
     [DllImport("user32.dll")]
-    private static extern IntPtr ActivateKeyboardLayout(IntPtr keyboardLayoutHandle, uint flags);
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
@@ -585,9 +866,16 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int GetWindowTextLength(IntPtr hWnd);
 
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -598,58 +886,26 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct INPUT
-    {
-        public uint Type;
-        public InputUnion Union;
-    }
-
-    [StructLayout(LayoutKind.Explicit)]
-    private struct InputUnion
-    {
-        [FieldOffset(0)]
-        public MOUSEINPUT MouseInput;
-
-        [FieldOffset(0)]
-        public KEYBDINPUT KeyboardInput;
-
-        [FieldOffset(0)]
-        public HARDWAREINPUT HardwareInput;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct KEYBDINPUT
-    {
-        public ushort VirtualKey;
-        public ushort ScanCode;
-        public uint Flags;
-        public uint Time;
-        public IntPtr ExtraInfo;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MOUSEINPUT
-    {
-        public int X;
-        public int Y;
-        public uint MouseData;
-        public uint Flags;
-        public uint Time;
-        public IntPtr ExtraInfo;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct HARDWAREINPUT
-    {
-        public uint Message;
-        public ushort ParamL;
-        public ushort ParamH;
-    }
-
     private sealed record ProgressContext(
         string ProjectPrefix,
         string Scenario,
         HashSet<string> ElvxBaseNames,
         int Total);
+
+    private sealed record ProgressObservation(
+        int HighestWindowNumber,
+        string? HighestWindowTitle,
+        string? ActiveDocumentTitle,
+        string? DesignWindowTitle,
+        int CompletedFiles,
+        int CompletedCsvFiles,
+        bool HasBatchResults,
+        bool HasStarted)
+    {
+        public bool DesignVisible => !string.IsNullOrWhiteSpace(DesignWindowTitle);
+    }
+
+    internal sealed record ResultFileBaseline(
+        DateTimeOffset CapturedAtUtc,
+        IReadOnlyDictionary<string, DateTime> ExistingFileWriteTimesUtc);
 }

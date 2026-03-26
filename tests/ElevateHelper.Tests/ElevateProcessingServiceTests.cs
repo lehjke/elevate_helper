@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
 
@@ -173,6 +173,74 @@ public sealed class ElevateProcessingServiceTests
         Assert.Single(launcher.ResidenceCalls);
         Assert.Equal(workspace.Path, launcher.ResidenceCalls[0]);
         Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "floor_area.csv")));
+    }
+
+    [Fact]
+    public async Task RunAsync_ResidenceFlow_SupportsBaseFileWithoutNumericSuffix()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Tower.elvx");
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+
+        Assert.True(result.Success, result.Message);
+        Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "Tower2.elvx")));
+        Assert.Single(launcher.ResidenceCalls);
+    }
+
+    [Fact]
+    public async Task RunAsync_ResidenceFlow_RemovesStaleGeneratedArtifacts()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        File.WriteAllText(System.IO.Path.Combine(workspace.Path, "Project9.elvx"), "<Project />");
+        File.WriteAllText(System.IO.Path.Combine(workspace.Path, ".elevate-helper.generated-copies.txt"), "Project9.elvx");
+        File.WriteAllText(System.IO.Path.Combine(workspace.Path, "batch_results.csv"), "old");
+        File.WriteAllText(System.IO.Path.Combine(workspace.Path, "Project9_elvx.csv"), "old");
+        File.WriteAllText(System.IO.Path.Combine(workspace.Path, "Project9.elvr"), "old");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+
+        Assert.True(result.Success, result.Message);
+        Assert.False(File.Exists(System.IO.Path.Combine(workspace.Path, "Project9.elvx")));
+        Assert.False(File.Exists(System.IO.Path.Combine(workspace.Path, "batch_results.csv")));
+        Assert.False(File.Exists(System.IO.Path.Combine(workspace.Path, "Project9_elvx.csv")));
+        Assert.False(File.Exists(System.IO.Path.Combine(workspace.Path, "Project9.elvr")));
+        Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "Project02.elvx")));
+    }
+
+    [Fact]
+    public async Task RunAsync_ResidenceFlow_DoesNotOverwriteUntrackedElvxFiles()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        _ = workspace.CreateSampleElvx("Project02.elvx");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+
+        Assert.False(result.Success);
+        Assert.Contains("Cannot overwrite existing .elvx file", result.Message, StringComparison.Ordinal);
+        Assert.Empty(launcher.ResidenceCalls);
     }
 
     [Fact]

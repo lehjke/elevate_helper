@@ -1,30 +1,50 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
-using System.Reflection;
 using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
+using Microsoft.UI.Xaml.Controls;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace ElevateHelperWinUI.Views;
 
 public sealed partial class MainPage : Page
 {
+    private readonly AppLocalizationService localizationService = AppLocalizationService.Instance;
     private readonly IElevateIntegrationService integrationService = new ElevateIntegrationService();
     private readonly IElevateProcessingService processingService = new ElevateProcessingService();
     private readonly IElevateReportService reportService = new ElevateReportService();
+    private readonly SemaphoreSlim reportExecutionLock = new(1, 1);
     private readonly ObservableCollection<JobProgressViewModel> jobs = [];
     private int nextJobId = 1;
-
-    public ObservableCollection<JobProgressViewModel> Jobs => jobs;
 
     public MainPage()
     {
         this.InitializeComponent();
+        localizationService.LanguageChanged += OnLanguageChanged;
+
+        LanguageComboBox.SelectedItem = LanguageOptions.First(option => option.Language == localizationService.CurrentLanguage);
         OfficeRadioButton.IsChecked = true;
+
+        if (App.MainWindow is not null)
+        {
+            App.MainWindow.Title = Text.WindowTitle;
+        }
+
         UpdateModeButtons(BuildingType.Office);
         RefreshIntegrationStatus(showStatusMessage: true);
         RefreshJobsSummary();
     }
+
+    public ObservableCollection<JobProgressViewModel> Jobs => jobs;
+
+    public IReadOnlyList<LanguageOption> LanguageOptions { get; } =
+    [
+        new(AppLanguage.English, "English"),
+        new(AppLanguage.Russian, "Русский"),
+    ];
+
+    public AppLocalizationService.AppTextCatalog Text => localizationService.CurrentText;
 
     private void OnRunButtonClick(object sender, RoutedEventArgs e)
     {
@@ -55,11 +75,33 @@ public sealed partial class MainPage : Page
 
         if (buildingType != BuildingType.Office)
         {
-            SetStatus("Run Morning Only is available only for Office.", InfoBarSeverity.Warning);
+            SetStatus(Text.OfficeMorningOnlyMessage, InfoBarSeverity.Warning);
             return;
         }
 
         StartProcessingJob(path, buildingType, includeLunchPeak: false);
+    }
+
+    private async void OnBrowseFolderButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (App.MainWindow is null)
+        {
+            return;
+        }
+
+        FolderPicker picker = new();
+        picker.FileTypeFilter.Add("*");
+
+        IntPtr windowHandle = WindowNative.GetWindowHandle(App.MainWindow);
+        InitializeWithWindow.Initialize(picker, windowHandle);
+
+        Windows.Storage.StorageFolder? folder = await picker.PickSingleFolderAsync();
+        if (folder is null)
+        {
+            return;
+        }
+
+        PathTextBox.Text = folder.Path;
     }
 
     private async void OnReportButtonClick(object sender, RoutedEventArgs e)
@@ -70,11 +112,11 @@ public sealed partial class MainPage : Page
         }
 
         await ExecuteReportActionAsync(
-            "Generating report...",
+            Text.GeneratingReport,
             async () =>
             {
                 ProcessingResult result = await reportService.PrintReportAsync(path, buildingType);
-                HandleReportResult(result, "Report generated successfully.");
+                HandleReportResult(result, Text.ReportGenerated);
             });
     }
 
@@ -86,12 +128,12 @@ public sealed partial class MainPage : Page
         }
 
         await ExecuteReportActionAsync(
-            "Generating morning report...",
+            Text.GeneratingMorningReport,
             async () =>
             {
                 string morningPath = Path.Combine(path, "morning");
                 ProcessingResult result = await reportService.PrintReportAsync(morningPath, buildingType);
-                HandleReportResult(result, "Morning report generated successfully.");
+                HandleReportResult(result, Text.MorningReportGenerated);
             });
     }
 
@@ -103,18 +145,28 @@ public sealed partial class MainPage : Page
         }
 
         await ExecuteReportActionAsync(
-            "Generating lunch report...",
+            Text.GeneratingLunchReport,
             async () =>
             {
                 string lunchPath = Path.Combine(path, "lunch");
                 ProcessingResult result = await reportService.PrintReportAsync(lunchPath, buildingType);
-                HandleReportResult(result, "Lunch report generated successfully.");
+                HandleReportResult(result, Text.LunchReportGenerated);
             });
     }
 
     private void OnExitButtonClick(object sender, RoutedEventArgs e)
     {
         Application.Current.Exit();
+    }
+
+    private void OnLanguageComboBoxSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LanguageComboBox.SelectedItem is not LanguageOption option)
+        {
+            return;
+        }
+
+        localizationService.SetLanguage(option.Language);
     }
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
@@ -126,7 +178,7 @@ public sealed partial class MainPage : Page
         }
 
         UpdateModeButtons(selectedType.Value);
-        SetStatus($"Selected building type: {selectedType.Value}.", InfoBarSeverity.Informational);
+        SetStatus(localizationService.FormatSelectedBuildingType(selectedType.Value), InfoBarSeverity.Informational);
     }
 
     private bool TryGetInputs(out string path, out BuildingType buildingType)
@@ -136,20 +188,20 @@ public sealed partial class MainPage : Page
 
         if (string.IsNullOrWhiteSpace(path))
         {
-            SetStatus("Enter the path to the Elevate folder.", InfoBarSeverity.Warning);
+            SetStatus(Text.PathRequiredMessage, InfoBarSeverity.Warning);
             return false;
         }
 
         if (!Directory.Exists(path))
         {
-            SetStatus("The specified folder does not exist.", InfoBarSeverity.Error);
+            SetStatus(Text.FolderMissingMessage, InfoBarSeverity.Error);
             return false;
         }
 
         BuildingType? selectedType = GetSelectedBuildingType();
         if (!selectedType.HasValue)
         {
-            SetStatus("Select a building type.", InfoBarSeverity.Warning);
+            SetStatus(Text.BuildingTypeRequiredMessage, InfoBarSeverity.Warning);
             return false;
         }
 
@@ -169,9 +221,9 @@ public sealed partial class MainPage : Page
         BuildingType buildingType,
         bool includeLunchPeak)
     {
-        job.MarkRunning();
+        job.MarkRunning(localizationService);
         RefreshJobsSummary();
-        SetStatus($"{job.Title} started.", InfoBarSeverity.Informational);
+        SetStatus(localizationService.FormatRunStarted(job.Title), InfoBarSeverity.Informational);
 
         try
         {
@@ -193,6 +245,13 @@ public sealed partial class MainPage : Page
 
     private async Task ExecuteReportActionAsync(string busyText, Func<Task> action)
     {
+        if (!await reportExecutionLock.WaitAsync(0))
+        {
+            SetStatus(Text.ReportBusyMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        SetReportButtonsEnabled(isEnabled: false);
         try
         {
             SetStatus(busyText, InfoBarSeverity.Informational);
@@ -201,6 +260,11 @@ public sealed partial class MainPage : Page
         catch (Exception ex)
         {
             SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+        }
+        finally
+        {
+            SetReportButtonsEnabled(isEnabled: true);
+            _ = reportExecutionLock.Release();
         }
     }
 
@@ -219,8 +283,8 @@ public sealed partial class MainPage : Page
     {
         if (result.Success)
         {
-            job.MarkCompleted();
-            SetStatus($"{job.Title} completed successfully.", InfoBarSeverity.Success);
+            job.MarkCompleted(localizationService);
+            SetStatus(localizationService.FormatRunCompleted(job.Title), InfoBarSeverity.Success);
             ScheduleFinishedJobRemoval(job);
             return;
         }
@@ -237,188 +301,29 @@ public sealed partial class MainPage : Page
         BuildingType buildingType,
         bool includeLunchPeak)
     {
-        MethodInfo? method = FindRunMethod();
-        if (method is null)
-        {
-            return await processingService.RunAsync(path, buildingType, includeLunchPeak);
-        }
+        Progress<ElevateProgressInfo> morningProgress = new(update => HandleProgressUpdate(job, update));
+        Progress<ElevateProgressInfo>? lunchProgress = buildingType == BuildingType.Office && includeLunchPeak
+            ? new Progress<ElevateProgressInfo>(update => HandleProgressUpdate(job, update))
+            : null;
 
-        object?[] arguments = BuildArguments(method, job, path, buildingType, includeLunchPeak);
-        object? invocationResult = method.Invoke(processingService, arguments);
-        return await UnwrapProcessingResultAsync(invocationResult);
+        return await processingService.RunAsync(
+            path,
+            buildingType,
+            includeLunchPeak,
+            morningProgress,
+            lunchProgress,
+            CancellationToken.None);
     }
 
-    private MethodInfo? FindRunMethod()
+    private void HandleProgressUpdate(JobProgressViewModel job, ElevateProgressInfo update)
     {
-        return processingService
-            .GetType()
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Where(method => string.Equals(method.Name, nameof(IElevateProcessingService.RunAsync), StringComparison.Ordinal))
-            .Where(method =>
-            {
-                ParameterInfo[] parameters = method.GetParameters();
-                return parameters.Length > 0 &&
-                       parameters[0].ParameterType == typeof(string) &&
-                       parameters.Any(parameter => parameter.ParameterType == typeof(BuildingType)) &&
-                       parameters.Any(parameter => parameter.ParameterType == typeof(bool));
-            })
-            .OrderByDescending(method => method.GetParameters().Any(parameter => IsProgressParameter(parameter.ParameterType)))
-            .ThenByDescending(method => method.GetParameters().Length)
-            .FirstOrDefault();
-    }
-
-    private object?[] BuildArguments(
-        MethodInfo method,
-        JobProgressViewModel job,
-        string path,
-        BuildingType buildingType,
-        bool includeLunchPeak)
-    {
-        ParameterInfo[] parameters = method.GetParameters();
-        object?[] arguments = new object?[parameters.Length];
-
-        for (int index = 0; index < parameters.Length; index++)
-        {
-            ParameterInfo parameter = parameters[index];
-            if (parameter.ParameterType == typeof(string))
-            {
-                arguments[index] = path;
-                continue;
-            }
-
-            if (parameter.ParameterType == typeof(BuildingType))
-            {
-                arguments[index] = buildingType;
-                continue;
-            }
-
-            if (parameter.ParameterType == typeof(bool))
-            {
-                arguments[index] = includeLunchPeak;
-                continue;
-            }
-
-            if (parameter.ParameterType == typeof(CancellationToken))
-            {
-                arguments[index] = CancellationToken.None;
-                continue;
-            }
-
-            if (IsProgressParameter(parameter.ParameterType))
-            {
-                arguments[index] = CreateProgressReporter(parameter.ParameterType, job);
-                continue;
-            }
-
-            arguments[index] = parameter.HasDefaultValue ? parameter.DefaultValue : null;
-        }
-
-        return arguments;
-    }
-
-    private object? CreateProgressReporter(Type progressParameterType, JobProgressViewModel job)
-    {
-        if (!IsProgressParameter(progressParameterType))
-        {
-            return null;
-        }
-
-        Type updateType = progressParameterType.GetGenericArguments()[0];
-        MethodInfo callbackFactory = typeof(MainPage).GetMethod(
-            nameof(CreateProgressCallback),
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        MethodInfo genericFactory = callbackFactory.MakeGenericMethod(updateType);
-        Delegate callback = (Delegate)genericFactory.Invoke(this, [job])!;
-        Type progressType = typeof(Progress<>).MakeGenericType(updateType);
-        return Activator.CreateInstance(progressType, callback);
-    }
-
-    private Action<T> CreateProgressCallback<T>(JobProgressViewModel job)
-    {
-        return update => HandleProgressUpdate(job, update);
-    }
-
-    private void HandleProgressUpdate(JobProgressViewModel job, object? update)
-    {
-        if (update is null)
-        {
-            return;
-        }
-
         if (!DispatcherQueue.HasThreadAccess)
         {
             _ = DispatcherQueue.TryEnqueue(() => HandleProgressUpdate(job, update));
             return;
         }
 
-        int completed = ReadIntProperty(update, "Completed");
-        int total = ReadIntProperty(update, "Total");
-        string? scenario = ReadStringProperty(update, "Scenario");
-
-        job.UpdateProgress(scenario, completed, total);
-        RefreshJobsSummary();
-    }
-
-    private static int ReadIntProperty(object value, string propertyName)
-    {
-        PropertyInfo? property = value.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-        object? raw = property?.GetValue(value);
-        return raw switch
-        {
-            null => 0,
-            int number => number,
-            long number => (int)number,
-            short number => number,
-            byte number => number,
-            uint number => (int)number,
-            ulong number => (int)number,
-            _ when int.TryParse(Convert.ToString(raw, CultureInfo.InvariantCulture), NumberStyles.Any, CultureInfo.InvariantCulture, out int parsed) => parsed,
-            _ => 0,
-        };
-    }
-
-    private static string? ReadStringProperty(object value, string propertyName)
-    {
-        PropertyInfo? property = value.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-        object? raw = property?.GetValue(value);
-        return Convert.ToString(raw, CultureInfo.InvariantCulture);
-    }
-
-    private static bool IsProgressParameter(Type type)
-    {
-        return type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IProgress<>);
-    }
-
-    private static async Task<ProcessingResult> UnwrapProcessingResultAsync(object? invocationResult)
-    {
-        if (invocationResult is ProcessingResult processingResult)
-        {
-            return processingResult;
-        }
-
-        if (invocationResult is Task<ProcessingResult> typedTask)
-        {
-            return await typedTask;
-        }
-
-        if (invocationResult is Task task)
-        {
-            await task;
-
-            Type taskType = task.GetType();
-            if (taskType.IsGenericType)
-            {
-                object? result = taskType.GetProperty("Result", BindingFlags.Instance | BindingFlags.Public)?.GetValue(task);
-                if (result is ProcessingResult typedResult)
-                {
-                    return typedResult;
-                }
-            }
-
-            return ProcessingResult.Ok();
-        }
-
-        throw new InvalidOperationException("RunAsync returned an unsupported result.");
+        job.UpdateProgress(update.Scenario, update.Completed, update.Total, localizationService);
     }
 
     private void SetStatus(string message, InfoBarSeverity severity)
@@ -438,15 +343,30 @@ public sealed partial class MainPage : Page
     {
         if (!DispatcherQueue.HasThreadAccess)
         {
-            _ = DispatcherQueue.TryEnqueue(() => RefreshJobsSummary());
+            _ = DispatcherQueue.TryEnqueue(RefreshJobsSummary);
             return;
         }
 
         int runningJobs = Jobs.Count(job => job.IsRunning);
         BusyRing.IsActive = runningJobs > 0;
-        BusyTextBlock.Text = runningJobs > 0
-            ? $"{runningJobs} active job(s)"
-            : "Ready";
+        BusyTextBlock.Text = localizationService.GetQueueSummary(runningJobs);
+
+        bool hasJobs = Jobs.Count > 0;
+        JobsItemsControl.Visibility = hasJobs ? Visibility.Visible : Visibility.Collapsed;
+        EmptyQueueBorder.Visibility = hasJobs ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void SetReportButtonsEnabled(bool isEnabled)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => SetReportButtonsEnabled(isEnabled));
+            return;
+        }
+
+        ReportButton.IsEnabled = isEnabled;
+        MorningReportButton.IsEnabled = isEnabled;
+        LunchReportButton.IsEnabled = isEnabled;
     }
 
     private void ScheduleFinishedJobRemoval(JobProgressViewModel job)
@@ -518,9 +438,7 @@ public sealed partial class MainPage : Page
             return true;
         }
 
-        SetStatus(
-            "Peters Research Elevate is not detected. Install Elevate or set ELEVATE_EXE_PATH.",
-            InfoBarSeverity.Error);
+        SetStatus(Text.IntegrationMissingLaunch, InfoBarSeverity.Error);
         return false;
     }
 
@@ -537,63 +455,96 @@ public sealed partial class MainPage : Page
         {
             string versionPart = string.IsNullOrWhiteSpace(info.ProductVersion)
                 ? string.Empty
-                : $" Version: {info.ProductVersion}.";
+                : string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.IntegrationVersionFormat,
+                    info.ProductVersion);
             SetStatus(
-                $"Elevate found.{versionPart} Path: {info.ExecutablePath}",
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.IntegrationFoundFormat,
+                    versionPart,
+                    info.ExecutablePath),
                 InfoBarSeverity.Success);
             return;
         }
 
-        SetStatus(
-            "Elevate was not found. Check installation or define ELEVATE_EXE_PATH.",
-            InfoBarSeverity.Warning);
+        SetStatus(Text.IntegrationMissingCheck, InfoBarSeverity.Warning);
     }
 
     private JobProgressViewModel CreateJob(string path, BuildingType buildingType, bool includeLunchPeak)
     {
-        int jobId = nextJobId++;
-        string title = $"Job {jobId} - {buildingType}";
-        string mode = includeLunchPeak
-            ? "morning + lunch"
-            : buildingType == BuildingType.Office
-                ? "morning only"
-                : "single scenario";
-        string details = $"{path} - {mode}";
-
-        JobProgressViewModel job = new(title, details, buildingType, includeLunchPeak, RefreshJobsSummary);
+        JobProgressViewModel job = new(nextJobId++, path, buildingType, includeLunchPeak, localizationService);
         Jobs.Insert(0, job);
         RefreshJobsSummary();
         return job;
     }
 
-    private static string FormatResultMessage(ProcessingResult result)
+    private string FormatResultMessage(ProcessingResult result)
     {
-        string message = string.IsNullOrWhiteSpace(result.Message) ? "Operation failed." : result.Message;
+        string message = string.IsNullOrWhiteSpace(result.Message)
+            ? Text.OperationFailedMessage
+            : localizationService.TranslateRuntimeMessage(result.Message);
+        if (!message.Contains(Text.OperationFailedMessage, StringComparison.CurrentCultureIgnoreCase))
+        {
+            message = $"{Text.OperationFailedMessage} {message}";
+        }
+
         if (result.Exception is null)
         {
             return message;
         }
 
-        return $"{message} | {result.Exception.Message}";
+        return $"{message} | {localizationService.TranslateRuntimeMessage(result.Exception.Message)}";
     }
 
-    private static string BuildExceptionMessage(Exception exception)
+    private string BuildExceptionMessage(Exception exception)
     {
-        string message = exception.Message;
+        string message = localizationService.TranslateRuntimeMessage(exception.Message);
         if (exception.InnerException is not null)
         {
-            message = $"{message} | {exception.InnerException.Message}";
+            message = $"{message} | {localizationService.TranslateRuntimeMessage(exception.InnerException.Message)}";
         }
 
-        return message;
+        return $"{Text.OperationFailedMessage} {message}";
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => OnLanguageChanged(sender, e));
+            return;
+        }
+
+        foreach (JobProgressViewModel job in Jobs)
+        {
+            job.ApplyLocalization(localizationService);
+        }
+
+        LanguageComboBox.SelectedItem = LanguageOptions.First(option => option.Language == localizationService.CurrentLanguage);
+
+        if (App.MainWindow is not null)
+        {
+            App.MainWindow.Title = Text.WindowTitle;
+        }
+
+        Bindings.Update();
+        RefreshJobsSummary();
     }
 
     public sealed class JobProgressViewModel : INotifyPropertyChanged
     {
-        private readonly Action refreshSummary;
+        private readonly int jobId;
+        private readonly string path;
+        private readonly BuildingType buildingType;
+        private readonly bool includeLunchPeak;
         private readonly ScenarioProgressViewModel? primaryScenario;
         private readonly ScenarioProgressViewModel? morningScenario;
         private readonly ScenarioProgressViewModel? lunchScenario;
+        private JobScenarioKind activeScenarioKind;
+        private JobStateKind stateKind;
+        private string? failureMessage;
         private string title;
         private string details;
         private string statusText;
@@ -601,22 +552,27 @@ public sealed partial class MainPage : Page
         private bool isFinished;
 
         public JobProgressViewModel(
-            string title,
-            string details,
+            int jobId,
+            string path,
             BuildingType buildingType,
             bool includeLunchPeak,
-            Action refreshSummary)
+            AppLocalizationService localizationService)
         {
-            this.refreshSummary = refreshSummary;
-            this.title = title;
-            this.details = details;
-            statusText = "Queued";
+            this.jobId = jobId;
+            this.path = path;
+            this.buildingType = buildingType;
+            this.includeLunchPeak = includeLunchPeak;
+
+            title = string.Empty;
+            details = string.Empty;
+            statusText = string.Empty;
+            stateKind = JobStateKind.Queued;
 
             bool isOffice = buildingType == BuildingType.Office;
             if (isOffice && includeLunchPeak)
             {
-                morningScenario = new ScenarioProgressViewModel("Morning", refreshSummary);
-                lunchScenario = new ScenarioProgressViewModel("Lunch", refreshSummary);
+                morningScenario = new ScenarioProgressViewModel(JobScenarioKind.Morning);
+                lunchScenario = new ScenarioProgressViewModel(JobScenarioKind.Lunch);
                 Scenarios = new ObservableCollection<ScenarioProgressViewModel>
                 {
                     morningScenario,
@@ -625,7 +581,7 @@ public sealed partial class MainPage : Page
             }
             else if (isOffice)
             {
-                primaryScenario = new ScenarioProgressViewModel("Morning", refreshSummary);
+                primaryScenario = new ScenarioProgressViewModel(JobScenarioKind.Morning);
                 Scenarios = new ObservableCollection<ScenarioProgressViewModel>
                 {
                     primaryScenario!,
@@ -633,12 +589,15 @@ public sealed partial class MainPage : Page
             }
             else
             {
-                primaryScenario = new ScenarioProgressViewModel("Progress", refreshSummary);
+                primaryScenario = new ScenarioProgressViewModel(JobScenarioKind.Progress);
                 Scenarios = new ObservableCollection<ScenarioProgressViewModel>
                 {
                     primaryScenario!,
                 };
             }
+
+            activeScenarioKind = Scenarios[0].ScenarioKind;
+            ApplyLocalization(localizationService);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -707,31 +666,33 @@ public sealed partial class MainPage : Page
 
         public bool IsFinished => isFinished;
 
-        public void MarkRunning()
+        public void MarkRunning(AppLocalizationService localizationService)
         {
             isFinished = false;
+            failureMessage = null;
+            stateKind = JobStateKind.Running;
             IsRunning = true;
-            StatusText = "Running";
-            refreshSummary();
+            StatusText = localizationService.GetJobStateLabel(JobStateKind.Running);
         }
 
-        public void MarkCompleted()
+        public void MarkCompleted(AppLocalizationService localizationService)
         {
             isFinished = true;
+            failureMessage = null;
+            stateKind = JobStateKind.Completed;
             IsRunning = false;
-            StatusText = "Completed";
-            refreshSummary();
+            StatusText = localizationService.GetJobStateLabel(JobStateKind.Completed);
         }
 
         public void MarkFailed(string message)
         {
             isFinished = true;
+            failureMessage = message;
             IsRunning = false;
             StatusText = message;
-            refreshSummary();
         }
 
-        public void UpdateProgress(string? scenario, int completed, int total)
+        public void UpdateProgress(string? scenario, int completed, int total, AppLocalizationService localizationService)
         {
             if (isFinished)
             {
@@ -739,12 +700,54 @@ public sealed partial class MainPage : Page
             }
 
             ScenarioProgressViewModel target = ResolveScenario(scenario);
+            activeScenarioKind = target.ScenarioKind;
             target.Update(completed, total);
             StatusText = string.IsNullOrWhiteSpace(target.Label)
                 ? $"{completed}/{total}"
                 : $"{target.Label}: {completed}/{total}";
+            stateKind = JobStateKind.Running;
             IsRunning = true;
-            refreshSummary();
+            failureMessage = null;
+
+            if (completed == 0 && total == 0)
+            {
+                StatusText = localizationService.GetJobStateLabel(JobStateKind.Running);
+            }
+        }
+
+        public void ApplyLocalization(AppLocalizationService localizationService)
+        {
+            Title = localizationService.FormatJobTitle(jobId, buildingType);
+            Details = localizationService.FormatJobDetails(path, buildingType, includeLunchPeak);
+
+            foreach (ScenarioProgressViewModel scenario in Scenarios)
+            {
+                scenario.ApplyLocalization(localizationService);
+            }
+
+            if (!string.IsNullOrWhiteSpace(failureMessage))
+            {
+                StatusText = failureMessage;
+                return;
+            }
+
+            switch (stateKind)
+            {
+                case JobStateKind.Completed:
+                    StatusText = localizationService.GetJobStateLabel(JobStateKind.Completed);
+                    break;
+                case JobStateKind.Running:
+                {
+                    ScenarioProgressViewModel activeScenario = ResolveScenario(activeScenarioKind);
+                    StatusText = activeScenario.Total > 0 || activeScenario.Completed > 0
+                        ? $"{activeScenario.Label}: {activeScenario.Completed}/{activeScenario.Total}"
+                        : localizationService.GetJobStateLabel(JobStateKind.Running);
+                    break;
+                }
+                default:
+                    StatusText = localizationService.GetJobStateLabel(JobStateKind.Queued);
+                    break;
+            }
         }
 
         private ScenarioProgressViewModel ResolveScenario(string? scenario)
@@ -755,6 +758,21 @@ public sealed partial class MainPage : Page
             }
 
             if (lunchScenario is not null && IsLunchScenario(scenario))
+            {
+                return lunchScenario;
+            }
+
+            return primaryScenario ?? morningScenario ?? lunchScenario!;
+        }
+
+        private ScenarioProgressViewModel ResolveScenario(JobScenarioKind scenarioKind)
+        {
+            if (scenarioKind == JobScenarioKind.Morning && morningScenario is not null)
+            {
+                return morningScenario;
+            }
+
+            if (scenarioKind == JobScenarioKind.Lunch && lunchScenario is not null)
             {
                 return lunchScenario;
             }
@@ -781,13 +799,12 @@ public sealed partial class MainPage : Page
         private void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-            refreshSummary();
         }
     }
 
     public sealed class ScenarioProgressViewModel : INotifyPropertyChanged
     {
-        private readonly Action refreshSummary;
+        private readonly JobScenarioKind scenarioKind;
         private string label;
         private int completed;
         private int total;
@@ -796,14 +813,16 @@ public sealed partial class MainPage : Page
         private bool isIndeterminate = true;
         private string progressText = "0/0";
 
-        public ScenarioProgressViewModel(string label, Action refreshSummary)
+        public ScenarioProgressViewModel(JobScenarioKind scenarioKind)
         {
-            this.refreshSummary = refreshSummary;
-            this.label = label;
+            this.scenarioKind = scenarioKind;
+            label = string.Empty;
             maximum = 1;
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
+
+        public JobScenarioKind ScenarioKind => scenarioKind;
 
         public string Label
         {
@@ -918,13 +937,19 @@ public sealed partial class MainPage : Page
             Value = Total > 0 ? Math.Min(Completed, Total) : 0;
             IsIndeterminate = Total <= 0;
             ProgressText = $"{Completed}/{Total}";
-            refreshSummary();
+        }
+
+        public void ApplyLocalization(AppLocalizationService localizationService)
+        {
+            Label = localizationService.GetScenarioLabel(scenarioKind);
         }
 
         private void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-            refreshSummary();
         }
     }
+
+    public sealed record LanguageOption(AppLanguage Language, string DisplayName);
 }
+

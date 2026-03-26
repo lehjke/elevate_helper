@@ -31,6 +31,49 @@ public sealed class ElevateReportServiceTests
         Assert.Equal(stepFilePath, resolvedPath);
     }
 
+    [Theory]
+    [InlineData("Probe01.elvx", null, "Probe01_elvx.csv")]
+    [InlineData("Probe01.elvx", 2, "Probe02_elvx.csv")]
+    [InlineData("Tower.elvx", 2, "Tower2_elvx.csv")]
+    [InlineData("Project001.elvx", 12, "Project012_elvx.csv")]
+    public void BuildElevateResultCsvFileName_UsesBatchOutputNaming(string sourceFileName, int? step, string expected)
+    {
+        string actual = ElevateReportService.BuildElevateResultCsvFileName(sourceFileName, step);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void ResolveExistingCsvPath_FindsBatchOutputCsvForProjectRoot()
+    {
+        using ReportTestWorkspace workspace = new();
+        string reportRoot = workspace.CreateDirectory("probe");
+        string projectCsvPath = Path.Combine(reportRoot, "Probe01_elvx.csv");
+        File.WriteAllText(projectCsvPath, "test");
+
+        string? resolvedPath = ElevateReportService.ResolveExistingCsvPath(
+            ElevateReportService.BuildElevateResultCsvFileName("Probe01.elvx"),
+            reportRoot);
+
+        Assert.Equal(projectCsvPath, resolvedPath);
+    }
+
+    [Fact]
+    public void ResolveProjectSourcePath_FindsElvxWhenProjectCsvIsMissing()
+    {
+        using ReportTestWorkspace workspace = new();
+        string reportRoot = workspace.CreateDirectory("probe");
+        string projectElvxPath = Path.Combine(reportRoot, "Probe01.elvx");
+        File.WriteAllText(projectElvxPath, "<ElevateDocument />");
+
+        string? resolvedPath = ElevateReportService.ResolveProjectSourcePath(
+            "Probe01",
+            "Probe01.elvx",
+            reportRoot);
+
+        Assert.Equal(projectElvxPath, resolvedPath);
+    }
+
     [Fact]
     public void BuildOutputPaths_ReturnsExcelAndPdfPaths()
     {
@@ -120,6 +163,14 @@ public sealed class ElevateReportServiceTests
         string[] lines = ElevateReportService.ReadCsvLines(csvPath);
 
         Assert.Equal(expectedLine, lines[1]);
+    }
+
+    [Fact]
+    public void NormalizeElevateText_RepairsUtf8Mojibake()
+    {
+        string actual = ElevateReportService.NormalizeElevateText("Р–РёР»СЊРµ");
+
+        Assert.Equal("Жилье", actual);
     }
 
     private sealed class ReportTestWorkspace : IDisposable

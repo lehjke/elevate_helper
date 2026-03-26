@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
@@ -7,6 +7,7 @@ namespace ElevateHelperWinUI.Services;
 
 public sealed class ElevateProcessingService : IElevateProcessingService
 {
+    private const string GeneratedCopiesManifestFileName = ".elevate-helper.generated-copies.txt";
     private readonly IElevateLauncherService launcherService;
 
     public ElevateProcessingService()
@@ -119,7 +120,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         }
         catch (Exception ex)
         {
-            string message = $"An exception of type {ex.GetType().Name} occurred in makecopiesandrun().";
+            string message = $"An exception of type {ex.GetType().Name} occurred in makecopiesandrun(). {ex.Message}";
             return ProcessingResult.Fail(message, ex);
         }
 
@@ -141,7 +142,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         }
         catch (Exception ex)
         {
-            string message = $"An exception of type {ex.GetType().Name} occurred in get_area().";
+            string message = $"An exception of type {ex.GetType().Name} occurred in get_area(). {ex.Message}";
             return ProcessingResult.Fail(message, ex);
         }
 
@@ -256,8 +257,8 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         {
             string currentTitle = (string?)jobData.Attribute("JobTitle") ?? string.Empty;
             string suffix = string.Equals(peak, "Lunch", StringComparison.Ordinal)
-                ? " (обеденный пик)"
-                : " (утренний пик)";
+                ? " (\u043E\u0431\u0435\u0434\u0435\u043D\u043D\u044B\u0439 \u043F\u0438\u043A)"
+                : " (\u0443\u0442\u0440\u0435\u043D\u043D\u0438\u0439 \u043F\u0438\u043A)";
             jobData.SetAttributeValue("JobTitle", currentTitle + suffix);
         }
 
@@ -271,18 +272,8 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             throw new DirectoryNotFoundException(path);
         }
 
-        string[] files = Directory.GetFiles(path);
-        string? sourceFile = files
-            .Where(file => file.EndsWith("01.elvx", StringComparison.OrdinalIgnoreCase))
-            .Select(Path.GetFileName)
-            .FirstOrDefault();
-
-        if (sourceFile is null)
-        {
-            throw new FileNotFoundException($"No file ending with '01.elvx' found in '{path}'.");
-        }
-
-        string xmlFilePath = Path.Combine(path, sourceFile);
+        List<string> files = GetElvxFiles(path);
+        string xmlFilePath = Path.Combine(path, ResolveBaseFileName(path, files));
         string csvFilePath = Path.Combine(path, "floor_area.csv");
 
         XDocument xmlDocument = LoadXml(xmlFilePath);
@@ -323,32 +314,33 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         IProgress<ElevateProgressInfo>? lunchProgress,
         CancellationToken cancellationToken)
     {
+        DeleteTrackedGeneratedCopies(path);
         List<string> files = GetElvxFiles(path);
-        if (files.Count == 0)
-        {
-            throw new FileNotFoundException($"No .elvx files found in '{path}'.");
-        }
-
-        string baseFileName = files[0];
+        string baseFileName = ResolveBaseFileName(path, files);
 
         if (buildingType is BuildingType.Residence or BuildingType.Hotel)
         {
-            ModifyBuildingTypeResidence(Path.Combine(path, baseFileName), buildingType);
+            ClearGeneratedOutputs(path);
+
+            string residenceBaseFilePath = Path.Combine(path, baseFileName);
+            ModifyBuildingTypeResidence(residenceBaseFilePath, buildingType);
+            List<string> generatedCopies = new();
 
             for (int i = 2; i <= copiesCount; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 string newFileName = BuildCopyFileName(baseFileName, i);
+                generatedCopies.Add(newFileName);
+                string newFilePath = Path.Combine(path, newFileName);
+                EnsureCopyTargetDoesNotExist(newFilePath);
                 File.Copy(
-                    Path.Combine(path, baseFileName),
-                    Path.Combine(path, newFileName),
-                    overwrite: true);
-
-                files = GetElvxFiles(path);
-                string fileForCapacity = files[i - 1];
-                ModifyHandlingCapacity(Path.Combine(path, fileForCapacity), i);
+                    residenceBaseFilePath,
+                    newFilePath,
+                    overwrite: false);
+                ModifyHandlingCapacity(newFilePath, i);
             }
 
+            SaveTrackedGeneratedCopies(path, generatedCopies);
             await launcherService.LaunchResidenceAsync(path, morningProgress, cancellationToken);
             return;
         }
@@ -358,48 +350,51 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             throw new InvalidOperationException($"Unknown building type: {buildingType}");
         }
 
+        string officeBaseFilePath = Path.Combine(path, baseFileName);
         string morningPath = Path.Combine(path, "morning");
-        Directory.CreateDirectory(morningPath);
-        File.Copy(Path.Combine(path, baseFileName), Path.Combine(morningPath, baseFileName), overwrite: true);
+        ResetScenarioDirectory(morningPath);
+        string morningBaseFilePath = Path.Combine(morningPath, baseFileName);
+        File.Copy(officeBaseFilePath, morningBaseFilePath, overwrite: true);
 
         string lunchPath = string.Empty;
+        string lunchBaseFilePath = string.Empty;
         if (includeLunchPeak)
         {
             lunchPath = Path.Combine(path, "lunch");
-            Directory.CreateDirectory(lunchPath);
-            File.Copy(Path.Combine(path, baseFileName), Path.Combine(lunchPath, baseFileName), overwrite: true);
-            ModifyBuildingTypeOffice(Path.Combine(lunchPath, baseFileName), "Lunch");
-            ModifyTitle(Path.Combine(lunchPath, baseFileName), "Lunch");
+            ResetScenarioDirectory(lunchPath);
+            lunchBaseFilePath = Path.Combine(lunchPath, baseFileName);
+            File.Copy(officeBaseFilePath, lunchBaseFilePath, overwrite: true);
+            ModifyBuildingTypeOffice(lunchBaseFilePath, "Lunch");
+            ModifyTitle(lunchBaseFilePath, "Lunch");
+        }
+        else if (Directory.Exists(Path.Combine(path, "lunch")))
+        {
+            Directory.Delete(Path.Combine(path, "lunch"), recursive: true);
         }
 
-        ModifyBuildingTypeOffice(Path.Combine(morningPath, baseFileName), "Morning");
-        ModifyTitle(Path.Combine(morningPath, baseFileName), "Morning");
+        ModifyBuildingTypeOffice(morningBaseFilePath, "Morning");
+        ModifyTitle(morningBaseFilePath, "Morning");
 
         for (int i = 2; i <= copiesCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             string newFileName = BuildCopyFileName(baseFileName, i);
+            string morningCopyPath = Path.Combine(morningPath, newFileName);
 
             File.Copy(
-                Path.Combine(morningPath, baseFileName),
-                Path.Combine(morningPath, newFileName),
-                overwrite: true);
+                morningBaseFilePath,
+                morningCopyPath,
+                overwrite: false);
+            ModifyHandlingCapacity(morningCopyPath, i);
 
             if (includeLunchPeak)
             {
+                string lunchCopyPath = Path.Combine(lunchPath, newFileName);
                 File.Copy(
-                    Path.Combine(lunchPath, baseFileName),
-                    Path.Combine(lunchPath, newFileName),
-                    overwrite: true);
-            }
-
-            List<string> morningEntries = GetDirectoryEntries(morningPath);
-            ModifyHandlingCapacity(Path.Combine(morningPath, morningEntries[i - 1]), i);
-
-            if (includeLunchPeak)
-            {
-                List<string> lunchEntries = GetDirectoryEntries(lunchPath);
-                ModifyHandlingCapacity(Path.Combine(lunchPath, lunchEntries[i - 1]), i);
+                    lunchBaseFilePath,
+                    lunchCopyPath,
+                    overwrite: false);
+                ModifyHandlingCapacity(lunchCopyPath, i);
             }
         }
 
@@ -413,35 +408,172 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 
     private static string BuildCopyFileName(string sourceFileName, int copyIndex)
     {
-        int trimCount = copyIndex < 10 ? 6 : 7;
-        if (sourceFileName.Length <= trimCount)
+        FileNamingScheme scheme = GetFileNamingScheme(sourceFileName);
+        if (string.IsNullOrWhiteSpace(scheme.Prefix))
         {
             throw new InvalidOperationException($"Cannot build copy name from '{sourceFileName}'.");
         }
 
-        string prefix = sourceFileName[..^trimCount];
-        return $"{prefix}{copyIndex}.elvx";
+        string suffix = scheme.DigitWidth > 0
+            ? copyIndex.ToString($"D{scheme.DigitWidth}", CultureInfo.InvariantCulture)
+            : copyIndex.ToString(CultureInfo.InvariantCulture);
+        return $"{scheme.Prefix}{suffix}.elvx";
     }
 
     private static List<string> GetElvxFiles(string path)
     {
         return Directory
-            .GetFiles(path)
-            .Where(file => file.EndsWith(".elvx", StringComparison.OrdinalIgnoreCase))
+            .EnumerateFiles(path, "*.elvx")
             .Select(Path.GetFileName)
             .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
             .Cast<string>()
+            .OrderBy(fileName => fileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private static List<string> GetDirectoryEntries(string path)
+    private static string ResolveBaseFileName(string path, IReadOnlyList<string> files)
     {
-        return Directory
-            .GetFiles(path)
-            .Select(Path.GetFileName)
+        if (files.Count == 0)
+        {
+            throw new FileNotFoundException($"No .elvx files found in '{path}'.");
+        }
+
+        string? indexOneFile = GetUniqueCandidate(files, fileName => GetFileNamingScheme(fileName).SeedIndex == 1);
+        if (!string.IsNullOrWhiteSpace(indexOneFile))
+        {
+            return indexOneFile;
+        }
+
+        string? noDigitFile = GetUniqueCandidate(files, fileName => GetFileNamingScheme(fileName).SeedIndex is null);
+        if (!string.IsNullOrWhiteSpace(noDigitFile))
+        {
+            return noDigitFile;
+        }
+
+        if (files.Count == 1)
+        {
+            return files[0];
+        }
+
+        throw new InvalidOperationException(
+            $"Cannot determine the base .elvx file in '{path}'. Keep only the seed file in the root folder or use a file with index 1.");
+    }
+
+    private static string? GetUniqueCandidate(
+        IReadOnlyList<string> files,
+        Func<string, bool> predicate)
+    {
+        List<string> matches = files.Where(predicate).ToList();
+        return matches.Count == 1 ? matches[0] : null;
+    }
+
+    private static void ResetScenarioDirectory(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
+        }
+
+        Directory.CreateDirectory(path);
+    }
+
+    private static void DeleteTrackedGeneratedCopies(string path)
+    {
+        string manifestPath = GetGeneratedCopiesManifestPath(path);
+        if (!File.Exists(manifestPath))
+        {
+            return;
+        }
+
+        foreach (string fileName in File.ReadLines(manifestPath))
+        {
+            string trimmedFileName = fileName.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedFileName))
+            {
+                continue;
+            }
+
+            string candidatePath = Path.Combine(path, trimmedFileName);
+            if (File.Exists(candidatePath))
+            {
+                File.Delete(candidatePath);
+            }
+        }
+
+        File.Delete(manifestPath);
+    }
+
+    private static void ClearGeneratedOutputs(string path)
+    {
+        foreach (string file in Directory.EnumerateFiles(path))
+        {
+            string extension = Path.GetExtension(file);
+            string fileName = Path.GetFileName(file);
+            bool isGeneratedOutput =
+                fileName.Equals("batch_results.csv", StringComparison.OrdinalIgnoreCase) ||
+                fileName.Equals("floor_area.csv", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".elvr", StringComparison.OrdinalIgnoreCase) ||
+                fileName.EndsWith("_elvx.csv", StringComparison.OrdinalIgnoreCase);
+
+            if (isGeneratedOutput)
+            {
+                File.Delete(file);
+            }
+        }
+    }
+
+    private static void SaveTrackedGeneratedCopies(string path, IEnumerable<string> fileNames)
+    {
+        string manifestPath = GetGeneratedCopiesManifestPath(path);
+        List<string> entries = fileNames
             .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
-            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(fileName => fileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        if (entries.Count == 0)
+        {
+            if (File.Exists(manifestPath))
+            {
+                File.Delete(manifestPath);
+            }
+
+            return;
+        }
+
+        File.WriteAllLines(manifestPath, entries);
+    }
+
+    private static string GetGeneratedCopiesManifestPath(string path)
+    {
+        return Path.Combine(path, GeneratedCopiesManifestFileName);
+    }
+
+    private static FileNamingScheme GetFileNamingScheme(string sourceFileName)
+    {
+        string baseName = Path.GetFileNameWithoutExtension(sourceFileName) ?? string.Empty;
+        int endIndex = baseName.Length;
+        while (endIndex > 0 && char.IsDigit(baseName[endIndex - 1]))
+        {
+            endIndex--;
+        }
+
+        string prefix = baseName[..endIndex];
+        string digits = baseName[endIndex..];
+        int? seedIndex = digits.Length > 0
+            ? int.Parse(digits, CultureInfo.InvariantCulture)
+            : null;
+
+        return new FileNamingScheme(prefix, digits.Length, seedIndex);
+    }
+
+    private static void EnsureCopyTargetDoesNotExist(string filePath)
+    {
+        if (File.Exists(filePath))
+        {
+            throw new InvalidOperationException(
+                $"Cannot overwrite existing .elvx file: {filePath}. Remove the conflicting file or clean the folder first.");
+        }
     }
 
     private static XDocument LoadXml(string xmlFilePath)
@@ -468,4 +600,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 
         return value;
     }
+
+    private sealed record FileNamingScheme(string Prefix, int DigitWidth, int? SeedIndex);
 }
+

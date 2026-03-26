@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Stubs\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -19,13 +23,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../../Models/AppLanguage.cs" Link="Source/Models/AppLanguage.cs" />
     <Compile Include="../../Models/BuildingType.cs" Link="Source/Models/BuildingType.cs" />
+    <Compile Include="../../Models/ElevateIntegrationInfo.cs" Link="Source/Models/ElevateIntegrationInfo.cs" />
     <Compile Include="../../Models/ElevateProgressInfo.cs" Link="Source/Models/ElevateProgressInfo.cs" />
     <Compile Include="../../Models/ProcessingResult.cs" Link="Source/Models/ProcessingResult.cs" />
+    <Compile Include="../../Services/AppLocalizationService.cs" Link="Source/Services/AppLocalizationService.cs" />
+    <Compile Include="../../Services/IElevateIntegrationService.cs" Link="Source/Services/IElevateIntegrationService.cs" />
+    <Compile Include="../../Services/ElevateIntegrationService.cs" Link="Source/Services/ElevateIntegrationService.cs" />
+    <Compile Include="../../Services/IElevateLauncherService.cs" Link="Source/Services/IElevateLauncherService.cs" />
+    <Compile Include="../../Services/ElevateLauncherService.cs" Link="Source/Services/ElevateLauncherService.cs" />
     <Compile Include="../../Services/IElevateReportService.cs" Link="Source/Services/IElevateReportService.cs" />
     <Compile Include="../../Services/ElevateReportService.cs" Link="Source/Services/ElevateReportService.cs" />
     <Compile Include="../../Services/IElevateProcessingService.cs" Link="Source/Services/IElevateProcessingService.cs" />
-    <Compile Include="../../Services/IElevateLauncherService.cs" Link="Source/Services/IElevateLauncherService.cs" />
     <Compile Include="../../Services/ElevateProcessingService.cs" Link="Source/Services/ElevateProcessingService.cs" />
   </ItemGroup>
 
