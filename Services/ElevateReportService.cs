@@ -13,6 +13,11 @@ public sealed class ElevateReportService : IElevateReportService
     private const string SheetAssessment = "Оценка";
     private const string SheetCriteria = "Критерии";
 
+    private const int XlShiftDown = -4121;
+    private const int XlFormatFromLeftOrAbove = 0;
+    private const int XlFormatFromRightOrBelow = 1;
+    private const int XlFixedFormatTypePdf = 0;
+    private const int XlOpenXmlWorkbook = 51;
     private const int XlWhole = 1;
     private const int XlPart = 2;
     private const int XlValue = 2;
@@ -75,16 +80,16 @@ public sealed class ElevateReportService : IElevateReportService
             }
 
             mainData.Folder = NormalizePath(mainData.Folder);
-            if (!Directory.Exists(mainData.Folder))
+            string? resolvedBatchFolder = ResolveSearchRoot(path, mainData.Folder);
+            string? projectCsvPath = ResolveExistingCsvPath($"{mainData.FileName}.csv", path, mainData.Folder, resolvedBatchFolder);
+            if (projectCsvPath is null)
             {
-                return ProcessingResult.Fail($"Project CSV folder does not exist: {mainData.Folder}");
+                return ProcessingResult.Fail(
+                    $"Project CSV not found: {mainData.FileName}.csv. Searched under: {DescribeSearchRoots(path, mainData.Folder, resolvedBatchFolder)}");
             }
 
-            string projectCsvPath = Path.Combine(mainData.Folder, $"{mainData.FileName}.csv");
-            if (!File.Exists(projectCsvPath))
-            {
-                return ProcessingResult.Fail($"Project CSV not found: {projectCsvPath}");
-            }
+            mainData.Folder = Path.GetDirectoryName(projectCsvPath)
+                ?? throw new InvalidOperationException($"Cannot resolve project CSV folder for {projectCsvPath}.");
 
             ProjectParsedData projectData = ParseProjectCsv(projectCsvPath);
 
@@ -99,13 +104,13 @@ public sealed class ElevateReportService : IElevateReportService
             for (int step = 1; step <= nSteps; step++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                ParseStepCsv(mainData.FileName, mainData.Folder, projectData.Building, projectData.Elevator, step, ais, alw);
+                ParseStepCsv(mainData.FileName, path, mainData.Folder, projectData.Building, projectData.Elevator, step, ais, alw);
             }
 
-            string outputPath = BuildReportWorkbook(
+            GeneratedReportPaths outputPaths = BuildReportWorkbook(
                 templatePath,
                 path,
-                mainData.Folder,
+                path,
                 mainData.AWT,
                 mainData.ATTD,
                 ais,
@@ -116,7 +121,8 @@ public sealed class ElevateReportService : IElevateReportService
                 projectData.Passenger,
                 cancellationToken);
 
-            return ProcessingResult.Ok($"Report generated: {outputPath}");
+            return ProcessingResult.Ok(
+                $"Report generated: Excel {outputPaths.ExcelPath}; PDF {outputPaths.PdfPath}");
         }
         catch (OperationCanceledException)
         {
@@ -128,7 +134,7 @@ public sealed class ElevateReportService : IElevateReportService
         }
     }
 
-    private static string BuildReportWorkbook(
+    private static GeneratedReportPaths BuildReportWorkbook(
         string templatePath,
         string outputFolder,
         string xmlFolder,
@@ -173,15 +179,17 @@ public sealed class ElevateReportService : IElevateReportService
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            string outputFileName = SanitizeFileName($"{jobData[1]} {jobData[2]}.xlsx");
-            string outputPath = Path.Combine(outputFolder, outputFileName);
+            GeneratedReportPaths outputPaths = BuildOutputPaths(outputFolder, jobData[1], jobData[2]);
 
             workbook.Sheets(SheetAssessment).Activate();
-            workbook.SaveAs(outputPath);
+            TryDeleteFile(outputPaths.ExcelPath);
+            TryDeleteFile(outputPaths.PdfPath);
+            workbook.SaveAs(outputPaths.ExcelPath, XlOpenXmlWorkbook);
+            workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, outputPaths.PdfPath);
             workbook.Close(false);
             excelApp.Quit();
 
-            return outputPath;
+            return outputPaths;
         }
         finally
         {
@@ -234,7 +242,7 @@ public sealed class ElevateReportService : IElevateReportService
 
         for (int i = 1; i <= buildingData.NoFloors; i++)
         {
-            sheet.Rows(4).Insert();
+            InsertRow(sheet, 4, XlFormatFromRightOrBelow);
             sheet.Cells(4, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
             sheet.Cells(4, 3).Value = buildingData.FloorHeight[i];
             sheet.Cells(4, 4).Value = buildingData.FloorLevel[i];
@@ -273,22 +281,20 @@ public sealed class ElevateReportService : IElevateReportService
 
         for (int i = 1; i <= buildingData.NoFloors; i++)
         {
-            sheet.Rows(5).Insert();
+            InsertRow(sheet, 5, XlFormatFromRightOrBelow);
             sheet.Cells(5, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
 
             if (passengerData.Incoming != 0)
             {
                 if (IsYes(buildingData.EntranceFloor[i]) && buildingData.Bias[i] != 0)
                 {
-                    sheet.Cells(5, 3).Value = buildingData.Bias[i] / 100d;
-                    sheet.Cells(5, 3).NumberFormat = "0%";
+                    SetFormattedNumericCell(sheet, 5, 3, buildingData.Bias[i] / 100d, "0%");
                     sheet.Cells(5, 4).Value = sheet.Cells(2, 19).Value;
                 }
                 else if (!IsYes(buildingData.EntranceFloor[i]) && isServed[i] && buildingData.NoPeople[i] != 0)
                 {
                     sheet.Cells(5, 6).Value = sheet.Cells(2, 19).Value;
-                    sheet.Cells(5, 7).Value = buildingData.NoPeople[i] / buildingData.TotalPeople;
-                    sheet.Cells(5, 7).NumberFormat = "0.0%";
+                    SetFormattedNumericCell(sheet, 5, 7, buildingData.NoPeople[i] / buildingData.TotalPeople, "0.0%");
                 }
             }
 
@@ -296,15 +302,13 @@ public sealed class ElevateReportService : IElevateReportService
             {
                 if (!IsYes(buildingData.EntranceFloor[i]) && isServed[i] && buildingData.NoPeople[i] != 0)
                 {
-                    sheet.Cells(5, 8).Value = buildingData.NoPeople[i] / buildingData.TotalPeople;
-                    sheet.Cells(5, 8).NumberFormat = "0.0%";
+                    SetFormattedNumericCell(sheet, 5, 8, buildingData.NoPeople[i] / buildingData.TotalPeople, "0.0%");
                     sheet.Cells(5, 9).Value = sheet.Cells(2, 19).Value;
                 }
                 else if (IsYes(buildingData.EntranceFloor[i]) && buildingData.Bias[i] != 0)
                 {
                     sheet.Cells(5, 11).Value = sheet.Cells(2, 19).Value;
-                    sheet.Cells(5, 12).Value = buildingData.Bias[i] / 100d;
-                    sheet.Cells(5, 12).NumberFormat = "0%";
+                    SetFormattedNumericCell(sheet, 5, 12, buildingData.Bias[i] / 100d, "0%");
                 }
             }
 
@@ -312,12 +316,10 @@ public sealed class ElevateReportService : IElevateReportService
             {
                 if (!IsYes(buildingData.EntranceFloor[i]) && isServed[i] && buildingData.NoPeople[i] != 0)
                 {
-                    sheet.Cells(5, 13).Value = buildingData.NoPeople[i] / buildingData.TotalPeople;
-                    sheet.Cells(5, 13).NumberFormat = "0.0%";
+                    SetFormattedNumericCell(sheet, 5, 13, buildingData.NoPeople[i] / buildingData.TotalPeople, "0.0%");
                     sheet.Cells(5, 14).Value = sheet.Cells(2, 19).Value;
                     sheet.Cells(5, 16).Value = sheet.Cells(2, 19).Value;
-                    sheet.Cells(5, 17).Value = buildingData.NoPeople[i] / buildingData.TotalPeople;
-                    sheet.Cells(5, 17).NumberFormat = "0.0%";
+                    SetFormattedNumericCell(sheet, 5, 17, buildingData.NoPeople[i] / buildingData.TotalPeople, "0.0%");
                 }
             }
         }
@@ -353,7 +355,7 @@ public sealed class ElevateReportService : IElevateReportService
             ? "На этаж назначения (DDS)"
             : "Собирательная при движении вверх и вниз";
 
-        sheet.Rows(14).Insert();
+        InsertRow(sheet, 14, XlFormatFromLeftOrAbove);
         sheet.Cells(14, 2).Value = "Система управления";
         sheet.Cells(14, 2).HorizontalAlignment = -4131;
         sheet.Cells(14, 2).Font.Bold = true;
@@ -374,7 +376,7 @@ public sealed class ElevateReportService : IElevateReportService
 
         for (int i = 1; i <= buildingData.NoFloors; i++)
         {
-            sheet.Rows(17).Insert();
+            InsertRow(sheet, 17, XlFormatFromRightOrBelow);
             sheet.Cells(17, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
 
             for (int j = 1; j <= elevatorData.NoElevators; j++)
@@ -390,18 +392,17 @@ public sealed class ElevateReportService : IElevateReportService
             }
         }
 
-        sheet.Rows(6).Insert();
+        InsertRow(sheet, 6, XlFormatFromLeftOrAbove);
         sheet.Cells(6, 2).Value = "Площадь кабины, м2";
         double[] areas = ReadFloorAreas(xmlFolder);
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
-            sheet.Cells(6, 2 + i).Value = GetFloorAreaByIndex(areas, i);
-            sheet.Cells(6, 2 + i).NumberFormat = "0.00";
+            SetFormattedNumericCell(sheet, 6, 2 + i, GetFloorAreaByIndex(areas, i), "0.00");
         }
 
-        sheet.Rows(11).Insert();
+        InsertRow(sheet, 11, XlFormatFromLeftOrAbove);
         sheet.Cells(11, 2).Value = "Ширина дверей, мм";
-        sheet.Rows(12).Insert();
+        InsertRow(sheet, 12, XlFormatFromLeftOrAbove);
         sheet.Cells(12, 2).Value = "Тип дверей (ЦО/ТО)*";
 
         for (int i = 1; i <= elevatorData.NoElevators; i++)
@@ -415,7 +416,7 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         int totalRows = ToInt(sheet.UsedRange.Rows.Count);
-        sheet.Rows(totalRows + 1).Insert();
+        InsertRow(sheet, totalRows + 1, XlFormatFromLeftOrAbove);
         sheet.Cells(totalRows + 2, 2).Value = "*ЦО - центральное открывание, ТО - телескопическое открывание";
     }
 
@@ -1052,17 +1053,21 @@ public sealed class ElevateReportService : IElevateReportService
 
     private static void ParseStepCsv(
         string fileName,
-        string folder,
+        string reportRoot,
+        string projectCsvFolder,
         BuildingDataModel buildingData,
         ElevatorDataModel elevatorData,
         int step,
         double[] ais,
         double[] alw)
     {
-        string stepCsvPath = Path.Combine(folder, BuildStepFileName(fileName, step));
-        if (!File.Exists(stepCsvPath))
+        string stepFileName = BuildStepFileName(fileName, step);
+        string? stepCsvPath = ResolveExistingCsvPath(stepFileName, reportRoot, projectCsvFolder);
+        if (stepCsvPath is null)
         {
-            throw new FileNotFoundException($"Step CSV not found: {stepCsvPath}", stepCsvPath);
+            throw new FileNotFoundException(
+                $"Step CSV not found: {stepFileName}. Searched under: {DescribeSearchRoots(reportRoot, projectCsvFolder)}",
+                stepFileName);
         }
 
         CsvSheet sheet = CsvSheet.Load(stepCsvPath);
@@ -1371,11 +1376,7 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         int keyRow = dataRows.Count > 0 ? dataRows[0] : 2;
-        string fileName = sheet.Get(keyRow, 1);
-        if (fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            fileName = Path.GetFileNameWithoutExtension(fileName);
-        }
+        string fileName = Path.GetFileNameWithoutExtension(sheet.Get(keyRow, 1));
 
         return new MainBatchData
         {
@@ -1423,13 +1424,9 @@ public sealed class ElevateReportService : IElevateReportService
         };
     }
 
-    private static string BuildStepFileName(string fileName, int step)
+    internal static string BuildStepFileName(string fileName, int step)
     {
-        string cleanFileName = fileName.Trim();
-        if (cleanFileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            cleanFileName = Path.GetFileNameWithoutExtension(cleanFileName);
-        }
+        string cleanFileName = Path.GetFileNameWithoutExtension(fileName.Trim());
 
         string prefix = cleanFileName.Length > 3
             ? cleanFileName[..^3]
@@ -1447,6 +1444,57 @@ public sealed class ElevateReportService : IElevateReportService
         return normalized.TrimEnd('\\');
     }
 
+    internal static GeneratedReportPaths BuildOutputPaths(string outputFolder, string projectName, string buildingName)
+    {
+        string sanitizedBaseName = SanitizeFileName($"{projectName} {buildingName}");
+        return new GeneratedReportPaths(
+            Path.Combine(outputFolder, $"{sanitizedBaseName}.xlsx"),
+            Path.Combine(outputFolder, $"{sanitizedBaseName}.pdf"));
+    }
+
+    internal static string? ResolveExistingCsvPath(string targetFileName, params string?[] searchRoots)
+    {
+        if (string.IsNullOrWhiteSpace(targetFileName))
+        {
+            return null;
+        }
+
+        if (Path.IsPathRooted(targetFileName) && File.Exists(targetFileName))
+        {
+            return targetFileName;
+        }
+
+        string cleanTargetFileName = Path.GetFileName(targetFileName.Trim());
+
+        foreach (string root in ExpandSearchRoots(searchRoots))
+        {
+            string directPath = Path.Combine(root, cleanTargetFileName);
+            if (File.Exists(directPath))
+            {
+                return directPath;
+            }
+        }
+
+        foreach (string root in ExpandSearchRoots(searchRoots))
+        {
+            string? recursivePath = TryFindFileRecursive(root, cleanTargetFileName);
+            if (recursivePath is not null)
+            {
+                return recursivePath;
+            }
+        }
+
+        return null;
+    }
+
+    internal static string DescribeSearchRoots(params string?[] searchRoots)
+    {
+        string[] roots = ExpandSearchRoots(searchRoots).ToArray();
+        return roots.Length == 0
+            ? "(no valid roots)"
+            : string.Join("; ", roots);
+    }
+
     private static string SanitizeFileName(string name)
     {
         string result = name;
@@ -1457,10 +1505,151 @@ public sealed class ElevateReportService : IElevateReportService
 
         if (string.IsNullOrWhiteSpace(result))
         {
-            return "report.xlsx";
+            return "report";
         }
 
         return result;
+    }
+
+    private static IEnumerable<string> ExpandSearchRoots(params string?[] searchRoots)
+    {
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string? root in searchRoots)
+        {
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                continue;
+            }
+
+            string normalized = NormalizePath(root);
+            if (Directory.Exists(normalized) && seen.Add(normalized))
+            {
+                yield return normalized;
+            }
+
+            if (!Path.IsPathRooted(normalized))
+            {
+                continue;
+            }
+
+            string? parent = Path.GetDirectoryName(normalized);
+            if (!string.IsNullOrWhiteSpace(parent))
+            {
+                parent = NormalizePath(parent);
+                if (Directory.Exists(parent) && seen.Add(parent))
+                {
+                    yield return parent;
+                }
+            }
+        }
+    }
+
+    private static string? ResolveSearchRoot(string basePath, string? searchRoot)
+    {
+        if (string.IsNullOrWhiteSpace(searchRoot))
+        {
+            return null;
+        }
+
+        string normalized = NormalizePath(searchRoot);
+        return Path.IsPathRooted(normalized)
+            ? normalized
+            : NormalizePath(Path.Combine(basePath, normalized));
+    }
+
+    private static string? TryFindFileRecursive(string root, string targetFileName)
+    {
+        try
+        {
+            return Directory
+                .EnumerateFiles(root, targetFileName, SearchOption.AllDirectories)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void InsertRow(dynamic sheet, int row, int copyOrigin)
+    {
+        try
+        {
+            sheet.Rows(row).Insert(XlShiftDown, copyOrigin);
+        }
+        catch
+        {
+            sheet.Rows(row).Insert();
+        }
+    }
+
+    private static void SetFormattedNumericCell(dynamic sheet, int row, int column, double value, string format)
+    {
+        dynamic cell = sheet.Cells(row, column);
+        cell.Value = value;
+
+        if (TryApplyNumberFormat(cell, format))
+        {
+            return;
+        }
+
+        cell.Value = FormatNumericText(value, format);
+    }
+
+    private static bool TryApplyNumberFormat(dynamic cell, string format)
+    {
+        try
+        {
+            cell.NumberFormat = format;
+            return true;
+        }
+        catch
+        {
+            try
+            {
+                cell.NumberFormatLocal = ToLocalNumberFormat(format);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    private static string ToLocalNumberFormat(string format)
+    {
+        string separator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+        return separator == "."
+            ? format
+            : format.Replace(".", separator, StringComparison.Ordinal);
+    }
+
+    private static string FormatNumericText(double value, string format)
+    {
+        return format switch
+        {
+            "0%" => value.ToString("0%", CultureInfo.CurrentCulture),
+            "0.0%" => value.ToString("0.0%", CultureInfo.CurrentCulture),
+            "0.00" => value.ToString("0.00", CultureInfo.CurrentCulture),
+            _ => value.ToString(CultureInfo.CurrentCulture),
+        };
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Ignore stale output cleanup errors and let Excel surface a save error if needed.
+        }
     }
 
     private static double[] ReadFloorAreas(string xmlFolder)
@@ -1861,6 +2050,8 @@ public sealed class ElevateReportService : IElevateReportService
 
         public double[] ATTD { get; set; } = [0];
     }
+
+    internal readonly record struct GeneratedReportPaths(string ExcelPath, string PdfPath);
 
     private sealed class ProjectParsedData
     {
