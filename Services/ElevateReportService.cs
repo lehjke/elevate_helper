@@ -177,6 +177,7 @@ public sealed class ElevateReportService : IElevateReportService
             FillFlowSheet(workbook, buildingData, passengerData, isServed);
             FillGroupSheet(workbook, xmlFolder, buildingData, elevatorData);
             FillAssessmentAndCriteriaSheets(workbook, awt, attd, ais, alw, buildingData, elevatorData, passengerData, servedFloors, isServed);
+            RemovePrintLayoutNames(workbook);
             ApplyPrintLayout(workbook);
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -187,12 +188,6 @@ public sealed class ElevateReportService : IElevateReportService
             TryDeleteFile(outputPaths.ExcelPath);
             TryDeleteFile(outputPaths.PdfPath);
             workbook.SaveAs(outputPaths.ExcelPath, XlOpenXmlWorkbook);
-            workbook.Close(false);
-            ReleaseComObject(ref workbook);
-
-            workbook = excelApp.Workbooks.Open(outputPaths.ExcelPath);
-            ApplyPrintLayout(workbook);
-            workbook.Sheets(SheetAssessment).Activate();
             workbook.Save();
             workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, outputPaths.PdfPath, Type.Missing, true, false);
             workbook.Close(false);
@@ -307,6 +302,54 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         return $"${startColumn}${startRow}:${endColumn}${endRow}";
+    }
+
+    private static void RemovePrintLayoutNames(dynamic workbook)
+    {
+        RemovePrintLayoutNamesFromCollection(workbook.Names);
+
+        foreach (dynamic sheet in workbook.Worksheets)
+        {
+            RemovePrintLayoutNamesFromCollection(sheet.Names);
+        }
+    }
+
+    private static void RemovePrintLayoutNamesFromCollection(dynamic names)
+    {
+        int count = ToInt(names.Count);
+        for (int index = count; index >= 1; index--)
+        {
+            dynamic? name = null;
+            try
+            {
+                name = names.Item(index);
+                string normalizedName = Convert.ToString(name.NameLocal, CultureInfo.InvariantCulture)
+                    ?? Convert.ToString(name.Name, CultureInfo.InvariantCulture)
+                    ?? string.Empty;
+
+                if (IsPrintLayoutName(normalizedName))
+                {
+                    name.Delete();
+                }
+            }
+            finally
+            {
+                ReleaseComObject(ref name);
+            }
+        }
+    }
+
+    internal static bool IsPrintLayoutName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        return name.Contains("Print_Area", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Print_Titles", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Область_печати", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Заголовки_для_печати", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void ReleaseComObject<T>(ref T? comObject)

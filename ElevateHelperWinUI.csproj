@@ -15,9 +15,9 @@
         <LangVersion>latest</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <RootNamespace>ElevateHelperWinUI</RootNamespace>
-        <Version>1.17.4</Version>
-        <AssemblyVersion>1.17.4.0</AssemblyVersion>
-        <FileVersion>1.17.4.0</FileVersion>
+        <Version>1.17.5</Version>
+        <AssemblyVersion>1.17.5.0</AssemblyVersion>
+        <FileVersion>1.17.5.0</FileVersion>
         <InformationalVersion>1.17.3</InformationalVersion>
         <RepositoryUrl>https://github.com/lehjke/elevate_helper</RepositoryUrl>
 

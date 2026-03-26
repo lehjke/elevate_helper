@@ -68,6 +68,19 @@ public sealed class ElevateReportServiceTests
     }
 
     [Theory]
+    [InlineData("Титул!Print_Area", true)]
+    [InlineData("Здание!Print_Titles", true)]
+    [InlineData("Пассажиропоток!Область_печати", true)]
+    [InlineData("'Лифтовая группа'!Заголовки_для_печати", true)]
+    [InlineData("RandomName", false)]
+    public void IsPrintLayoutName_DetectsBuiltInAndLocalizedPrintNames(string name, bool expected)
+    {
+        bool actual = ElevateReportService.IsPrintLayoutName(name);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("3,60", 3.6)]
     [InlineData("3.60", 3.6)]
     [InlineData("1.234,56", 1234.56)]
