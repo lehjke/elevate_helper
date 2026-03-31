@@ -173,6 +173,71 @@ public sealed class ElevateReportServiceTests
         Assert.Equal("Жилье", actual);
     }
 
+    [Theory]
+    [InlineData(2.90, 5.70, null, "1200", "ТО")]
+    [InlineData(1.90, 3.10, null, "1100", "ЦО")]
+    [InlineData(2.04, 3.26, 0.0, "600", "ТО")]
+    [InlineData(2.04, 3.26, 0.5, "1200", "ЦО")]
+    public void ResolveDoorInfo_UsesDoorTimingsAndPreOpeningTieBreaker(
+        double openTime,
+        double closeTime,
+        double? preOpening,
+        string expectedWidth,
+        string expectedType)
+    {
+        (string width, string type) = ElevateReportService.ResolveDoorInfo(openTime, closeTime, preOpening);
+
+        Assert.Equal(expectedWidth, width);
+        Assert.Equal(expectedType, type);
+    }
+
+    [Theory]
+    [InlineData(2.0, 3.3)]
+    [InlineData(2.1, 3.5)]
+    [InlineData(1.9, 3.2)]
+    public void ResolveDoorInfo_ReturnsUnknownForAmbiguousOrUnsupportedPairsWithoutPreOpening(
+        double openTime,
+        double closeTime)
+    {
+        (string width, string type) = ElevateReportService.ResolveDoorInfo(openTime, closeTime);
+
+        Assert.Equal("-", width);
+        Assert.Equal("-", type);
+    }
+
+    [Theory]
+    [InlineData(1.70, 2.80, "900", "ЦО")]
+    [InlineData(2.30, 4.00, "1550", "ЦО")]
+    [InlineData(3.90, 7.80, "1750", "ТО")]
+    [InlineData(4.00, 8.00, "1800", "ТО")]
+    public void ResolveDoorInfo_MapsCorrectedHydraPlusRows(
+        double openTime,
+        double closeTime,
+        string expectedWidth,
+        string expectedType)
+    {
+        (string width, string type) = ElevateReportService.ResolveDoorInfo(openTime, closeTime);
+
+        Assert.Equal(expectedWidth, width);
+        Assert.Equal(expectedType, type);
+    }
+
+    [Theory]
+    [InlineData(2.50, 4.50, 0.0, "900", "ТО")]
+    [InlineData(2.50, 4.50, 0.5, "1800", "ЦО")]
+    public void ResolveDoorInfo_UsesDoorPreOpeningForAmbiguousLargeDoorPairs(
+        double openTime,
+        double closeTime,
+        double preOpening,
+        string expectedWidth,
+        string expectedType)
+    {
+        (string width, string type) = ElevateReportService.ResolveDoorInfo(openTime, closeTime, preOpening);
+
+        Assert.Equal(expectedWidth, width);
+        Assert.Equal(expectedType, type);
+    }
+
     private sealed class ReportTestWorkspace : IDisposable
     {
         public string RootPath { get; } = Path.Combine(

@@ -556,11 +556,16 @@ public sealed class ElevateReportService : IElevateReportService
 
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
-            double dOpen = ToDouble(sheet.Cells(14, 2 + i).Value);
-            double dClose = ToDouble(sheet.Cells(15, 2 + i).Value);
+            double dOpen = ParseDoubleFlexible(elevatorData.Spec[i, 6]);
+            double dClose = ParseDoubleFlexible(elevatorData.Spec[i, 7]);
+            double? doorPreOpening = double.IsNaN(elevatorData.DoorPreOpening[i])
+                ? null
+                : elevatorData.DoorPreOpening[i];
 
-            GetDoorType(dOpen, dClose, out string width, out string type);
-            sheet.Cells(11, 2 + i).Value = width;
+            (string width, string type) = ResolveDoorInfo(dOpen, dClose, doorPreOpening);
+            sheet.Cells(11, 2 + i).Value = string.IsNullOrWhiteSpace(width)
+                ? "-"
+                : $"'{width}";
             sheet.Cells(12, 2 + i).Value = type;
         }
 
@@ -1513,6 +1518,7 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         elevatorData.Spec = new string[elevatorData.NoElevators + 1, 11];
+        elevatorData.DoorPreOpening = CreateDoorPreOpeningArray(elevatorData.NoElevators);
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
             for (int j = 1; j <= 10; j++)
@@ -1670,6 +1676,7 @@ public sealed class ElevateReportService : IElevateReportService
             (string?)analysisElement.Element("Dispatcher")?.Element("Algorithm")?.Attribute("AlgorithmName"));
         elevatorData.NoElevators = carElements.Count;
         elevatorData.Spec = new string[elevatorData.NoElevators + 1, 11];
+        elevatorData.DoorPreOpening = CreateDoorPreOpeningArray(elevatorData.NoElevators);
         elevatorData.FloorsServed = new string[elevatorData.NoElevators + 1, buildingData.NoFloors + 1];
 
         for (int i = 1; i <= elevatorData.NoElevators; i++)
@@ -1690,6 +1697,7 @@ public sealed class ElevateReportService : IElevateReportService
             elevatorData.Spec[i, 8] = FormatNumericSpec((string?)carElement.Attribute("DoorDwell1"), "0.00");
             elevatorData.Spec[i, 9] = FormatNumericSpec((string?)carElement.Attribute("MotorStartDelay"), "0.00");
             elevatorData.Spec[i, 10] = FormatNumericSpec((string?)carElement.Attribute("LevelingDelay"), "0.00");
+            elevatorData.DoorPreOpening[i] = ParseDoubleOrNaN((string?)carElement.Attribute("DoorPreOpening"));
 
             foreach (XElement floorServedElement in carElement.Elements("FloorServed"))
             {
@@ -1744,6 +1752,20 @@ public sealed class ElevateReportService : IElevateReportService
     {
         double value = ParseDoubleFlexible(rawValue);
         return value.ToString(format, CultureInfo.GetCultureInfo("ru-RU"));
+    }
+
+    private static double[] CreateDoorPreOpeningArray(int noElevators)
+    {
+        double[] values = new double[noElevators + 1];
+        Array.Fill(values, double.NaN);
+        return values;
+    }
+
+    private static double ParseDoubleOrNaN(string? rawValue)
+    {
+        return string.IsNullOrWhiteSpace(rawValue)
+            ? double.NaN
+            : ParseDoubleFlexible(rawValue);
     }
 
     internal static string NormalizeElevateText(string? rawValue)
@@ -2182,53 +2204,105 @@ public sealed class ElevateReportService : IElevateReportService
             : 0;
     }
 
-    private static void GetDoorType(double dOpen, double dClose, out string width, out string type)
+    private static readonly (int OpenKey, int CloseKey, string Width, string Type)[] DoorTimingRules =
+    [
+        (20, 33, "600", "ТО"),
+        (21, 35, "650", "ТО"),
+        (21, 37, "700", "ТО"),
+        (22, 39, "750", "ТО"),
+        (23, 41, "800", "ТО"),
+        (24, 43, "850", "ТО"),
+        (25, 45, "900", "ТО"),
+        (26, 47, "950", "ТО"),
+        (26, 49, "1000", "ТО"),
+        (27, 51, "1050", "ТО"),
+        (28, 53, "1100", "ТО"),
+        (29, 55, "1150", "ТО"),
+        (29, 57, "1200", "ТО"),
+        (30, 59, "1250", "ТО"),
+        (31, 60, "1300", "ТО"),
+        (32, 62, "1350", "ТО"),
+        (33, 64, "1400", "ТО"),
+        (34, 66, "1450", "ТО"),
+        (35, 68, "1500", "ТО"),
+        (36, 70, "1550", "ТО"),
+        (36, 72, "1600", "ТО"),
+        (37, 74, "1650", "ТО"),
+        (38, 76, "1700", "ТО"),
+        (39, 78, "1750", "ТО"),
+        (40, 80, "1800", "ТО"),
+        (15, 22, "600", "ЦО"),
+        (16, 23, "650", "ЦО"),
+        (16, 24, "700", "ЦО"),
+        (17, 25, "750", "ЦО"),
+        (17, 26, "800", "ЦО"),
+        (17, 27, "850", "ЦО"),
+        (17, 28, "900", "ЦО"),
+        (18, 29, "1000", "ЦО"),
+        (19, 30, "1050", "ЦО"),
+        (19, 31, "1100", "ЦО"),
+        (20, 32, "1150", "ЦО"),
+        (20, 33, "1200", "ЦО"),
+        (21, 34, "1250", "ЦО"),
+        (21, 35, "1300", "ЦО"),
+        (22, 36, "1350", "ЦО"),
+        (22, 37, "1400", "ЦО"),
+        (22, 38, "1450", "ЦО"),
+        (22, 39, "1500", "ЦО"),
+        (23, 40, "1550", "ЦО"),
+        (23, 41, "1600", "ЦО"),
+        (24, 42, "1650", "ЦО"),
+        (24, 43, "1700", "ЦО"),
+        (25, 44, "1750", "ЦО"),
+        (25, 45, "1800", "ЦО"),
+    ];
+
+    internal static (string Width, string Type) ResolveDoorInfo(
+        double doorOpenTime,
+        double doorCloseTime,
+        double? doorPreOpening = null)
     {
-        (double Open, double Close, string Width, string Type)[] map =
-        [
-            (2.1, 3.7, "700", "ТО"),
-            (2.2, 3.9, "750", "ТО"),
-            (2.3, 4.1, "800", "ТО"),
-            (2.4, 4.3, "850", "ТО"),
-            (2.5, 4.5, "900", "ТО"),
-            (2.6, 4.7, "950", "ТО"),
-            (2.6, 4.9, "1000", "ТО"),
-            (2.7, 5.1, "1050", "ТО"),
-            (2.8, 5.3, "1100", "ТО"),
-            (2.9, 5.5, "1150", "ТО"),
-            (2.9, 5.7, "1200", "ТО"),
-            (3.0, 5.9, "1250", "ТО"),
-            (3.1, 6.0, "1300", "ТО"),
-            (1.5, 2.2, "600", "ЦО"),
-            (1.6, 2.3, "650", "ЦО"),
-            (1.6, 2.4, "700", "ЦО"),
-            (1.7, 2.5, "750", "ЦО"),
-            (1.7, 2.6, "800", "ЦО"),
-            (1.7, 2.7, "850", "ЦО"),
-            (1.7, 2.8, "900", "ЦО"),
-            (1.8, 2.9, "1000", "ЦО"),
-            (1.9, 3.0, "1050", "ЦО"),
-            (1.9, 3.1, "1100", "ЦО"),
-            (2.0, 3.2, "1150", "ЦО"),
-            (2.0, 3.3, "1200", "ЦО"),
-            (2.1, 3.4, "1250", "ЦО"),
-            (2.1, 3.5, "1300", "ЦО"),
-        ];
+        int openKey = BuildDoorTimingKey(doorOpenTime);
+        int closeKey = BuildDoorTimingKey(doorCloseTime);
 
-        foreach ((double open, double close, string doorWidth, string doorType) in map)
+        List<(string Width, string Type)> matches = DoorTimingRules
+            .Where(rule => rule.OpenKey == openKey && rule.CloseKey == closeKey)
+            .Select(rule => (rule.Width, rule.Type))
+            .ToList();
+
+        return matches.Count switch
         {
-            if (!NearlyEquals(open, dOpen, 0.11) || !NearlyEquals(close, dClose, 0.11))
-            {
-                continue;
-            }
+            0 => ("-", "-"),
+            1 => matches[0],
+            _ => ResolveAmbiguousDoorInfo(matches, doorPreOpening),
+        };
+    }
 
-            width = $"'{doorWidth}";
-            type = doorType;
-            return;
+    private static int BuildDoorTimingKey(double value)
+    {
+        return (int)Math.Round(value * 10d, MidpointRounding.AwayFromZero);
+    }
+
+    private static (string Width, string Type) ResolveAmbiguousDoorInfo(
+        List<(string Width, string Type)> matches,
+        double? doorPreOpening)
+    {
+        if (doorPreOpening is not null)
+        {
+            string preferredType = doorPreOpening.Value > 0.01d
+                ? "ЦО"
+                : "ТО";
+
+            (string Width, string Type) exactMatch = matches.FirstOrDefault(match =>
+                string.Equals(match.Type, preferredType, StringComparison.Ordinal));
+
+            if (!string.IsNullOrWhiteSpace(exactMatch.Width))
+            {
+                return exactMatch;
+            }
         }
 
-        width = "-";
-        type = "-";
+        return ("-", "-");
     }
 
     private static void SortOneBased(double[] arr)
@@ -2762,6 +2836,8 @@ public sealed class ElevateReportService : IElevateReportService
         public int NoElevators { get; set; }
 
         public string[,] Spec { get; set; } = new string[1, 1];
+
+        public double[] DoorPreOpening { get; set; } = [double.NaN];
 
         public string[,] FloorsServed { get; set; } = new string[1, 1];
     }

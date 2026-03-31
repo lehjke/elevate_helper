@@ -20,6 +20,8 @@ $publishDir = Join-Path $repoRoot "artifacts/publish/$Runtime"
 $releaseDir = Join-Path $repoRoot 'artifacts/release'
 $appExePath = Join-Path $publishDir 'ElevateHelperWinUI.exe'
 $outputInstallerPath = Join-Path $releaseDir "ElevateHelper-$Runtime-$Tag-setup.exe"
+$stagingRoot = Join-Path $env:TEMP 'ElevateHelperInstallerStage'
+$stagingDir = Join-Path $stagingRoot $Runtime
 
 if (-not (Test-Path $appExePath)) {
     & (Join-Path $PSScriptRoot 'build-release.ps1') -Tag $Tag -Runtime $Runtime -Configuration $Configuration
@@ -32,6 +34,13 @@ if (-not (Test-Path $releaseDir)) {
 if (Test-Path $outputInstallerPath) {
     Remove-Item -Path $outputInstallerPath -Force
 }
+
+if (Test-Path $stagingDir) {
+    Remove-Item -Path $stagingDir -Recurse -Force
+}
+
+New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+Copy-Item -Path (Join-Path $publishDir '*') -Destination $stagingDir -Recurse -Force
 
 [xml]$projectXml = Get-Content -Path $projectPath
 $appVersion = $projectXml.Project.PropertyGroup |
@@ -76,13 +85,17 @@ if ([string]::IsNullOrWhiteSpace($isccPath)) {
 & $isccPath `
     "/DAppVersion=$appVersion" `
     "/DReleaseTag=$Tag" `
-    "/DSourceDir=$publishDir" `
+    "/DSourceDir=$stagingDir" `
     "/DOutputDir=$releaseDir" `
     "/DRuntime=$Runtime" `
     $installerScriptPath
 
 if (-not (Test-Path $outputInstallerPath)) {
     throw "Installer was not created: $outputInstallerPath"
+}
+
+if (Test-Path $stagingRoot) {
+    Remove-Item -Path $stagingRoot -Recurse -Force
 }
 
 Write-Host "Installer created: $outputInstallerPath"
