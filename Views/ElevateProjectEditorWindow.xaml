@@ -135,6 +135,20 @@
                         </StackPanel>
 
                         <StackPanel x:Name="BuildingPanel" Spacing="16" Visibility="Collapsed">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button x:Name="AddFloorAboveButton" Grid.Column="0" Click="OnAddFloorAboveButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                                <Button x:Name="AddFloorBelowButton" Grid.Column="1" Click="OnAddFloorBelowButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                                <Button x:Name="SortTopFirstButton" Grid.Column="2" Click="OnSortTopFirstButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                                <Button x:Name="SortBottomFirstButton" Grid.Column="3" Click="OnSortBottomFirstButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                            </Grid>
+
                             <Border x:Name="AbsenteeismCard" Style="{StaticResource SectionCardStyle}">
                                 <StackPanel Spacing="6">
                                     <TextBlock x:Name="AbsenteeismLabelTextBlock" Style="{StaticResource SectionHintStyle}" />

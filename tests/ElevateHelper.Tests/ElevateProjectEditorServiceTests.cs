@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
@@ -260,6 +261,120 @@ public sealed class ElevateProjectEditorServiceTests
         Assert.Contains(
             root.Descendants("Series"),
             series => string.Equals((string?)series.Attribute("Data"), "Lobby", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RebuildsBuildingFloorsWhenNewFloorIsAdded()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        string originalFirstFloorName = document.Floors[0].FloorName;
+        document.Floors.Insert(0, new ElevateProjectEditorFloor
+        {
+            FloorIndex = 1,
+            SourceFloorName = string.Empty,
+            FloorName = "Level -2",
+            InterfloorHeight = 3.9,
+            FloorLevel = 3.9,
+            Population = 0,
+            EntranceFloor = false,
+        });
+
+        foreach (ElevateProjectEditorFloor floor in document.Floors.Skip(1))
+        {
+            floor.SourceFloorName = floor.FloorName;
+        }
+
+        foreach (ElevateProjectEditorCar car in document.Cars)
+        {
+            car.HomeFloor = (int.Parse(car.HomeFloor, CultureInfo.InvariantCulture) + 1).ToString(CultureInfo.InvariantCulture);
+            car.ServedFloorIndexes = car.ServedFloorIndexes.Select(index => index + 1).Prepend(1).ToList();
+        }
+
+        string outputPath = Path.Combine(workspace.RootPath, "AddedFloor.elvx");
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.True(result.Success);
+
+        XDocument xDocument = XDocument.Load(outputPath);
+        XElement buildingData = xDocument.Root!.Element("BuildingData")!;
+        List<XElement> floors = buildingData.Elements("Floor").ToList();
+        Assert.Equal(document.Floors.Count, floors.Count);
+        Assert.Equal(document.Floors.Count.ToString(CultureInfo.InvariantCulture), (string?)buildingData.Attribute("NoOfFloors"));
+        Assert.Equal("Level -2", (string?)floors[0].Attribute("FloorName"));
+        Assert.Equal("3.900000", (string?)floors[0].Attribute("FloorLevel"));
+        Assert.Equal(originalFirstFloorName, (string?)floors[1].Attribute("FloorName"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_UsesSourceFloorNameMappingWhenNewBottomFloorIsInserted()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        string originalFirstFloorName = document.Floors[0].FloorName;
+        document.Floors.Insert(0, new ElevateProjectEditorFloor
+        {
+            FloorIndex = 1,
+            SourceFloorName = string.Empty,
+            FloorName = "Level -2",
+            InterfloorHeight = 3.9,
+            FloorLevel = 3.9,
+            Population = 0,
+            EntranceFloor = false,
+        });
+        document.Floors[1].SourceFloorName = originalFirstFloorName;
+        document.Floors[1].FloorName = "Lobby";
+
+        foreach (ElevateProjectEditorFloor floor in document.Floors.Skip(2))
+        {
+            floor.SourceFloorName = floor.FloorName;
+        }
+
+        foreach (ElevateProjectEditorCar car in document.Cars)
+        {
+            car.HomeFloor = (int.Parse(car.HomeFloor, CultureInfo.InvariantCulture) + 1).ToString(CultureInfo.InvariantCulture);
+            car.ServedFloorIndexes = car.ServedFloorIndexes.Select(index => index + 1).Prepend(1).ToList();
+        }
+
+        string outputPath = Path.Combine(workspace.RootPath, "InsertedBelow.elvx");
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.True(result.Success);
+
+        XDocument xDocument = XDocument.Load(outputPath);
+        XElement root = xDocument.Root!;
+        Assert.Contains(
+            root.Descendants("Series"),
+            series => string.Equals((string?)series.Attribute("Data"), "Lobby", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            root.Descendants("Series"),
+            series => string.Equals((string?)series.Attribute("Data"), originalFirstFloorName, StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants("From"),
+            from => string.Equals((string?)from.Attribute("FloorName"), "Lobby", StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants("To"),
+            to => string.Equals((string?)to.Attribute("FloorName"), "Lobby", StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants("Floor"),
+            floor => string.Equals((string?)floor.Attribute("FloorName"), "Level -2", StringComparison.Ordinal) &&
+                     floor.Parent?.Name == "XDispatch");
+
+        XElement firstCarServedFloor = root
+            .Element("ElevatorData")!
+            .Element("Advanced")!
+            .Element("Configuration")!
+            .Elements("Car")
+            .First()
+            .Elements("FloorServed")
+            .First(floor => (string?)floor.Attribute("FloorIndex") == "2");
+        Assert.Equal("Lobby", (string?)firstCarServedFloor.Attribute("FloorName"));
     }
 
     [Fact]

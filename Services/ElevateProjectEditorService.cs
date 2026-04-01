@@ -188,6 +188,9 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             .Elements("Period")
             .FirstOrDefault(period => string.Equals((string?)period.Attribute("Id"), "0", StringComparison.Ordinal));
         XElement? configuration = elevatorData.Element("Advanced")?.Element("Configuration");
+        List<string> originalFloorNames = buildingData.Elements("Floor")
+            .Select(floorElement => (string?)floorElement.Attribute("FloorName") ?? string.Empty)
+            .ToList();
 
         SetAttribute(jobData, "JobTitle", document.Job.Title);
         SetAttribute(jobData, "JobNo", document.Job.Number);
@@ -209,25 +212,11 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
         SetAttribute(buildingData, "BuildingType", ToBuildingTypeCode(document.Building.BuildingType));
         SetAttribute(buildingData, "AbsenteeismPercent", FormatDouble(document.Building.AbsenteeismPercent));
         SetAttribute(buildingData, "NoOfFloors", document.Floors.Count.ToString(CultureInfo.InvariantCulture));
-
-        List<XElement> floorElements = buildingData.Elements("Floor").ToList();
-        List<string> originalFloorNames = floorElements
-            .Take(document.Floors.Count)
-            .Select(floorElement => (string?)floorElement.Attribute("FloorName") ?? string.Empty)
-            .ToList();
-        double cumulativeFloorLevel = 0d;
-        for (int index = 0; index < Math.Min(floorElements.Count, document.Floors.Count); index++)
-        {
-            XElement floorElement = floorElements[index];
-            ElevateProjectEditorFloor floor = document.Floors[index];
-            cumulativeFloorLevel += floor.InterfloorHeight;
-            SetAttribute(floorElement, "FloorName", floor.FloorName);
-            SetAttribute(floorElement, "FloorLevel", FormatDouble(cumulativeFloorLevel));
-            SetAttribute(floorElement, "NoOfPeople", FormatDouble(floor.Population));
-            SetAttribute(floorElement, "EntranceFloor", floor.EntranceFloor ? "True" : "False");
-        }
-
-        UpdateFloorReferences(root, originalFloorNames, document.Floors);
+        RebuildBuildingFloors(buildingData, document.Floors);
+        RebuildStandardPassengerFloors(standardPassenger, originalFloorNames, document.Floors);
+        RebuildXDispatchFloors(elevatorData.Element("XDispatch"), document.Floors);
+        RebuildPassengerDemand(passengerData.Element("Advanced"), document.Floors);
+        UpdateFloorReferences(root, document.Floors);
 
         standardPassenger.SetElementValue("Incoming", FormatDouble(document.Traffic.IncomingPercent));
         standardPassenger.SetElementValue("Outgoing", FormatDouble(document.Traffic.OutgoingPercent));
@@ -263,6 +252,7 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             floors.Add(new ElevateProjectEditorFloor
             {
                 FloorIndex = index + 1,
+                SourceFloorName = (string?)floorElement.Attribute("FloorName") ?? string.Empty,
                 FloorName = (string?)floorElement.Attribute("FloorName") ?? string.Empty,
                 InterfloorHeight = index == 0 ? floorLevel : floorLevel - previousFloorLevel,
                 FloorLevel = floorLevel,
@@ -502,28 +492,224 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
         return carElement;
     }
 
-    private static void UpdateFloorReferences(
-        XElement root,
+    private static void RebuildBuildingFloors(
+        XElement buildingData,
+        IReadOnlyList<ElevateProjectEditorFloor> floors)
+    {
+        List<XElement> existingFloors = buildingData.Elements("Floor").ToList();
+        XElement? firstNonFloorElement = buildingData.Elements().FirstOrDefault(element => element.Name != "Floor");
+        foreach (XElement existingFloor in existingFloors)
+        {
+            existingFloor.Remove();
+        }
+
+        double cumulativeFloorLevel = 0d;
+        for (int index = 0; index < floors.Count; index++)
+        {
+            ElevateProjectEditorFloor floor = floors[index];
+            cumulativeFloorLevel += floor.InterfloorHeight;
+            XElement templateFloor = ResolveFloorTemplate(existingFloors, floor, index);
+            XElement floorElement = new(templateFloor);
+            SetAttribute(floorElement, "FloorName", floor.FloorName);
+            SetAttribute(floorElement, "FloorLevel", FormatDouble(cumulativeFloorLevel));
+            SetAttribute(floorElement, "NoOfPeople", FormatDouble(floor.Population));
+            SetAttribute(floorElement, "EntranceFloor", floor.EntranceFloor ? "True" : "False");
+
+            if (firstNonFloorElement is not null)
+            {
+                firstNonFloorElement.AddBeforeSelf(floorElement);
+            }
+            else
+            {
+                buildingData.Add(floorElement);
+            }
+        }
+    }
+
+    private static XElement ResolveFloorTemplate(
+        IReadOnlyList<XElement> existingFloors,
+        ElevateProjectEditorFloor floor,
+        int index)
+    {
+        if (!string.IsNullOrWhiteSpace(floor.SourceFloorName))
+        {
+            XElement? matchedFloor = existingFloors.FirstOrDefault(element =>
+                string.Equals((string?)element.Attribute("FloorName"), floor.SourceFloorName, StringComparison.Ordinal));
+            if (matchedFloor is not null)
+            {
+                return matchedFloor;
+            }
+        }
+
+        if (existingFloors.Count == 0)
+        {
+            return new XElement(
+                "Floor",
+                new XAttribute("FloorName", floor.FloorName),
+                new XAttribute("FloorLevel", "0.000000"),
+                new XAttribute("NoOfPeople", "0.000000"),
+                new XAttribute("Area", "0.000000"),
+                new XAttribute("AreaPerPerson", "-1.000000"),
+                new XAttribute("EntranceFloor", "False"),
+                new XAttribute("UserInterface", "0"));
+        }
+
+        return existingFloors[Math.Min(index, existingFloors.Count - 1)];
+    }
+
+    private static void RebuildStandardPassengerFloors(
+        XElement standardPassenger,
         IReadOnlyList<string> originalFloorNames,
         IReadOnlyList<ElevateProjectEditorFloor> floors)
     {
-        for (int index = 0; index < Math.Min(originalFloorNames.Count, floors.Count); index++)
-        {
-            string newFloorName = floors[index].FloorName;
-            string originalFloorName = originalFloorNames[index];
+        List<XElement> existingFloorElements = standardPassenger.Elements("Floor").ToList();
+        Dictionary<string, XElement> floorBiasBySourceName = originalFloorNames
+            .Select((name, index) => new { name, index })
+            .Where(item => item.index < existingFloorElements.Count && !string.IsNullOrWhiteSpace(item.name))
+            .ToDictionary(item => item.name, item => existingFloorElements[item.index], StringComparer.Ordinal);
 
-            foreach (XElement floorServed in root
-                         .Descendants("FloorServed")
-                         .Where(element => ParseInt((string?)element.Attribute("FloorIndex")) == index + 1))
+        foreach (XElement existingFloorElement in existingFloorElements)
+        {
+            existingFloorElement.Remove();
+        }
+
+        foreach (ElevateProjectEditorFloor floor in floors)
+        {
+            XElement sourceElement = !string.IsNullOrWhiteSpace(floor.SourceFloorName) &&
+                                     floorBiasBySourceName.TryGetValue(floor.SourceFloorName, out XElement? matchedBiasElement)
+                ? matchedBiasElement
+                : new XElement("Floor", new XAttribute("EntranceBias", "0.000000"));
+
+            standardPassenger.Add(new XElement(sourceElement));
+        }
+    }
+
+    private static void RebuildXDispatchFloors(
+        XElement? xDispatch,
+        IReadOnlyList<ElevateProjectEditorFloor> floors)
+    {
+        if (xDispatch is null)
+        {
+            return;
+        }
+
+        List<XElement> existingFloorElements = xDispatch.Elements("Floor").ToList();
+        foreach (XElement existingFloorElement in existingFloorElements)
+        {
+            existingFloorElement.Remove();
+        }
+
+        for (int index = 0; index < floors.Count; index++)
+        {
+            ElevateProjectEditorFloor floor = floors[index];
+            XElement template = ResolveFloorTemplate(existingFloorElements, floor, index);
+            XElement floorElement = new(template);
+            SetAttribute(floorElement, "FloorName", floor.FloorName);
+            xDispatch.Add(floorElement);
+        }
+    }
+
+    private static void RebuildPassengerDemand(
+        XElement? advancedPassengerData,
+        IReadOnlyList<ElevateProjectEditorFloor> floors)
+    {
+        if (advancedPassengerData is null)
+        {
+            return;
+        }
+
+        foreach (XElement period in advancedPassengerData.Elements("Period"))
+        {
+            XElement? passengerDemand = period.Element("PassengerDemand");
+            if (passengerDemand is null)
             {
-                SetAttribute(floorServed, "FloorName", newFloorName);
+                continue;
             }
 
-            foreach (XElement series in root
-                         .Descendants("Series")
-                         .Where(element => string.Equals((string?)element.Attribute("Data"), originalFloorName, StringComparison.Ordinal)))
+            Dictionary<string, XElement> existingFromByName = passengerDemand
+                .Elements("From")
+                .Where(element => !string.IsNullOrWhiteSpace((string?)element.Attribute("FloorName")))
+                .GroupBy(element => (string?)element.Attribute("FloorName") ?? string.Empty, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+            foreach (XElement existingFrom in passengerDemand.Elements("From").ToList())
             {
-                SetAttribute(series, "Data", newFloorName);
+                existingFrom.Remove();
+            }
+
+            foreach (ElevateProjectEditorFloor fromFloor in floors)
+            {
+                XElement? sourceFrom = !string.IsNullOrWhiteSpace(fromFloor.SourceFloorName) &&
+                                       existingFromByName.TryGetValue(fromFloor.SourceFloorName, out XElement? matchedFromElement)
+                    ? matchedFromElement
+                    : null;
+
+                string arrivalRate = (string?)sourceFrom?.Attribute("ArrivalRate") ?? "0.000000";
+                XElement fromElement = new(
+                    "From",
+                    new XAttribute("FloorName", fromFloor.FloorName),
+                    new XAttribute("ArrivalRate", arrivalRate));
+
+                Dictionary<string, string> destinationProbabilities = sourceFrom?
+                    .Elements("To")
+                    .Where(element => !string.IsNullOrWhiteSpace((string?)element.Attribute("FloorName")))
+                    .GroupBy(element => (string?)element.Attribute("FloorName") ?? string.Empty, StringComparer.Ordinal)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => (string?)group.First().Attribute("DestinationProbability") ?? "0.000000",
+                        StringComparer.Ordinal)
+                    ?? new Dictionary<string, string>(StringComparer.Ordinal);
+
+                foreach (ElevateProjectEditorFloor destinationFloor in floors)
+                {
+                    string probability = !string.IsNullOrWhiteSpace(destinationFloor.SourceFloorName) &&
+                                         destinationProbabilities.TryGetValue(destinationFloor.SourceFloorName, out string? existingProbability)
+                        ? existingProbability
+                        : "0.000000";
+
+                    if (string.Equals(fromFloor.FloorName, destinationFloor.FloorName, StringComparison.Ordinal))
+                    {
+                        probability = "0.000000";
+                    }
+
+                    fromElement.Add(
+                        new XElement(
+                            "To",
+                            new XAttribute("FloorName", destinationFloor.FloorName),
+                            new XAttribute("DestinationProbability", probability)));
+                }
+
+                passengerDemand.Add(fromElement);
+            }
+        }
+    }
+
+    private static void UpdateFloorReferences(
+        XElement root,
+        IReadOnlyList<ElevateProjectEditorFloor> floors)
+    {
+        foreach (ElevateProjectEditorFloor floor in floors)
+        {
+            if (string.IsNullOrWhiteSpace(floor.SourceFloorName) ||
+                string.Equals(floor.SourceFloorName, floor.FloorName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            foreach (XAttribute attribute in root
+                         .Descendants()
+                         .Attributes("FloorName")
+                         .Where(attribute => string.Equals(attribute.Value, floor.SourceFloorName, StringComparison.Ordinal)))
+            {
+                attribute.Value = floor.FloorName;
+            }
+
+            foreach (XAttribute attribute in root
+                         .Descendants()
+                         .Attributes("Data")
+                         .Where(attribute => string.Equals(attribute.Value, floor.SourceFloorName, StringComparison.Ordinal)))
+            {
+                attribute.Value = floor.FloorName;
             }
         }
     }

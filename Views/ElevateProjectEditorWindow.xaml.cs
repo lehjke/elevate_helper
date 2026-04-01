@@ -23,6 +23,7 @@ namespace ElevateHelperWinUI.Views
         private readonly IElevateProjectEditorService projectEditorService = new ElevateProjectEditorService();
         private readonly LiftGroupRulesService liftGroupRulesService = new LiftGroupRulesService();
         private readonly ObservableCollection<BuildingFloorRowViewModel> floorRows = new ObservableCollection<BuildingFloorRowViewModel>();
+        private readonly ObservableCollection<BuildingFloorRowViewModel> displayedFloorRows = new ObservableCollection<BuildingFloorRowViewModel>();
         private readonly ObservableCollection<LiftCarRowViewModel> liftRows = new ObservableCollection<LiftCarRowViewModel>();
         private readonly ObservableCollection<DispatcherOption> dispatcherOptions = new ObservableCollection<DispatcherOption>();
         private readonly string workingFolder;
@@ -30,6 +31,7 @@ namespace ElevateHelperWinUI.Views
 
         private ElevateProjectEditorDocument? loadedDocument;
         private EditorSection currentSection = EditorSection.Project;
+        private FloorDisplayOrder currentFloorDisplayOrder = FloorDisplayOrder.BottomFirst;
         private string preservedTrafficMode = string.Empty;
         private int preservedLearningRuns;
         private int preservedRandomSeed;
@@ -45,7 +47,7 @@ namespace ElevateHelperWinUI.Views
 
             InitializeComponent();
 
-            FloorsItemsControl.ItemsSource = floorRows;
+            FloorsItemsControl.ItemsSource = displayedFloorRows;
             LiftItemsControl.ItemsSource = liftRows;
             DispatcherComboBox.ItemsSource = dispatcherOptions;
 
@@ -120,6 +122,10 @@ namespace ElevateHelperWinUI.Views
             InterfloorHeightColumnTextBlock.Text = Text.EditorInterfloorHeightColumn;
             PopulationColumnTextBlock.Text = Text.EditorPopulationColumn;
             EntranceColumnTextBlock.Text = Text.EditorEntranceColumn;
+            AddFloorAboveButton.Content = Text.EditorAddFloorAboveButton;
+            AddFloorBelowButton.Content = Text.EditorAddFloorBelowButton;
+            SortTopFirstButton.Content = Text.EditorSortTopFirstButton;
+            SortBottomFirstButton.Content = Text.EditorSortBottomFirstButton;
 
             AddLiftButton.Content = Text.EditorAddLiftButton;
             StatusInfoBar.Title = Text.StatusTitle;
@@ -132,12 +138,14 @@ namespace ElevateHelperWinUI.Views
             RebuildDispatcherOptions();
             ApplyLocalizationToLiftRows();
             RefreshLiftCountSummary();
+            ApplyFloorSortButtonStyles();
             ApplySectionVisuals();
         }
 
         private void ResetEditorState()
         {
             loadedDocument = null;
+            currentFloorDisplayOrder = FloorDisplayOrder.BottomFirst;
             SourceValueTextBlock.Text = "-";
             OutputValueTextBlock.Text = "-";
             ProjectTitleTextBox.Text = string.Empty;
@@ -239,6 +247,30 @@ namespace ElevateHelperWinUI.Views
             ShowSection(EditorSection.Building);
         }
 
+        private void OnAddFloorAboveButtonClick(object sender, RoutedEventArgs e)
+        {
+            AddFloor(isTopFloor: true);
+        }
+
+        private void OnAddFloorBelowButtonClick(object sender, RoutedEventArgs e)
+        {
+            AddFloor(isTopFloor: false);
+        }
+
+        private void OnSortTopFirstButtonClick(object sender, RoutedEventArgs e)
+        {
+            currentFloorDisplayOrder = FloorDisplayOrder.TopFirst;
+            RebuildDisplayedFloorRows();
+            ApplyFloorSortButtonStyles();
+        }
+
+        private void OnSortBottomFirstButtonClick(object sender, RoutedEventArgs e)
+        {
+            currentFloorDisplayOrder = FloorDisplayOrder.BottomFirst;
+            RebuildDisplayedFloorRows();
+            ApplyFloorSortButtonStyles();
+        }
+
         private void OnLiftGroupTabButtonClick(object sender, RoutedEventArgs e)
         {
             ShowSection(EditorSection.LiftGroup);
@@ -269,6 +301,12 @@ namespace ElevateHelperWinUI.Views
             {
                 button.Style = style;
             }
+        }
+
+        private void ApplyFloorSortButtonStyles()
+        {
+            SetTabButtonStyle(SortTopFirstButton, currentFloorDisplayOrder == FloorDisplayOrder.TopFirst);
+            SetTabButtonStyle(SortBottomFirstButton, currentFloorDisplayOrder == FloorDisplayOrder.BottomFirst);
         }
 
         private void OnAddLiftButtonClick(object sender, RoutedEventArgs e)
@@ -334,21 +372,190 @@ namespace ElevateHelperWinUI.Views
 
         private void ApplyBuildingRows(IReadOnlyList<ElevateProjectEditorFloor> floors)
         {
+            foreach (BuildingFloorRowViewModel existingRow in floorRows)
+            {
+                existingRow.PropertyChanged -= OnBuildingFloorRowPropertyChanged;
+            }
+
             floorRows.Clear();
+            displayedFloorRows.Clear();
             double previousLevel = 0d;
             for (int i = 0; i < floors.Count; i++)
             {
                 ElevateProjectEditorFloor floor = floors[i];
                 double interfloorHeight = i == 0 ? floor.FloorLevel : floor.FloorLevel - previousLevel;
                 previousLevel = floor.FloorLevel;
-                floorRows.Add(new BuildingFloorRowViewModel
+                BuildingFloorRowViewModel row = new BuildingFloorRowViewModel
                 {
+                    SourceFloorName = floor.SourceFloorName,
                     FloorName = floor.FloorName,
                     InterfloorHeightText = FormatEditableNumber(interfloorHeight),
                     PopulationText = FormatEditableNumber(floor.Population),
                     EntranceFloor = floor.EntranceFloor,
-                });
+                };
+                row.PropertyChanged += OnBuildingFloorRowPropertyChanged;
+                floorRows.Add(row);
             }
+
+            RebuildDisplayedFloorRows();
+            SyncLiftRowsWithFloors();
+        }
+
+        private void RebuildDisplayedFloorRows()
+        {
+            displayedFloorRows.Clear();
+            IEnumerable<BuildingFloorRowViewModel> orderedRows = currentFloorDisplayOrder == FloorDisplayOrder.TopFirst
+                ? floorRows.Reverse()
+                : floorRows;
+
+            foreach (BuildingFloorRowViewModel row in orderedRows)
+            {
+                displayedFloorRows.Add(row);
+            }
+        }
+
+        private void AddFloor(bool isTopFloor)
+        {
+            BuildingFloorRowViewModel seed = isTopFloor
+                ? floorRows.LastOrDefault() ?? CreateDefaultFloorRow()
+                : floorRows.FirstOrDefault() ?? CreateDefaultFloorRow();
+
+            BuildingFloorRowViewModel newRow = new BuildingFloorRowViewModel
+            {
+                SourceFloorName = string.Empty,
+                FloorName = SuggestFloorName(isTopFloor),
+                InterfloorHeightText = ResolveSuggestedInterfloorHeightText(seed.InterfloorHeightText),
+                PopulationText = isTopFloor ? seed.PopulationText : "0",
+                EntranceFloor = false,
+            };
+            newRow.PropertyChanged += OnBuildingFloorRowPropertyChanged;
+
+            if (isTopFloor)
+            {
+                floorRows.Add(newRow);
+                foreach (LiftCarRowViewModel liftRow in liftRows)
+                {
+                    liftRow.ServedFloors.Add(new ServedFloorRowViewModel
+                    {
+                        FloorIndex = floorRows.Count,
+                        FloorName = newRow.FloorName,
+                        IsServed = true,
+                    });
+                }
+            }
+            else
+            {
+                floorRows.Insert(0, newRow);
+                foreach (LiftCarRowViewModel liftRow in liftRows)
+                {
+                    foreach (ServedFloorRowViewModel servedFloor in liftRow.ServedFloors)
+                    {
+                        servedFloor.FloorIndex += 1;
+                    }
+
+                    liftRow.ServedFloors.Insert(0, new ServedFloorRowViewModel
+                    {
+                        FloorIndex = 1,
+                        FloorName = newRow.FloorName,
+                        IsServed = true,
+                    });
+
+                    int parsedHomeFloor = ParseIntOrDefault(liftRow.HomeFloor, 1);
+                    liftRow.HomeFloor = (parsedHomeFloor + 1).ToString(CultureInfo.InvariantCulture);
+                }
+            }
+
+            RebuildDisplayedFloorRows();
+            SyncLiftRowsWithFloors();
+        }
+
+        private void OnBuildingFloorRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(BuildingFloorRowViewModel.FloorName))
+            {
+                SyncLiftRowsWithFloors();
+            }
+        }
+
+        private void SyncLiftRowsWithFloors()
+        {
+            IReadOnlyList<ElevateProjectEditorFloor> floors = BuildFloorDraft();
+            for (int liftIndex = 0; liftIndex < liftRows.Count; liftIndex++)
+            {
+                LiftCarRowViewModel liftRow = liftRows[liftIndex];
+                HashSet<int> servedFloorIndexes = liftRow.ServedFloors
+                    .Where(floor => floor.IsServed)
+                    .Select(floor => floor.FloorIndex)
+                    .ToHashSet();
+
+                liftRow.ServedFloors.Clear();
+                for (int floorIndex = 0; floorIndex < floors.Count; floorIndex++)
+                {
+                    ElevateProjectEditorFloor floor = floors[floorIndex];
+                    liftRow.ServedFloors.Add(new ServedFloorRowViewModel
+                    {
+                        FloorIndex = floorIndex + 1,
+                        FloorName = floor.FloorName,
+                        IsServed = servedFloorIndexes.Count == 0 || servedFloorIndexes.Contains(floorIndex + 1),
+                    });
+                }
+
+                int homeFloor = ParseIntOrDefault(liftRow.HomeFloor, ParseIntOrDefault(ResolveFallbackHomeFloor(floors), 1));
+                if (homeFloor < 1 || homeFloor > floors.Count)
+                {
+                    liftRow.HomeFloor = ResolveFallbackHomeFloor(floors);
+                }
+            }
+        }
+
+        private BuildingFloorRowViewModel CreateDefaultFloorRow()
+        {
+            return new BuildingFloorRowViewModel
+            {
+                SourceFloorName = string.Empty,
+                FloorName = "Level 1",
+                InterfloorHeightText = "3,9",
+                PopulationText = "150",
+                EntranceFloor = true,
+            };
+        }
+
+        private string SuggestFloorName(bool isTopFloor)
+        {
+            List<int> numericLevels = floorRows
+                .Select(row => TryExtractTrailingInteger(row.FloorName))
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .ToList();
+
+            if (numericLevels.Count > 0)
+            {
+                int nextValue = isTopFloor ? numericLevels.Max() + 1 : numericLevels.Min() - 1;
+                return $"Level {nextValue}";
+            }
+
+            return isTopFloor
+                ? $"Level {floorRows.Count + 1}"
+                : $"Level {Math.Min(0, 1 - floorRows.Count)}";
+        }
+
+        private string ResolveSuggestedInterfloorHeightText(string? preferredValue)
+        {
+            if (TryParseFlexibleDoubleInternal(preferredValue, out double parsedPreferredValue) &&
+                parsedPreferredValue > 0)
+            {
+                return FormatEditableNumber(parsedPreferredValue);
+            }
+
+            double fallbackValue = floorRows
+                .Select(row => ParseFlexibleDouble(row.InterfloorHeightText))
+                .FirstOrDefault(value => value > 0);
+            if (fallbackValue <= 0)
+            {
+                fallbackValue = 3.9d;
+            }
+
+            return FormatEditableNumber(fallbackValue);
         }
 
         private void ApplyLiftRows(ElevateProjectEditorDocument document)
@@ -628,7 +835,10 @@ namespace ElevateHelperWinUI.Views
                 currentLevel += interfloorHeight;
                 floors.Add(new ElevateProjectEditorFloor
                 {
+                    FloorIndex = floors.Count + 1,
+                    SourceFloorName = row.SourceFloorName,
                     FloorName = row.FloorName,
+                    InterfloorHeight = interfloorHeight,
                     FloorLevel = currentLevel,
                     Population = population,
                     EntranceFloor = row.EntranceFloor,
@@ -717,10 +927,14 @@ namespace ElevateHelperWinUI.Views
             double currentLevel = 0d;
             foreach (BuildingFloorRowViewModel row in floorRows)
             {
-                currentLevel += ParseFlexibleDouble(row.InterfloorHeightText);
+                double interfloorHeight = ParseFlexibleDouble(row.InterfloorHeightText);
+                currentLevel += interfloorHeight;
                 floors.Add(new ElevateProjectEditorFloor
                 {
+                    FloorIndex = floors.Count + 1,
+                    SourceFloorName = row.SourceFloorName,
                     FloorName = row.FloorName,
+                    InterfloorHeight = interfloorHeight,
                     FloorLevel = currentLevel,
                     Population = ParseFlexibleDouble(row.PopulationText),
                     EntranceFloor = row.EntranceFloor,
@@ -734,9 +948,9 @@ namespace ElevateHelperWinUI.Views
         {
             return new List<ElevateProjectEditorFloor>
             {
-                new ElevateProjectEditorFloor { FloorName = "Level 1", FloorLevel = 0d, Population = 0d, EntranceFloor = true },
-                new ElevateProjectEditorFloor { FloorName = "Level 2", FloorLevel = 3.9d, Population = 150d, EntranceFloor = false },
-                new ElevateProjectEditorFloor { FloorName = "Level 3", FloorLevel = 7.8d, Population = 150d, EntranceFloor = false },
+                new ElevateProjectEditorFloor { FloorIndex = 1, SourceFloorName = string.Empty, FloorName = "Level 1", InterfloorHeight = 0d, FloorLevel = 0d, Population = 0d, EntranceFloor = true },
+                new ElevateProjectEditorFloor { FloorIndex = 2, SourceFloorName = string.Empty, FloorName = "Level 2", InterfloorHeight = 3.9d, FloorLevel = 3.9d, Population = 150d, EntranceFloor = false },
+                new ElevateProjectEditorFloor { FloorIndex = 3, SourceFloorName = string.Empty, FloorName = "Level 3", InterfloorHeight = 3.9d, FloorLevel = 7.8d, Population = 150d, EntranceFloor = false },
             };
         }
 
@@ -983,6 +1197,22 @@ namespace ElevateHelperWinUI.Views
                 : fallback;
         }
 
+        private static int? TryExtractTrailingInteger(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            string trimmed = text.Trim();
+            int separatorIndex = trimmed.LastIndexOf(' ');
+            string candidate = separatorIndex >= 0 ? trimmed[(separatorIndex + 1)..] : trimmed;
+            return int.TryParse(candidate, NumberStyles.Integer, CultureInfo.InvariantCulture, out int invariantValue) ||
+                   int.TryParse(candidate, NumberStyles.Integer, CultureInfo.GetCultureInfo("ru-RU"), out invariantValue)
+                ? invariantValue
+                : null;
+        }
+
         private static string FormatEditableNumber(double value)
         {
             return value.ToString("0.###", CultureInfo.GetCultureInfo("ru-RU"));
@@ -996,12 +1226,19 @@ namespace ElevateHelperWinUI.Views
 
     public sealed class BuildingFloorRowViewModel : INotifyPropertyChanged
     {
+        private string sourceFloorName = string.Empty;
         private string floorName = string.Empty;
         private string interfloorHeightText = string.Empty;
         private string populationText = string.Empty;
         private bool entranceFloor;
 
         public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string SourceFloorName
+        {
+            get => sourceFloorName;
+            set => SetProperty(ref sourceFloorName, value, nameof(SourceFloorName));
+        }
 
         public string FloorName
         {
@@ -1275,5 +1512,11 @@ namespace ElevateHelperWinUI.Views
         Analysis,
         Building,
         LiftGroup,
+    }
+
+    internal enum FloorDisplayOrder
+    {
+        BottomFirst,
+        TopFirst,
     }
 }

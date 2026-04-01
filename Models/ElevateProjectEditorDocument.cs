@@ -81,6 +81,8 @@ public sealed class ElevateProjectEditorFloor
 {
     public int FloorIndex { get; set; }
 
+    public string SourceFloorName { get; set; } = string.Empty;
+
     public string FloorName { get; set; } = string.Empty;
 
     public double InterfloorHeight { get; set; }
