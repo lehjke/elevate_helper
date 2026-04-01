@@ -149,9 +149,10 @@ namespace ElevateHelperWinUI.Views
             SimulationCountTextBox.Text = "10";
             AbsenteeismTextBox.Text = buildingType == BuildingType.Office ? "20" : string.Empty;
 
-            floorRows.Clear();
+            List<ElevateProjectEditorFloor> fallbackFloors = BuildFallbackFloors();
+            ApplyBuildingRows(fallbackFloors);
             liftRows.Clear();
-            AddDefaultLiftRow(new List<ElevateProjectEditorFloor>());
+            AddDefaultLiftRow(fallbackFloors);
             RefreshLiftCountSummary();
         }
 

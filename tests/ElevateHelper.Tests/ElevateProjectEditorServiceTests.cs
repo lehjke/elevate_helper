@@ -211,7 +211,7 @@ public sealed class ElevateProjectEditorServiceTests
         File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
 
         ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
-        string originalCapacity = (string?)XDocument.Load(sourcePath).Root?.Element("PassengerData")?.Element("Standard")?.Attribute("Capacity") ?? string.Empty;
+        string? originalCapacity = (string?)XDocument.Load(sourcePath).Root?.Element("PassengerData")?.Element("Standard")?.Attribute("Capacity");
         document.Cars[0].CapacityKg = "825.000000";
         document.Cars[1].CapacityKg = "1350.000000";
 
