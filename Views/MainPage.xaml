@@ -629,6 +629,14 @@
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
+
+                                            <Button
+                                                Click="OnJobReportButtonClick"
+                                                Content="{Binding ReportButtonText}"
+                                                IsEnabled="{Binding CanPrintReport}"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                Tag="{Binding}"
+                                                Visibility="{Binding PrintReportVisibility}" />
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>

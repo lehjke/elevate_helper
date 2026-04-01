@@ -282,6 +282,22 @@ public sealed partial class MainPage : Page
             });
     }
 
+    private async void OnJobReportButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: JobProgressViewModel job })
+        {
+            return;
+        }
+
+        await ExecuteReportActionAsync(
+            GetJobReportBusyText(job),
+            async () =>
+            {
+                ProcessingResult result = await PrintReportsForJobAsync(job);
+                HandleReportResult(result, GetJobReportSuccessText(job));
+            });
+    }
+
     private void OnExitButtonClick(object sender, RoutedEventArgs e)
     {
         Application.Current.Exit();
@@ -819,7 +835,6 @@ public sealed partial class MainPage : Page
         {
             job.MarkCompleted(localizationService);
             SetStatus(localizationService.FormatRunCompleted(job.Title), InfoBarSeverity.Success);
-            ScheduleFinishedJobRemoval(job);
             return;
         }
 
@@ -901,6 +916,53 @@ public sealed partial class MainPage : Page
         ReportButton.IsEnabled = isEnabled;
         MorningReportButton.IsEnabled = isEnabled;
         LunchReportButton.IsEnabled = isEnabled;
+
+        foreach (JobProgressViewModel job in Jobs)
+        {
+            job.SetReportActionEnabled(isEnabled);
+        }
+    }
+
+    private string GetJobReportBusyText(JobProgressViewModel job)
+    {
+        if (job.PrintsMultipleReports)
+        {
+            return Text.GeneratingReports;
+        }
+
+        return job.BuildingType == BuildingType.Office
+            ? Text.GeneratingMorningReport
+            : Text.GeneratingReport;
+    }
+
+    private string GetJobReportSuccessText(JobProgressViewModel job)
+    {
+        if (job.PrintsMultipleReports)
+        {
+            return Text.ReportsGenerated;
+        }
+
+        return job.BuildingType == BuildingType.Office
+            ? Text.MorningReportGenerated
+            : Text.ReportGenerated;
+    }
+
+    private async Task<ProcessingResult> PrintReportsForJobAsync(JobProgressViewModel job)
+    {
+        if (job.BuildingType != BuildingType.Office)
+        {
+            return await reportService.PrintReportAsync(job.JobPath, job.BuildingType);
+        }
+
+        string morningPath = Path.Combine(job.JobPath, "morning");
+        ProcessingResult morningResult = await reportService.PrintReportAsync(morningPath, job.BuildingType);
+        if (!morningResult.Success || !job.IncludeLunchPeak)
+        {
+            return morningResult;
+        }
+
+        string lunchPath = Path.Combine(job.JobPath, "lunch");
+        return await reportService.PrintReportAsync(lunchPath, job.BuildingType);
     }
 
     private void ScheduleFinishedJobRemoval(JobProgressViewModel job)
@@ -1092,8 +1154,10 @@ public sealed partial class MainPage : Page
         private string title;
         private string details;
         private string statusText;
+        private string reportButtonText;
         private bool isRunning;
         private bool isFinished;
+        private bool reportActionEnabled = true;
 
         public JobProgressViewModel(
             int jobId,
@@ -1110,6 +1174,7 @@ public sealed partial class MainPage : Page
             title = string.Empty;
             details = string.Empty;
             statusText = string.Empty;
+            reportButtonText = string.Empty;
             stateKind = JobStateKind.Queued;
 
             bool isOffice = buildingType == BuildingType.Office;
@@ -1191,6 +1256,29 @@ public sealed partial class MainPage : Page
             }
         }
 
+        public string JobPath => path;
+
+        public BuildingType BuildingType => buildingType;
+
+        public bool IncludeLunchPeak => includeLunchPeak;
+
+        public bool PrintsMultipleReports => buildingType == BuildingType.Office && includeLunchPeak;
+
+        public string ReportButtonText
+        {
+            get => reportButtonText;
+            private set
+            {
+                if (reportButtonText == value)
+                {
+                    return;
+                }
+
+                reportButtonText = value;
+                OnPropertyChanged(nameof(ReportButtonText));
+            }
+        }
+
         public bool IsRunning
         {
             get => isRunning;
@@ -1210,6 +1298,12 @@ public sealed partial class MainPage : Page
 
         public bool IsFinished => isFinished;
 
+        public bool CanPrintReport => stateKind == JobStateKind.Completed && reportActionEnabled;
+
+        public Visibility PrintReportVisibility => stateKind == JobStateKind.Completed
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
         public void MarkRunning(AppLocalizationService localizationService)
         {
             isFinished = false;
@@ -1217,6 +1311,7 @@ public sealed partial class MainPage : Page
             stateKind = JobStateKind.Running;
             IsRunning = true;
             StatusText = localizationService.GetJobStateLabel(JobStateKind.Running);
+            NotifyReportActionStateChanged();
         }
 
         public void MarkCompleted(AppLocalizationService localizationService)
@@ -1226,6 +1321,7 @@ public sealed partial class MainPage : Page
             stateKind = JobStateKind.Completed;
             IsRunning = false;
             StatusText = localizationService.GetJobStateLabel(JobStateKind.Completed);
+            NotifyReportActionStateChanged();
         }
 
         public void MarkFailed(string message)
@@ -1234,6 +1330,7 @@ public sealed partial class MainPage : Page
             failureMessage = message;
             IsRunning = false;
             StatusText = message;
+            NotifyReportActionStateChanged();
         }
 
         public void UpdateProgress(string? scenario, int completed, int total, AppLocalizationService localizationService)
@@ -1263,6 +1360,9 @@ public sealed partial class MainPage : Page
         {
             Title = localizationService.FormatJobTitle(jobId, buildingType);
             Details = localizationService.FormatJobDetails(path, buildingType, includeLunchPeak);
+            ReportButtonText = PrintsMultipleReports
+                ? localizationService.CurrentText.PrintReportsButton
+                : localizationService.CurrentText.ReportButton;
 
             foreach (ScenarioProgressViewModel scenario in Scenarios)
             {
@@ -1292,6 +1392,17 @@ public sealed partial class MainPage : Page
                     StatusText = localizationService.GetJobStateLabel(JobStateKind.Queued);
                     break;
             }
+        }
+
+        public void SetReportActionEnabled(bool isEnabled)
+        {
+            if (reportActionEnabled == isEnabled)
+            {
+                return;
+            }
+
+            reportActionEnabled = isEnabled;
+            OnPropertyChanged(nameof(CanPrintReport));
         }
 
         private ScenarioProgressViewModel ResolveScenario(string? scenario)
@@ -1338,6 +1449,13 @@ public sealed partial class MainPage : Page
         {
             return !string.IsNullOrWhiteSpace(scenario) &&
                    scenario.Contains(token, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void NotifyReportActionStateChanged()
+        {
+            OnPropertyChanged(nameof(IsFinished));
+            OnPropertyChanged(nameof(CanPrintReport));
+            OnPropertyChanged(nameof(PrintReportVisibility));
         }
 
         private void OnPropertyChanged(string propertyName)

@@ -238,6 +238,34 @@ public sealed class ElevateReportServiceTests
         Assert.Equal(expectedType, type);
     }
 
+    [Theory]
+    [InlineData("1.900000", "3.100000", "0.500000", "1100", "ЦО")]
+    [InlineData("2.500000", "4.500000", "0.000000", "900", "ТО")]
+    [InlineData("2.200000", "3.600000", "0.500000", "1350", "ЦО")]
+    public void ResolveReportedDoorInfo_UsesElvxDoorAttributes(
+        string openTime,
+        string closeTime,
+        string preOpening,
+        string expectedWidth,
+        string expectedType)
+    {
+        (string width, string type) = ElevateReportService.ResolveReportedDoorInfo(openTime, closeTime, preOpening);
+
+        Assert.Equal(expectedWidth, width);
+        Assert.Equal(expectedType, type);
+    }
+
+    [Theory]
+    [InlineData("3.360000", 0.0, 3.36)]
+    [InlineData("", 2.31, 2.31)]
+    [InlineData(null, 2.50, 2.50)]
+    public void ResolveReportedCabinAreaValue_PrefersElvxAreaAndFallsBack(string? floorAreaText, double fallbackArea, double expected)
+    {
+        double actual = ElevateReportService.ResolveReportedCabinAreaValue(floorAreaText, fallbackArea);
+
+        Assert.Equal(expected, actual, 3);
+    }
+
     private sealed class ReportTestWorkspace : IDisposable
     {
         public string RootPath { get; } = Path.Combine(

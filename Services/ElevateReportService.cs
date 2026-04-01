@@ -23,6 +23,7 @@ public sealed class ElevateReportService : IElevateReportService
     private const int XlWhole = 1;
     private const int XlPart = 2;
     private const int XlValue = 2;
+    private static readonly LiftGroupRulesService ReportLiftRules = new();
 
     public async Task<ProcessingResult> PrintReportAsync(
         string path,
@@ -543,10 +544,9 @@ public sealed class ElevateReportService : IElevateReportService
 
         InsertRow(sheet, 6, XlFormatFromLeftOrAbove);
         sheet.Cells(6, 2).Value = "Площадь кабины, м2";
-        double[] areas = ReadFloorAreas(xmlFolder);
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
-            SetFormattedNumericCell(sheet, 6, 2 + i, GetFloorAreaByIndex(areas, i), "0.00");
+            SetFormattedNumericCell(sheet, 6, 2 + i, ResolveReportedCabinArea(xmlFolder, elevatorData, i), "0.00");
         }
 
         InsertRow(sheet, 11, XlFormatFromLeftOrAbove);
@@ -556,13 +556,7 @@ public sealed class ElevateReportService : IElevateReportService
 
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
-            double dOpen = ParseDoubleFlexible(elevatorData.Spec[i, 6]);
-            double dClose = ParseDoubleFlexible(elevatorData.Spec[i, 7]);
-            double? doorPreOpening = double.IsNaN(elevatorData.DoorPreOpening[i])
-                ? null
-                : elevatorData.DoorPreOpening[i];
-
-            (string width, string type) = ResolveDoorInfo(dOpen, dClose, doorPreOpening);
+            (string width, string type) = ResolveReportedDoorInfo(elevatorData, i);
             sheet.Cells(11, 2 + i).Value = string.IsNullOrWhiteSpace(width)
                 ? "-"
                 : $"'{width}";
@@ -1518,13 +1512,21 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         elevatorData.Spec = new string[elevatorData.NoElevators + 1, 11];
+        elevatorData.CabinArea = CreateDoubleArray(elevatorData.NoElevators);
         elevatorData.DoorPreOpening = CreateDoorPreOpeningArray(elevatorData.NoElevators);
+        elevatorData.ReportDoorWidth = CreateStringArray(elevatorData.NoElevators);
+        elevatorData.ReportDoorType = CreateStringArray(elevatorData.NoElevators);
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
             for (int j = 1; j <= 10; j++)
             {
                 elevatorData.Spec[i, j] = sheet.Get(elevatorDataRow + 1 + j, 3 + i);
             }
+
+            (elevatorData.ReportDoorWidth[i], elevatorData.ReportDoorType[i]) = ResolveReportedDoorInfo(
+                elevatorData.Spec[i, 6],
+                elevatorData.Spec[i, 7],
+                null);
         }
 
         elevatorData.FloorsServed = new string[elevatorData.NoElevators + 1, buildingData.NoFloors + 1];
@@ -1676,12 +1678,16 @@ public sealed class ElevateReportService : IElevateReportService
             (string?)analysisElement.Element("Dispatcher")?.Element("Algorithm")?.Attribute("AlgorithmName"));
         elevatorData.NoElevators = carElements.Count;
         elevatorData.Spec = new string[elevatorData.NoElevators + 1, 11];
+        elevatorData.CabinArea = CreateDoubleArray(elevatorData.NoElevators);
         elevatorData.DoorPreOpening = CreateDoorPreOpeningArray(elevatorData.NoElevators);
+        elevatorData.ReportDoorWidth = CreateStringArray(elevatorData.NoElevators);
+        elevatorData.ReportDoorType = CreateStringArray(elevatorData.NoElevators);
         elevatorData.FloorsServed = new string[elevatorData.NoElevators + 1, buildingData.NoFloors + 1];
 
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
             XElement carElement = carElements[i - 1];
+            elevatorData.CabinArea[i] = ResolveReportedCabinAreaValue((string?)carElement.Attribute("FloorAreaM2"), 0d);
             elevatorData.Spec[i, 1] = FormatNumericSpec((string?)carElement.Attribute("Capacity"), "0");
             elevatorData.Spec[i, 2] = FormatNumericSpec((string?)carElement.Attribute("Speed"), "0.00");
             elevatorData.Spec[i, 3] = FormatNumericSpec((string?)carElement.Attribute("Acceleration"), "0.00");
@@ -1698,6 +1704,10 @@ public sealed class ElevateReportService : IElevateReportService
             elevatorData.Spec[i, 9] = FormatNumericSpec((string?)carElement.Attribute("MotorStartDelay"), "0.00");
             elevatorData.Spec[i, 10] = FormatNumericSpec((string?)carElement.Attribute("LevelingDelay"), "0.00");
             elevatorData.DoorPreOpening[i] = ParseDoubleOrNaN((string?)carElement.Attribute("DoorPreOpening"));
+            (elevatorData.ReportDoorWidth[i], elevatorData.ReportDoorType[i]) = ResolveReportedDoorInfo(
+                (string?)carElement.Attribute("DoorOpenTime"),
+                (string?)carElement.Attribute("DoorCloseTime"),
+                (string?)carElement.Attribute("DoorPreOpening"));
 
             foreach (XElement floorServedElement in carElement.Elements("FloorServed"))
             {
@@ -1758,6 +1768,20 @@ public sealed class ElevateReportService : IElevateReportService
     {
         double[] values = new double[noElevators + 1];
         Array.Fill(values, double.NaN);
+        return values;
+    }
+
+    private static double[] CreateDoubleArray(int noElevators)
+    {
+        double[] values = new double[noElevators + 1];
+        Array.Fill(values, 0d);
+        return values;
+    }
+
+    private static string[] CreateStringArray(int noElevators)
+    {
+        string[] values = new string[noElevators + 1];
+        Array.Fill(values, string.Empty);
         return values;
     }
 
@@ -2204,6 +2228,22 @@ public sealed class ElevateReportService : IElevateReportService
             : 0;
     }
 
+    internal static double ResolveReportedCabinAreaValue(string? floorAreaText, double fallbackArea)
+    {
+        double parsedArea = ParseDoubleFlexible(floorAreaText);
+        return parsedArea > 0 ? parsedArea : fallbackArea;
+    }
+
+    private static double ResolveReportedCabinArea(string xmlFolder, ElevatorDataModel elevatorData, int index)
+    {
+        double fallbackArea = GetFloorAreaByIndex(ReadFloorAreas(xmlFolder), index);
+        return index >= 1 && index < elevatorData.CabinArea.Length
+            ? ResolveReportedCabinAreaValue(
+                elevatorData.CabinArea[index].ToString(CultureInfo.InvariantCulture),
+                fallbackArea)
+            : fallbackArea;
+    }
+
     private static readonly (int OpenKey, int CloseKey, string Width, string Type)[] DoorTimingRules =
     [
         (20, 33, "600", "ТО"),
@@ -2276,6 +2316,51 @@ public sealed class ElevateReportService : IElevateReportService
             1 => matches[0],
             _ => ResolveAmbiguousDoorInfo(matches, doorPreOpening),
         };
+    }
+
+    internal static (string Width, string Type) ResolveReportedDoorInfo(
+        string? doorOpenTimeText,
+        string? doorCloseTimeText,
+        string? doorPreOpeningText)
+    {
+        double doorOpenTime = ParseDoubleFlexible(doorOpenTimeText);
+        double doorCloseTime = ParseDoubleFlexible(doorCloseTimeText);
+        double? doorPreOpening = string.IsNullOrWhiteSpace(doorPreOpeningText)
+            ? null
+            : ParseDoubleFlexible(doorPreOpeningText);
+
+        if (ReportLiftRules.TryResolveDoorSpecification(
+                doorPreOpeningText,
+                doorOpenTimeText,
+                doorCloseTimeText,
+                out int doorWidthMm,
+                out DoorOpeningKind openingKind))
+        {
+            return (
+                doorWidthMm.ToString(CultureInfo.InvariantCulture),
+                openingKind == DoorOpeningKind.Central ? "ЦО" : "ТО");
+        }
+
+        return ResolveDoorInfo(doorOpenTime, doorCloseTime, doorPreOpening);
+    }
+
+    private static (string Width, string Type) ResolveReportedDoorInfo(ElevatorDataModel elevatorData, int index)
+    {
+        if (index >= 1 &&
+            index < elevatorData.ReportDoorWidth.Length &&
+            !string.IsNullOrWhiteSpace(elevatorData.ReportDoorWidth[index]) &&
+            !string.IsNullOrWhiteSpace(elevatorData.ReportDoorType[index]))
+        {
+            return (elevatorData.ReportDoorWidth[index], elevatorData.ReportDoorType[index]);
+        }
+
+        double dOpen = ParseDoubleFlexible(elevatorData.Spec[index, 6]);
+        double dClose = ParseDoubleFlexible(elevatorData.Spec[index, 7]);
+        double? doorPreOpening = double.IsNaN(elevatorData.DoorPreOpening[index])
+            ? null
+            : elevatorData.DoorPreOpening[index];
+
+        return ResolveDoorInfo(dOpen, dClose, doorPreOpening);
     }
 
     private static int BuildDoorTimingKey(double value)
@@ -2837,7 +2922,13 @@ public sealed class ElevateReportService : IElevateReportService
 
         public string[,] Spec { get; set; } = new string[1, 1];
 
+        public double[] CabinArea { get; set; } = [0];
+
         public double[] DoorPreOpening { get; set; } = [double.NaN];
+
+        public string[] ReportDoorWidth { get; set; } = [string.Empty];
+
+        public string[] ReportDoorType { get; set; } = [string.Empty];
 
         public string[,] FloorsServed { get; set; } = new string[1, 1];
     }
