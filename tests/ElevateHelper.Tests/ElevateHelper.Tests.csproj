@@ -26,6 +26,7 @@
     <Compile Include="../../Models/AppLanguage.cs" Link="Source/Models/AppLanguage.cs" />
     <Compile Include="../../Models/BuildingType.cs" Link="Source/Models/BuildingType.cs" />
     <Compile Include="../../Models/ElevateProjectEditorDocument.cs" Link="Source/Models/ElevateProjectEditorDocument.cs" />
+    <Compile Include="../../Models/ElevateRunManifest.cs" Link="Source/Models/ElevateRunManifest.cs" />
     <Compile Include="../../Models/ElevateIntegrationInfo.cs" Link="Source/Models/ElevateIntegrationInfo.cs" />
     <Compile Include="../../Models/ElevateProgressInfo.cs" Link="Source/Models/ElevateProgressInfo.cs" />
     <Compile Include="../../Models/ProcessingResult.cs" Link="Source/Models/ProcessingResult.cs" />
@@ -40,6 +41,8 @@
     <Compile Include="../../Services/IElevateReportService.cs" Link="Source/Services/IElevateReportService.cs" />
     <Compile Include="../../Services/ElevateReportService.cs" Link="Source/Services/ElevateReportService.cs" />
     <Compile Include="../../Services/IElevateProcessingService.cs" Link="Source/Services/IElevateProcessingService.cs" />
+    <Compile Include="../../Services/ElevateRunManifestService.cs" Link="Source/Services/ElevateRunManifestService.cs" />
+    <Compile Include="../../Services/ElevateWorkflowRunner.cs" Link="Source/Services/ElevateWorkflowRunner.cs" />
     <Compile Include="../../Services/ElevateProcessingService.cs" Link="Source/Services/ElevateProcessingService.cs" />
   </ItemGroup>
 

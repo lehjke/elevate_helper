@@ -1,4 +1,5 @@
-﻿using System.Xml.Linq;
+﻿using System.Text.Json;
+using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
 
@@ -156,6 +157,66 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_OfficeFlow_WritesCompletedRunManifest()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+
+        Assert.True(result.Success, result.Message);
+        ElevateRunManifest manifest = ReadRunManifest(workspace.Path);
+
+        Assert.Equal(ElevateRunManifestStatus.Completed, manifest.Status);
+        Assert.Equal(BuildingType.Office, manifest.BuildingType);
+        Assert.False(manifest.IncludeLunchPeak);
+        Assert.Equal(2, manifest.CopiesCount);
+        Assert.NotEmpty(manifest.RunId);
+        Assert.NotNull(manifest.CompletedAtUtc);
+        Assert.Collection(
+            manifest.Steps,
+            step => AssertRunStep(step, ElevateRunManifestStepNames.ValidateInputs, ElevateRunManifestStatus.Completed),
+            step => AssertRunStep(step, ElevateRunManifestStepNames.PrepareAndRunElevate, ElevateRunManifestStatus.Completed),
+            step => AssertRunStep(step, ElevateRunManifestStepNames.CollectArtifacts, ElevateRunManifestStatus.Completed));
+        Assert.Contains(
+            manifest.Artifacts,
+            artifact =>
+                artifact.Kind == ElevateRunManifestArtifactKinds.FloorArea &&
+                artifact.Scenario == "morning" &&
+                System.IO.Path.GetFileName(artifact.Path).Equals("floor_area.csv", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(manifest.Artifacts, artifact => artifact.Scenario == "lunch");
+    }
+
+    [Fact]
+    public async Task RunAsync_WritesRunHistorySnapshot()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+
+        Assert.True(result.Success, result.Message);
+        ElevateRunManifest manifest = ReadRunManifest(workspace.Path);
+        IReadOnlyList<ElevateRunManifest> history = service.GetRunHistory(workspace.Path);
+
+        Assert.Single(history);
+        Assert.Equal(manifest.RunId, history[0].RunId);
+        Assert.True(File.Exists(ElevateRunManifestService.GetHistoryManifestPath(workspace.Path, manifest.RunId)));
+    }
+
+    [Fact]
     public async Task RunAsync_ResidenceFlow_UsesLauncherAndGeneratesCsv()
     {
         using TestWorkspace workspace = new();
@@ -244,6 +305,90 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_ResidenceFlow_WritesFailedRunManifestOnCopyConflict()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        _ = workspace.CreateSampleElvx("Project02.elvx");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+
+        Assert.False(result.Success);
+        ElevateRunManifest manifest = ReadRunManifest(workspace.Path);
+
+        Assert.Equal(ElevateRunManifestStatus.Failed, manifest.Status);
+        Assert.NotNull(manifest.CompletedAtUtc);
+        Assert.Contains("Cannot overwrite existing .elvx file", manifest.ErrorMessage, StringComparison.Ordinal);
+        Assert.Contains(
+            manifest.Steps,
+            step =>
+                step.Name == ElevateRunManifestStepNames.PrepareAndRunElevate &&
+                step.Status == ElevateRunManifestStatus.Failed &&
+                step.ErrorMessage?.Contains("Cannot overwrite existing .elvx file", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(manifest.Steps, step => step.Name == ElevateRunManifestStepNames.CollectArtifacts);
+    }
+
+    [Fact]
+    public async Task RetryLastFailedRunAsync_RerunsLatestFailedManifest()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        string conflictPath = workspace.CreateSampleElvx("Project02.elvx");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult failedResult = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+        File.Delete(conflictPath);
+
+        ProcessingResult retryResult = await service.RetryLastFailedRunAsync(workspace.Path);
+
+        Assert.False(failedResult.Success);
+        Assert.True(retryResult.Success, retryResult.Message);
+        Assert.Single(launcher.ResidenceCalls);
+
+        ElevateRunManifest currentManifest = ReadRunManifest(workspace.Path);
+        IReadOnlyList<ElevateRunManifest> history = service.GetRunHistory(workspace.Path);
+
+        Assert.Equal(ElevateRunManifestStatus.Completed, currentManifest.Status);
+        Assert.Equal(2, history.Count);
+        Assert.Contains(history, manifest => manifest.Status == ElevateRunManifestStatus.Failed);
+        Assert.Contains(history, manifest => manifest.Status == ElevateRunManifestStatus.Completed);
+    }
+
+    [Fact]
+    public async Task RetryLastFailedRunAsync_ReturnsFailWhenLatestRunSucceeded()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+
+        ProcessingResult retryResult = await service.RetryLastFailedRunAsync(workspace.Path);
+
+        Assert.True(result.Success, result.Message);
+        Assert.False(retryResult.Success);
+        Assert.Contains("Last Elevate run is not failed", retryResult.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RunAsync_InvalidPath_ReturnsFailResult()
     {
         ElevateProcessingService service = new(new FakeLauncherService());
@@ -255,6 +400,26 @@ public sealed class ElevateProcessingServiceTests
 
         Assert.False(result.Success);
         Assert.Contains("Path does not exist", result.Message, StringComparison.Ordinal);
+    }
+
+    private static ElevateRunManifest ReadRunManifest(string path)
+    {
+        string manifestPath = ElevateRunManifestService.GetManifestPath(path);
+        Assert.True(File.Exists(manifestPath), $"Expected run manifest at {manifestPath}.");
+
+        return JsonSerializer.Deserialize<ElevateRunManifest>(File.ReadAllText(manifestPath))
+            ?? throw new InvalidOperationException("Run manifest could not be deserialized.");
+    }
+
+    private static void AssertRunStep(
+        ElevateRunManifestStep step,
+        string expectedName,
+        string expectedStatus)
+    {
+        Assert.Equal(expectedName, step.Name);
+        Assert.Equal(expectedStatus, step.Status);
+        Assert.NotNull(step.StartedAtUtc);
+        Assert.NotNull(step.CompletedAtUtc);
     }
 
     private sealed class FakeLauncherService : IElevateLauncherService

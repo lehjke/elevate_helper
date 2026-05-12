@@ -9,6 +9,8 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 {
     private const string GeneratedCopiesManifestFileName = ".elevate-helper.generated-copies.txt";
     private readonly IElevateLauncherService launcherService;
+    private readonly ElevateRunManifestService runManifestService;
+    private readonly ElevateWorkflowRunner workflowRunner;
 
     public ElevateProcessingService()
         : this(new ElevateLauncherService())
@@ -18,6 +20,8 @@ public sealed class ElevateProcessingService : IElevateProcessingService
     public ElevateProcessingService(IElevateLauncherService launcherService)
     {
         this.launcherService = launcherService;
+        runManifestService = new ElevateRunManifestService();
+        workflowRunner = new ElevateWorkflowRunner(runManifestService);
     }
 
     public int GetDefaultCopies(BuildingType buildingType)
@@ -29,6 +33,16 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             BuildingType.Hotel => 13,
             _ => throw new ArgumentOutOfRangeException(nameof(buildingType), buildingType, "Unknown building type."),
         };
+    }
+
+    public IReadOnlyList<ElevateRunManifest> GetRunHistory(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return [];
+        }
+
+        return runManifestService.GetHistory(path);
     }
 
     public Task<ProcessingResult> RunAsync(
@@ -102,51 +116,69 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             return ProcessingResult.Fail($"Path does not exist: {path}");
         }
 
-        if (copiesCount < 1)
-        {
-            return ProcessingResult.Fail("Copy count must be >= 1.");
-        }
-
-        try
-        {
-            await MakeCopiesAndRunAsync(
-                buildingType,
-                path,
+        ElevateWorkflowRunRequest request = new(path, buildingType, includeLunchPeak, copiesCount);
+        return await workflowRunner.RunAsync(
+            request,
+            BuildWorkflowSteps(
                 copiesCount,
+                path,
+                buildingType,
                 includeLunchPeak,
                 morningProgress,
-                lunchProgress,
-                cancellationToken);
-        }
-        catch (Exception ex)
+                lunchProgress),
+            cancellationToken);
+    }
+
+    public Task<ProcessingResult> RetryLastFailedRunAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        return RetryLastFailedRunAsync(path, progress: null, cancellationToken);
+    }
+
+    public Task<ProcessingResult> RetryLastFailedRunAsync(
+        string path,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return RetryLastFailedRunAsync(path, progress, progress, cancellationToken);
+    }
+
+    public async Task<ProcessingResult> RetryLastFailedRunAsync(
+        string path,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(path))
         {
-            string message = $"An exception of type {ex.GetType().Name} occurred in makecopiesandrun(). {ex.Message}";
-            return ProcessingResult.Fail(message, ex);
+            return ProcessingResult.Fail("Path to Elevate files is empty.");
         }
 
-        try
+        if (!Directory.Exists(path))
         {
-            if (buildingType == BuildingType.Office)
-            {
-                if (includeLunchPeak)
-                {
-                    GetArea(Path.Combine(path, "lunch"));
-                }
-
-                GetArea(Path.Combine(path, "morning"));
-            }
-            else
-            {
-                GetArea(path);
-            }
-        }
-        catch (Exception ex)
-        {
-            string message = $"An exception of type {ex.GetType().Name} occurred in get_area(). {ex.Message}";
-            return ProcessingResult.Fail(message, ex);
+            return ProcessingResult.Fail($"Path does not exist: {path}");
         }
 
-        return ProcessingResult.Ok("OK!");
+        ElevateRunManifest? latestRun = runManifestService.GetLatest(path);
+        if (latestRun is null)
+        {
+            return ProcessingResult.Fail("No Elevate run history found to retry.");
+        }
+
+        if (!latestRun.Status.Equals(ElevateRunManifestStatus.Failed, StringComparison.OrdinalIgnoreCase))
+        {
+            return ProcessingResult.Fail("Last Elevate run is not failed.");
+        }
+
+        return await RunAsync(
+            latestRun.CopiesCount,
+            path,
+            latestRun.BuildingType,
+            latestRun.IncludeLunchPeak,
+            morningProgress,
+            lunchProgress,
+            cancellationToken);
     }
 
     public void ModifyHandlingCapacity(string xmlFilePath, int newCapacity)
@@ -303,6 +335,157 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         {
             writer.WriteLine($"{EscapeCsvValue(carId)};{EscapeCsvValue(floorArea)}");
         }
+    }
+
+    private static IEnumerable<ElevateRunManifestArtifact> CollectRunArtifacts(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak)
+    {
+        if (buildingType == BuildingType.Office)
+        {
+            string morningPath = Path.Combine(path, "morning");
+            if (Directory.Exists(morningPath))
+            {
+                foreach (ElevateRunManifestArtifact artifact in CollectScenarioArtifacts(morningPath, "morning"))
+                {
+                    yield return artifact;
+                }
+            }
+
+            string lunchPath = Path.Combine(path, "lunch");
+            if (includeLunchPeak && Directory.Exists(lunchPath))
+            {
+                foreach (ElevateRunManifestArtifact artifact in CollectScenarioArtifacts(lunchPath, "lunch"))
+                {
+                    yield return artifact;
+                }
+            }
+
+            yield break;
+        }
+
+        foreach (ElevateRunManifestArtifact artifact in CollectScenarioArtifacts(path, null))
+        {
+            yield return artifact;
+        }
+    }
+
+    private static IEnumerable<ElevateRunManifestArtifact> CollectScenarioArtifacts(string path, string? scenario)
+    {
+        foreach (string filePath in Directory.EnumerateFiles(path).OrderBy(file => file, StringComparer.OrdinalIgnoreCase))
+        {
+            string? kind = TryGetRunArtifactKind(filePath);
+            if (kind is null)
+            {
+                continue;
+            }
+
+            yield return new ElevateRunManifestArtifact
+            {
+                Kind = kind,
+                Path = Path.GetFullPath(filePath),
+                Scenario = scenario,
+            };
+        }
+    }
+
+    private static string? TryGetRunArtifactKind(string filePath)
+    {
+        string fileName = Path.GetFileName(filePath);
+        string extension = Path.GetExtension(filePath);
+
+        if (fileName.Equals("floor_area.csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return ElevateRunManifestArtifactKinds.FloorArea;
+        }
+
+        if (fileName.Equals("batch_results.csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return ElevateRunManifestArtifactKinds.BatchResults;
+        }
+
+        if (extension.Equals(".elvx", StringComparison.OrdinalIgnoreCase))
+        {
+            return ElevateRunManifestArtifactKinds.ElevateProject;
+        }
+
+        if (extension.Equals(".elvr", StringComparison.OrdinalIgnoreCase))
+        {
+            return ElevateRunManifestArtifactKinds.ElevateResult;
+        }
+
+        if (fileName.EndsWith("_elvx.csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return ElevateRunManifestArtifactKinds.CsvOutput;
+        }
+
+        return null;
+    }
+
+    private IReadOnlyList<ElevateWorkflowStep> BuildWorkflowSteps(
+        int copiesCount,
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress)
+    {
+        return
+        [
+            new ElevateWorkflowStep(
+                ElevateRunManifestStepNames.ValidateInputs,
+                "validate_inputs()",
+                _ => Task.FromResult(ValidateRunInputs(copiesCount))),
+            new ElevateWorkflowStep(
+                ElevateRunManifestStepNames.PrepareAndRunElevate,
+                "makecopiesandrun()",
+                async cancellationToken =>
+                {
+                    await MakeCopiesAndRunAsync(
+                        buildingType,
+                        path,
+                        copiesCount,
+                        includeLunchPeak,
+                        morningProgress,
+                        lunchProgress,
+                        cancellationToken);
+                    return ElevateWorkflowStepResult.Completed();
+                }),
+            new ElevateWorkflowStep(
+                ElevateRunManifestStepNames.CollectArtifacts,
+                "get_area()",
+                _ =>
+                {
+                    CollectAreas(path, buildingType, includeLunchPeak);
+                    IReadOnlyList<ElevateRunManifestArtifact> artifacts =
+                        CollectRunArtifacts(path, buildingType, includeLunchPeak).ToList();
+                    return Task.FromResult(ElevateWorkflowStepResult.Completed(artifacts));
+                }),
+        ];
+    }
+
+    private static ElevateWorkflowStepResult ValidateRunInputs(int copiesCount)
+    {
+        return copiesCount < 1
+            ? ElevateWorkflowStepResult.Failed("Copy count must be >= 1.")
+            : ElevateWorkflowStepResult.Completed();
+    }
+
+    private void CollectAreas(string path, BuildingType buildingType, bool includeLunchPeak)
+    {
+        if (buildingType == BuildingType.Office)
+        {
+            if (includeLunchPeak)
+            {
+                GetArea(Path.Combine(path, "lunch"));
+            }
+
+            GetArea(Path.Combine(path, "morning"));
+            return;
+        }
+
+        GetArea(path);
     }
 
     private async Task MakeCopiesAndRunAsync(
@@ -603,4 +786,3 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 
     private sealed record FileNamingScheme(string Prefix, int DigitWidth, int? SeedIndex);
 }
-
