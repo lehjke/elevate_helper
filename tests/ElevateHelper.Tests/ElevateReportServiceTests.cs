@@ -75,6 +75,42 @@ public sealed class ElevateReportServiceTests
     }
 
     [Fact]
+    public void ResolveProjectSourcePath_FallsBackToCsvWhenElvxIsMissing()
+    {
+        using ReportTestWorkspace workspace = new();
+        string reportRoot = workspace.CreateDirectory("probe");
+        string projectCsvPath = Path.Combine(reportRoot, "Probe01.csv");
+        File.WriteAllText(projectCsvPath, "csv");
+
+        string? resolvedPath = ElevateReportService.ResolveProjectSourcePath(
+            "Probe01",
+            "Probe01.csv",
+            reportRoot);
+
+        Assert.Equal(projectCsvPath, resolvedPath);
+    }
+
+    [Theory]
+    [InlineData("Probe01.elvx")]
+    [InlineData("Probe01.csv")]
+    public void ResolveProjectSourcePath_PrefersElvxWhenCsvAlsoExists(string sourceFileName)
+    {
+        using ReportTestWorkspace workspace = new();
+        string reportRoot = workspace.CreateDirectory("probe");
+        string projectCsvPath = Path.Combine(reportRoot, "Probe01.csv");
+        string projectElvxPath = Path.Combine(reportRoot, "Probe01.elvx");
+        File.WriteAllText(projectCsvPath, "csv");
+        File.WriteAllText(projectElvxPath, "<ElevateDocument />");
+
+        string? resolvedPath = ElevateReportService.ResolveProjectSourcePath(
+            "Probe01",
+            sourceFileName,
+            reportRoot);
+
+        Assert.Equal(projectElvxPath, resolvedPath);
+    }
+
+    [Fact]
     public void BuildOutputPaths_ReturnsExcelAndPdfPaths()
     {
         string outputFolder = Path.Combine("C:\\", "Reports");
@@ -83,6 +119,17 @@ public sealed class ElevateReportServiceTests
 
         Assert.Equal(Path.Combine(outputFolder, "Project_ 1 Tower_A.xlsx"), outputPaths.ExcelPath);
         Assert.Equal(Path.Combine(outputFolder, "Project_ 1 Tower_A.pdf"), outputPaths.PdfPath);
+    }
+
+    [Fact]
+    public void BuildOutputPaths_SanitizesWindowsInvalidCharactersOnEveryOs()
+    {
+        string outputFolder = Path.Combine("C:\\", "Reports");
+        ElevateReportService.GeneratedReportPaths outputPaths =
+            ElevateReportService.BuildOutputPaths(outputFolder, "A<B>C|D", "E?F*G\"H");
+
+        Assert.Equal(Path.Combine(outputFolder, "A_B_C_D E_F_G_H.xlsx"), outputPaths.ExcelPath);
+        Assert.Equal(Path.Combine(outputFolder, "A_B_C_D E_F_G_H.pdf"), outputPaths.PdfPath);
     }
 
     [Theory]
@@ -241,7 +288,10 @@ public sealed class ElevateReportServiceTests
     [Theory]
     [InlineData("1.900000", "3.100000", "0.500000", "1100", "ЦО")]
     [InlineData("2.500000", "4.500000", "0.000000", "900", "ТО")]
+    [InlineData("2.500000", "4.500000", "0.500000", "1800", "ЦО")]
     [InlineData("2.200000", "3.600000", "0.500000", "1350", "ЦО")]
+    [InlineData("2.300000", "4.000000", "0.500000", "1550", "ЦО")]
+    [InlineData("3.900000", "7.800000", "0.000000", "1750", "ТО")]
     public void ResolveReportedDoorInfo_UsesElvxDoorAttributes(
         string openTime,
         string closeTime,
@@ -253,6 +303,15 @@ public sealed class ElevateReportServiceTests
 
         Assert.Equal(expectedWidth, width);
         Assert.Equal(expectedType, type);
+    }
+
+    [Fact]
+    public void ResolveReportedDoorInfo_DoesNotGuessAmbiguousDoorWithoutPreOpening()
+    {
+        (string width, string type) = ElevateReportService.ResolveReportedDoorInfo("2.500000", "4.500000", null);
+
+        Assert.Equal("-", width);
+        Assert.Equal("-", type);
     }
 
     [Theory]

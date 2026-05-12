@@ -15,6 +15,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $repoRoot 'ElevateHelperWinUI.csproj'
+$exampleDir = Join-Path $repoRoot '.example'
 $publishDir = Join-Path $repoRoot "artifacts/publish/$Runtime"
 $releaseDir = Join-Path $repoRoot 'artifacts/release'
 $zipPath = Join-Path $releaseDir "ElevateHelper-$Runtime-$Tag.zip"
@@ -38,6 +39,26 @@ if (Test-Path $publishDir) {
 
 if (Test-Path $zipPath) {
     Remove-Item -Path $zipPath -Force
+}
+
+if (-not (Test-Path $exampleDir)) {
+    throw "Required .example template folder was not found: $exampleDir"
+}
+
+$requiredTemplates = @(
+    'Office.elvx',
+    'Residential.elvx',
+    'Hotel.elvx',
+    'Office.xlsx',
+    'Residential.xlsx',
+    'Hotel.xlsx'
+)
+
+foreach ($templateName in $requiredTemplates) {
+    $templatePath = Join-Path $exampleDir $templateName
+    if (-not (Test-Path $templatePath)) {
+        throw "Required template file was not found: $templatePath"
+    }
 }
 
 dotnet restore $projectPath

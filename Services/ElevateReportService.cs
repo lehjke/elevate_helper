@@ -23,7 +23,6 @@ public sealed class ElevateReportService : IElevateReportService
     private const int XlWhole = 1;
     private const int XlPart = 2;
     private const int XlValue = 2;
-    private static readonly LiftGroupRulesService ReportLiftRules = new();
 
     public async Task<ProcessingResult> PrintReportAsync(
         string path,
@@ -155,6 +154,7 @@ public sealed class ElevateReportService : IElevateReportService
         CancellationToken cancellationToken)
     {
         object? excel = null;
+        dynamic? excelApp = null;
         dynamic? workbook = null;
 
         try
@@ -168,7 +168,7 @@ public sealed class ElevateReportService : IElevateReportService
             excel = Activator.CreateInstance(excelType)
                 ?? throw new InvalidOperationException("Unable to create Excel COM object.");
 
-            dynamic excelApp = excel;
+            excelApp = excel;
             excelApp.Visible = false;
             excelApp.DisplayAlerts = false;
             excelApp.ScreenUpdating = false;
@@ -195,15 +195,36 @@ public sealed class ElevateReportService : IElevateReportService
             workbook.SaveAs(outputPaths.ExcelPath, XlOpenXmlWorkbook);
             workbook.Save();
             workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, outputPaths.PdfPath, Type.Missing, true, false);
-            workbook.Close(false);
-            ReleaseComObject(ref workbook);
-            excelApp.Quit();
 
             return outputPaths;
         }
         finally
         {
+            if (workbook is not null)
+            {
+                try
+                {
+                    workbook.Close(false);
+                }
+                catch
+                {
+                    // Ignore COM cleanup errors.
+                }
+            }
+
             ReleaseComObject(ref workbook);
+
+            if (excelApp is not null)
+            {
+                try
+                {
+                    excelApp.Quit();
+                }
+                catch
+                {
+                    // Ignore COM cleanup errors.
+                }
+            }
 
             if (excel is not null)
             {
@@ -762,7 +783,6 @@ public sealed class ElevateReportService : IElevateReportService
 
         int pairs = Math.Min(starts.Count, finishes.Count);
         int serviceFloorLimit = 2;
-        double expressHeight = 0;
 
         dynamic buildingSheet = workbook.Sheets(SheetBuilding);
         dynamic flowSheet = workbook.Sheets(SheetFlow);
@@ -778,6 +798,7 @@ public sealed class ElevateReportService : IElevateReportService
             }
 
             int rowSpan = finishFloorIndex - startFloorIndex;
+            double expressHeight = 0;
             if (rowSpan <= serviceFloorLimit)
             {
                 int anchorRow = FindRowByFloorValue(buildingSheet, buildingData.FloorName[startFloorIndex]);
@@ -1966,8 +1987,16 @@ public sealed class ElevateReportService : IElevateReportService
 
     private static string NormalizePath(string path)
     {
-        string normalized = path.Trim().Trim('"').Replace('/', '\\');
-        return normalized.TrimEnd('\\');
+        string normalized = path.Trim().Trim('"');
+        if (Path.DirectorySeparatorChar == '\\')
+        {
+            normalized = normalized.Replace('/', '\\');
+        }
+
+        string root = Path.GetPathRoot(normalized) ?? string.Empty;
+        return normalized.Length <= root.Length
+            ? normalized
+            : normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     internal static GeneratedReportPaths BuildOutputPaths(string outputFolder, string projectName, string buildingName)
@@ -2048,7 +2077,7 @@ public sealed class ElevateReportService : IElevateReportService
     private static string SanitizeFileName(string name)
     {
         string result = name;
-        foreach (char invalid in Path.GetInvalidFileNameChars())
+        foreach (char invalid in GetInvalidReportFileNameChars())
         {
             result = result.Replace(invalid, '_');
         }
@@ -2059,6 +2088,14 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         return result;
+    }
+
+    private static char[] GetInvalidReportFileNameChars()
+    {
+        return Path.GetInvalidFileNameChars()
+            .Concat(['<', '>', ':', '"', '/', '\\', '|', '?', '*'])
+            .Distinct()
+            .ToArray();
     }
 
     private static IEnumerable<string> ExpandSearchRoots(params string?[] searchRoots)
@@ -2325,21 +2362,8 @@ public sealed class ElevateReportService : IElevateReportService
     {
         double doorOpenTime = ParseDoubleFlexible(doorOpenTimeText);
         double doorCloseTime = ParseDoubleFlexible(doorCloseTimeText);
-        double? doorPreOpening = string.IsNullOrWhiteSpace(doorPreOpeningText)
-            ? null
-            : ParseDoubleFlexible(doorPreOpeningText);
-
-        if (ReportLiftRules.TryResolveDoorSpecification(
-                doorPreOpeningText,
-                doorOpenTimeText,
-                doorCloseTimeText,
-                out int doorWidthMm,
-                out DoorOpeningKind openingKind))
-        {
-            return (
-                doorWidthMm.ToString(CultureInfo.InvariantCulture),
-                openingKind == DoorOpeningKind.Central ? "ЦО" : "ТО");
-        }
+        bool hasDoorPreOpening = !string.IsNullOrWhiteSpace(doorPreOpeningText);
+        double? doorPreOpening = hasDoorPreOpening ? ParseDoubleFlexible(doorPreOpeningText) : null;
 
         return ResolveDoorInfo(doorOpenTime, doorCloseTime, doorPreOpening);
     }
@@ -2825,13 +2849,34 @@ public sealed class ElevateReportService : IElevateReportService
 
     private static IEnumerable<string> GetProjectSourceCandidates(string fileName, string? sourceFileName)
     {
-        yield return $"{fileName}.csv";
-        yield return $"{fileName}.elvx";
+        HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
+        string? sourceProjectFileName = string.IsNullOrWhiteSpace(sourceFileName)
+            ? null
+            : Path.GetFileName(sourceFileName);
+
+        if (!string.IsNullOrWhiteSpace(sourceProjectFileName) &&
+            Path.GetExtension(sourceProjectFileName).Equals(".elvx", StringComparison.OrdinalIgnoreCase) &&
+            yielded.Add(sourceProjectFileName))
+        {
+            yield return sourceProjectFileName;
+        }
+
+        string defaultElvxFileName = $"{fileName}.elvx";
+        if (yielded.Add(defaultElvxFileName))
+        {
+            yield return defaultElvxFileName;
+        }
+
+        string defaultCsvFileName = $"{fileName}.csv";
+        if (yielded.Add(defaultCsvFileName))
+        {
+            yield return defaultCsvFileName;
+        }
 
         if (!string.IsNullOrWhiteSpace(sourceFileName))
         {
-            string sourceProjectFileName = Path.GetFileName(sourceFileName);
-            if (!sourceProjectFileName.Equals($"{fileName}.elvx", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(sourceProjectFileName) &&
+                yielded.Add(sourceProjectFileName))
             {
                 yield return sourceProjectFileName;
             }

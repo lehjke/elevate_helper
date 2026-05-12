@@ -20,6 +20,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static readonly TimeSpan ProgressPollDelay = TimeSpan.FromMilliseconds(600);
     private static readonly TimeSpan DialogCloseTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan BatchStartTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CompletedOutputsSettleDelay = TimeSpan.FromSeconds(2);
 
     private readonly IElevateIntegrationService integrationService;
 
@@ -292,6 +293,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         int observedCompletedCsvFiles = 0;
         string? observedTitle = null;
         bool hasStarted = false;
+        DateTimeOffset? completedOutputsSince = null;
 
         while (true)
         {
@@ -321,13 +323,29 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
             ReportProgress(progress, progressContext, completed, source, observedTitle, isFinal: false);
 
-            if (hasStarted &&
-                observation.DesignVisible &&
+            bool outputsComplete = hasStarted &&
                 observation.HasBatchResults &&
-                observation.CompletedCsvFiles >= progressContext.Total)
+                observation.CompletedCsvFiles >= progressContext.Total;
+
+            if (outputsComplete)
             {
-                ReportProgress(progress, progressContext, progressContext.Total, source, observation.DesignWindowTitle, isFinal: true);
-                return;
+                completedOutputsSince ??= DateTimeOffset.UtcNow;
+                if (observation.DesignVisible ||
+                    DateTimeOffset.UtcNow - completedOutputsSince >= CompletedOutputsSettleDelay)
+                {
+                    ReportProgress(
+                        progress,
+                        progressContext,
+                        progressContext.Total,
+                        source,
+                        observation.DesignWindowTitle ?? observedTitle,
+                        isFinal: true);
+                    return;
+                }
+            }
+            else
+            {
+                completedOutputsSince = null;
             }
 
             if (process.HasExited)

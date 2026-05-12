@@ -37,6 +37,12 @@
                                 HorizontalAlignment="Stretch"
                                 ItemsSource="{x:Bind LanguageOptions, Mode=OneTime}"
                                 SelectionChanged="OnLanguageComboBoxSelectionChanged" />
+                            <CheckBox
+                                x:Name="BetaFeaturesCheckBox"
+                                Checked="OnBetaFeaturesCheckBoxChanged"
+                                Content="BETA"
+                                FontWeight="SemiBold"
+                                Unchecked="OnBetaFeaturesCheckBoxChanged" />
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -113,7 +119,10 @@
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource SectionCardStyle}">
+                <Border
+                    x:Name="EditorWindowCard"
+                    Style="{StaticResource SectionCardStyle}"
+                    Visibility="Collapsed">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Border Style="{StaticResource SectionIconBadgeStyle}">
@@ -656,6 +665,5 @@
         </ScrollViewer>
     </Grid>
 </Page>
-
 
 

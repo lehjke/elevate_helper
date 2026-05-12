@@ -17,6 +17,8 @@ public sealed partial class MainPage : Page
     private readonly IElevateProcessingService processingService = new ElevateProcessingService();
     private readonly IElevateReportService reportService = new ElevateReportService();
     private readonly SemaphoreSlim reportExecutionLock = new(1, 1);
+    private readonly object activeProcessingFoldersSync = new();
+    private readonly HashSet<string> activeProcessingFolders = new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<JobProgressViewModel> jobs = [];
     private readonly ObservableCollection<FloorEditorRowViewModel> editorFloors = [];
     private readonly ObservableCollection<CarEditorRowViewModel> editorCars = [];
@@ -338,6 +340,11 @@ public sealed partial class MainPage : Page
         }
 
         localizationService.SetLanguage(option.Language);
+    }
+
+    private void OnBetaFeaturesCheckBoxChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateBetaFeatureVisibility();
     }
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
@@ -761,15 +768,38 @@ public sealed partial class MainPage : Page
 
     private void StartProcessingJob(string path, BuildingType buildingType, bool includeLunchPeak)
     {
-        JobProgressViewModel job = CreateJob(path, buildingType, includeLunchPeak);
-        _ = RunProcessingJobAsync(job, path, buildingType, includeLunchPeak);
+        string normalizedPath = NormalizeProcessingFolder(path);
+        if (!TryRegisterProcessingFolder(normalizedPath))
+        {
+            SetStatus(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.RunFolderBusyMessage,
+                    normalizedPath),
+                InfoBarSeverity.Warning);
+            return;
+        }
+
+        JobProgressViewModel job;
+        try
+        {
+            job = CreateJob(normalizedPath, buildingType, includeLunchPeak);
+        }
+        catch
+        {
+            UnregisterProcessingFolder(normalizedPath);
+            throw;
+        }
+
+        _ = RunProcessingJobAsync(job, normalizedPath, buildingType, includeLunchPeak, normalizedPath);
     }
 
     private async Task RunProcessingJobAsync(
         JobProgressViewModel job,
         string path,
         BuildingType buildingType,
-        bool includeLunchPeak)
+        bool includeLunchPeak,
+        string activeProcessingFolder)
     {
         job.MarkRunning(localizationService);
         RefreshJobsSummary();
@@ -789,7 +819,41 @@ public sealed partial class MainPage : Page
         }
         finally
         {
+            UnregisterProcessingFolder(activeProcessingFolder);
             RefreshJobsSummary();
+        }
+    }
+
+    private bool TryRegisterProcessingFolder(string path)
+    {
+        lock (activeProcessingFoldersSync)
+        {
+            return activeProcessingFolders.Add(path);
+        }
+    }
+
+    private void UnregisterProcessingFolder(string path)
+    {
+        lock (activeProcessingFoldersSync)
+        {
+            activeProcessingFolders.Remove(path);
+        }
+    }
+
+    private static string NormalizeProcessingFolder(string path)
+    {
+        string trimmedPath = path.Trim();
+        try
+        {
+            string fullPath = Path.GetFullPath(trimmedPath);
+            string root = Path.GetPathRoot(fullPath) ?? string.Empty;
+            return fullPath.Length <= root.Length
+                ? fullPath
+                : fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch
+        {
+            return trimmedPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
     }
 
@@ -1004,6 +1068,13 @@ public sealed partial class MainPage : Page
         MorningReportButton.Visibility = isOffice ? Visibility.Visible : Visibility.Collapsed;
         LunchReportButton.Visibility = isOffice ? Visibility.Visible : Visibility.Collapsed;
         ReportButton.Visibility = isOffice ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void UpdateBetaFeatureVisibility()
+    {
+        EditorWindowCard.Visibility = BetaFeaturesCheckBox.IsChecked == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private BuildingType? GetSelectedBuildingType()
@@ -2086,4 +2157,3 @@ public sealed partial class MainPage : Page
 
     public sealed record LanguageOption(AppLanguage Language, string DisplayName);
 }
-

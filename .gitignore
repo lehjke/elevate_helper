@@ -10,11 +10,11 @@ wheels/
 .venv
 
 .vscode
+.DS_Store
 
 *.spec
 *.bat
 
-.example
 .vs/
 artifacts/
 bin/

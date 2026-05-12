@@ -147,6 +147,7 @@ public sealed class AppLocalizationService
         LunchReportGenerated: "Lunch report generated successfully.",
         OperationFailedMessage: "Operation failed.",
         ReportBusyMessage: "Report generation is already in progress.",
+        RunFolderBusyMessage: "A batch run is already active for this folder: {0}",
         IntegrationMissingLaunch: "Peters Research Elevate is not detected. Install Elevate or set ELEVATE_EXE_PATH.",
         IntegrationMissingCheck: "Elevate was not found. Check installation or define ELEVATE_EXE_PATH.",
         IntegrationFoundFormat: "Elevate found.{0} Path: {1}",
@@ -295,6 +296,7 @@ public sealed class AppLocalizationService
         LunchReportGenerated: "Обеденный отчет успешно сформирован.",
         OperationFailedMessage: "Операция завершилась ошибкой.",
         ReportBusyMessage: "Формирование отчета уже выполняется.",
+        RunFolderBusyMessage: "Для этой папки уже выполняется batch-расчет: {0}",
         IntegrationMissingLaunch: "Peters Research Elevate не найден. Установите Elevate или задайте ELEVATE_EXE_PATH.",
         IntegrationMissingCheck: "Elevate не найден. Проверьте установку или задайте ELEVATE_EXE_PATH.",
         IntegrationFoundFormat: "Elevate найден.{0} Путь: {1}",
@@ -792,6 +794,7 @@ public sealed class AppLocalizationService
         string LunchReportGenerated,
         string OperationFailedMessage,
         string ReportBusyMessage,
+        string RunFolderBusyMessage,
         string IntegrationMissingLaunch,
         string IntegrationMissingCheck,
         string IntegrationFoundFormat,
@@ -816,4 +819,3 @@ public enum JobStateKind
     Running,
     Completed,
 }
-
