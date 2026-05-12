@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore tests
+        run: dotnet restore tests/ElevateHelper.Tests/ElevateHelper.Tests.csproj
+
+      - name: Run tests
+        run: dotnet test tests/ElevateHelper.Tests/ElevateHelper.Tests.csproj --configuration Release --no-restore
+
+  build-winui:
+    name: Build WinUI App
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore app
+        run: dotnet restore ElevateHelperWinUI.csproj
+
+      - name: Build app
+        run: dotnet build ElevateHelperWinUI.csproj --configuration Release -p:Platform=x64 --no-restore

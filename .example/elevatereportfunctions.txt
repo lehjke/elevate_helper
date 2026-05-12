@@ -1,0 +1,1227 @@
+
+Public Sub CopyDataMain(ByRef FileName As String, ByRef Folder As String, ByRef AWT() As Variant, ByRef ATTD() As Variant)
+
+FileName = ActiveSheet.Cells(2, 1).Value
+Folder = ActiveSheet.Cells(2, 2).Value
+
+Dim nSteps As Integer: nSteps = ActiveSheet.UsedRange.Rows.Count
+
+ReDim AWT(1 To nSteps - 1)
+ReDim ATTD(1 To nSteps - 1)
+
+For i = 2 To nSteps
+    AWT(i - 1) = ActiveSheet.Cells(i, 7).Value
+    ATTD(i - 1) = ActiveSheet.Cells(i, 11).Value
+Next i
+
+ActiveWorkbook.Close Savechanges:=False
+
+End Sub
+
+Public Sub CopyDataSub(ByVal FileName As String, ByVal Folder As String, ByRef JobData() As String, ByRef BuildingData As BuildingDataType, ByRef ElevatorData As ElevatorDataType, ByRef PassengerData As PassengerDataType)
+
+FileName = FileName + ".csv"
+Folder = Folder + "\"
+
+Workbooks.Open FileName:=Folder & FileName, Local:=True
+
+Dim JobDataRow As Integer
+Dim AnalDataRow As Integer
+Dim BuildingDataRow As Integer
+Dim ElevatorDataRow As Integer
+Dim PassengerDataRow As Integer
+
+For i = 1 To ActiveSheet.UsedRange.Rows.Count
+
+    If ActiveSheet.Cells(i, 1).Value = "JOB DATA" Then
+        JobDataRow = i
+    End If
+    
+    If ActiveSheet.Cells(i, 1).Value = "ANALYSIS DATA" Then
+        AnalDataRow = i
+    End If
+    
+    If ActiveSheet.Cells(i, 1).Value = "BUILDING DATA" Then
+        BuildingDataRow = i
+    End If
+
+    If ActiveSheet.Cells(i, 1).Value = "ELEVATOR DATA" Then
+        ElevatorDataRow = i
+    End If
+    
+    If ActiveSheet.Cells(i, 1).Value = "PASSENGER DATA" Then
+        PassengerDataRow = i
+    End If
+
+Next i
+
+'JOB DATA
+ReDim JobData(1 To 7)
+For i = 1 To 7
+    JobData(i) = ActiveSheet.Cells(JobDataRow + i, 4).Value
+Next i
+
+'BUILDING DATA
+Dim sValue1 As String
+Dim sValue2 As String
+Dim sLen As Integer
+
+BuildingData.BuildingType = ActiveSheet.Cells(ElevatorDataRow - 8, 6).Value
+BuildingData.Absenteeism = ActiveSheet.Cells(ElevatorDataRow - 9, 6).Value
+
+Dim BuildingType As String
+If BuildingData.BuildingType = "Office" Then
+    BuildingType = "Офис"
+ElseIf BuildingData.BuildingType = "Residential" Then
+    BuildingType = "Жилье"
+ElseIf BuildingData.BuildingType = "Hotel" Then
+    BuildingType = "Отель"
+Else
+    BuildingType = "БКТ"
+End If
+
+Dim Absenteeism As Double
+Absenteeism = (100 - BuildingData.Absenteeism) / 100
+
+BuildingData.NoFloors = ActiveSheet.Cells(ElevatorDataRow - 2, 6).Value
+BuildingData.TotalPeople = 0
+BuildingData.cTotalPeople = 0
+BuildingData.NoExitFloors = 0
+
+ReDim BuildingData.FloorName(1 To BuildingData.NoFloors)
+ReDim BuildingData.FloorHeight(1 To BuildingData.NoFloors)
+ReDim BuildingData.FloorLevel(1 To BuildingData.NoFloors)
+ReDim BuildingData.FloorType(1 To BuildingData.NoFloors)
+ReDim BuildingData.FloorFactor(1 To BuildingData.NoFloors)
+ReDim BuildingData.NoPeople(1 To BuildingData.NoFloors)
+ReDim BuildingData.EntranceFloor(1 To BuildingData.NoFloors)
+ReDim BuildingData.Bias(1 To BuildingData.NoFloors)
+
+Dim tFloorName() As String
+
+For i = 1 To BuildingData.NoFloors
+
+    Erase tFloorName
+    
+    sLen = Len(ActiveSheet.Cells(BuildingDataRow + i + 1, 1).Value)
+    sValue1 = ActiveSheet.Cells(BuildingDataRow + i + 1, 1).Value
+    sValue2 = Right(sValue1, sLen - 6)
+    'crutch for decimal values
+    sValue2 = Replace(sValue2, ".", ",")
+    
+    BuildingData.FloorName(i) = CDbl(sValue2)
+    BuildingData.FloorHeight(i) = ActiveSheet.Cells(BuildingDataRow + i + 1, 3).Value
+    
+    BuildingData.NoPeople(i) = ActiveSheet.Cells(BuildingDataRow + i + 1, 5).Value
+    BuildingData.EntranceFloor(i) = ActiveSheet.Cells(BuildingDataRow + i + 1, 11).Value
+    
+    If BuildingData.FloorName(i) < 0 Then
+        BuildingData.FloorType(i) = "Парковка"
+        BuildingData.FloorFactor(i) = 1.2
+    ElseIf BuildingData.FloorName(i) > 0 And (BuildingData.EntranceFloor(i) = "Yes") Then
+        BuildingData.FloorType(i) = "Лобби"
+        BuildingData.FloorFactor(i) = 0
+    Else
+        BuildingData.FloorType(i) = BuildingType
+        BuildingData.FloorFactor(i) = Absenteeism
+        BuildingData.NoExitFloors = BuildingData.NoExitFloors + 1
+    End If
+    
+    If BuildingData.EntranceFloor(i) = "Yes" Then
+        For j = 1 To BuildingData.NoFloors
+            If ActiveSheet.Cells(PassengerDataRow + 15 + j, 1).Value = sValue1 Then
+                BuildingData.Bias(i) = ActiveSheet.Cells(PassengerDataRow + 15 + j, 4)
+                Exit For
+            End If
+            
+            If ActiveSheet.Cells(PassengerDataRow + 15 + j, 1).Value Like "*&*" Then
+                tFloorName = Split(ActiveSheet.Cells(PassengerDataRow + 15 + j, 1).Value, " & ")
+                If (tFloorName(0) = sValue1) Or (tFloorName(1) = sValue1) Then
+                    BuildingData.Bias(i) = ActiveSheet.Cells(PassengerDataRow + 15 + j, 4)
+                    Exit For
+                End If
+            End If
+        Next j
+    End If
+    
+    BuildingData.TotalPeople = BuildingData.TotalPeople + BuildingData.NoPeople(i)
+    BuildingData.cTotalPeople = BuildingData.cTotalPeople + BuildingData.NoPeople(i) * BuildingData.FloorFactor(i)
+    
+Next i
+
+Dim LowerLevel As Double: LowerLevel = 0
+
+If BuildingData.FloorName(1) < 1 Then
+    For i = 1 To Abs(BuildingData.FloorName(1))
+         LowerLevel = LowerLevel - BuildingData.FloorHeight(i)
+    Next i
+End If
+
+BuildingData.FloorLevel(1) = LowerLevel
+
+For i = 2 To BuildingData.NoFloors
+    BuildingData.FloorLevel(i) = BuildingData.FloorLevel(i - 1) + BuildingData.FloorHeight(i - 1)
+Next i
+
+For i = 1 To BuildingData.NoFloors
+    If BuildingData.FloorType(i) = "Парковка" Then
+        BuildingData.NoPeople(i) = (BuildingData.TotalPeople * BuildingData.Bias(i)) / 120
+    End If
+Next i
+
+'ELEVATOR DATA
+ElevatorData.Dispatcher = ActiveSheet.Cells(AnalDataRow + 3, 6).Value
+
+ElevatorData.NoElevators = 0
+
+For i = 1 To ActiveSheet.UsedRange.Columns.Count
+    If ActiveSheet.Cells(ElevatorDataRow + 1, 3 + i).Value <> "" Then
+        ElevatorData.NoElevators = ElevatorData.NoElevators + 1
+    End If
+Next i
+
+ReDim ElevatorData.Spec(1 To ElevatorData.NoElevators, 1 To 10)
+
+For i = 1 To ElevatorData.NoElevators
+    For j = 1 To 10
+        ElevatorData.Spec(i, j) = ActiveSheet.Cells(ElevatorDataRow + 1 + j, 3 + i).Value
+    Next j
+Next i
+
+
+
+ReDim ElevatorData.FloorsServed(1 To ElevatorData.NoElevators, 1 To BuildingData.NoFloors)
+
+For i = 1 To ElevatorData.NoElevators
+    For j = 1 To BuildingData.NoFloors
+        ElevatorData.FloorsServed(i, j) = ActiveSheet.Cells(ElevatorDataRow + 14 + j, 3 + i).Value
+    Next j
+Next i
+
+'PASSENGER DATA
+
+Dim Incoming As String
+Dim Outgoing As String
+Dim Interfloor As String
+
+Incoming = Replace(ActiveSheet.Cells(PassengerDataRow + 4, 4).Value, ".", ",")
+Outgoing = Replace(ActiveSheet.Cells(PassengerDataRow + 5, 4).Value, ".", ",")
+Interfloor = Replace(ActiveSheet.Cells(PassengerDataRow + 6, 4).Value, ".", ",")
+
+PassengerData.Incoming = CDbl(Incoming)
+PassengerData.Outgoing = CDbl(Outgoing)
+PassengerData.Interfloor = CDbl(Interfloor)
+
+ActiveWorkbook.Close Savechanges:=False
+
+End Sub
+
+Public Sub PrintData(ByVal xmlFolder As String, AWT() As Variant, ATTD() As Variant, AIS() As Variant, ALW() As Variant, JobData() As String, BuildingData As BuildingDataType, ElevatorData As ElevatorDataType, PassengerData As PassengerDataType)
+
+Dim FileName As String
+Dim Folder As String
+
+FileName = BuildingData.BuildingType
+
+FileName = FileName + ".xlsx"
+Folder = "T:\Крупные проекты и высотное строительство\Спецификации\ELEVATE\Meteor\"
+
+Workbooks.Open FileName:=Folder & FileName
+
+'SHEET1
+ActiveWorkbook.Sheets("Титул").Cells(24, 5).Value = JobData(1)
+ActiveWorkbook.Sheets("Титул").Cells(26, 5).Value = JobData(3)
+ActiveWorkbook.Sheets("Титул").Cells(28, 5).Value = JobData(2)
+
+ActiveWorkbook.Sheets("Титул").Rows(30).Delete
+ActiveWorkbook.Sheets("Титул").Rows(30).Delete
+
+ActiveWorkbook.Sheets("Титул").Cells(30, 4).Value = "Исполнитель:"
+ActiveWorkbook.Sheets("Титул").Cells(30, 5).Value = JobData(4)
+
+ActiveWorkbook.Sheets("Титул").Cells(32, 4).Value = "Дата:"
+ActiveWorkbook.Sheets("Титул").Cells(32, 5).Value = Format(Date, "dd.mm.yyyy")
+
+'SHEET2
+
+Dim IsServed() As Boolean
+Dim ServedFloors As Integer: ServedFloors = 0
+
+ReDim IsServed(1 To BuildingData.NoFloors)
+
+For i = 1 To BuildingData.NoFloors
+    
+    IsServed(i) = False
+    
+    For j = 1 To ElevatorData.NoElevators
+        If ElevatorData.FloorsServed(j, i) = "Yes" Then
+            IsServed(i) = True
+            ServedFloors = ServedFloors + 1
+            Exit For
+        End If
+    Next j
+    
+Next i
+
+For i = 1 To BuildingData.NoFloors
+    ActiveWorkbook.Sheets("Здание").Rows(4).Insert xlShiftDown, xlFormatFromRightOrBelow
+
+    ActiveWorkbook.Sheets("Здание").Cells(4, 2).Value = BuildingData.FloorName(i)
+    'crutch for decimal values
+    If InStr(ActiveWorkbook.Sheets("Здание").Cells(4, 2).Value, ",") Then
+        ActiveWorkbook.Sheets("Здание").Cells(4, 2).Value = "'" & Replace(ActiveWorkbook.Sheets("Здание").Cells(4, 2).Value, ",", ".")
+    End If
+    ActiveWorkbook.Sheets("Здание").Cells(4, 3).Value = BuildingData.FloorHeight(i)
+    ActiveWorkbook.Sheets("Здание").Cells(4, 4).Value = BuildingData.FloorLevel(i)
+    ActiveWorkbook.Sheets("Здание").Cells(4, 5).Value = BuildingData.FloorType(i)
+    ActiveWorkbook.Sheets("Здание").Cells(4, 6).Value = BuildingData.NoPeople(i)
+    If IsServed(i) = True Then
+        If BuildingData.NoPeople(i) <> 0 Then
+            ActiveWorkbook.Sheets("Здание").Cells(4, 7).Value = BuildingData.FloorFactor(i)
+        Else
+            ActiveWorkbook.Sheets("Здание").Cells(4, 7).Value = 0
+        End If
+    Else
+        ActiveWorkbook.Sheets("Здание").Cells(4, 7).Value = 0
+    End If
+    ActiveWorkbook.Sheets("Здание").Cells(4, 8).Value = ActiveWorkbook.Sheets("Здание").Cells(4, 6).Value * ActiveWorkbook.Sheets("Здание").Cells(4, 7).Value
+
+Next i
+
+ActiveWorkbook.Sheets("Здание").Cells(4, 3).Value = "-"
+
+ActiveWorkbook.Sheets("Здание").Cells(5 + BuildingData.NoFloors, 2).Value = "Итог:"
+ActiveWorkbook.Sheets("Здание").Cells(5 + BuildingData.NoFloors, 2).Font.Bold = True
+
+ActiveWorkbook.Sheets("Здание").Cells(5 + BuildingData.NoFloors, 8).Value = BuildingData.cTotalPeople
+ActiveWorkbook.Sheets("Здание").Cells(5 + BuildingData.NoFloors, 8).Font.Bold = True
+
+'SHEET3
+ActiveWorkbook.Sheets("Пассажиропоток").Cells(3, 3).Value = "Входящий пассажиропоток" & vbNewLine & "(" & PassengerData.Incoming & "%)"
+ActiveWorkbook.Sheets("Пассажиропоток").Cells(3, 8).Value = "Выходящий пассажиропоток" & vbNewLine & "(" & PassengerData.Outgoing & "%)"
+ActiveWorkbook.Sheets("Пассажиропоток").Cells(3, 13).Value = "Межэтажный пассажиропоток" & vbNewLine & "(" & PassengerData.Interfloor & "%)"
+
+For i = 1 To BuildingData.NoFloors
+    ActiveWorkbook.Sheets("Пассажиропоток").Rows(5).Insert xlShiftDown, xlFormatFromRightOrBelow
+    
+    ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 2).Value = BuildingData.FloorName(i)
+    'crutch for decimal values
+    If InStr(ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 2).Value, ",") Then
+        ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 2).Value = "'" & Replace(ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 2).Value, ",", ".")
+    End If
+    
+    If PassengerData.Incoming <> 0 Then
+        If (BuildingData.EntranceFloor(i) = "Yes") And (BuildingData.Bias(i) <> 0) Then
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 3).Value = BuildingData.Bias(i) / 100
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 3).NumberFormat = "0%"
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 4).Value = ActiveWorkbook.Sheets("Пассажиропоток").Cells(2, 19).Value
+        ElseIf (BuildingData.EntranceFloor(i) = "No") And (IsServed(i) = True) And (BuildingData.NoPeople(i) <> 0) Then
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 6).Value = ActiveWorkbook.Sheets("Пассажиропоток").Cells(2, 19).Value
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 7).Value = BuildingData.NoPeople(i) / BuildingData.TotalPeople
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 7).NumberFormat = "0.0%"
+        End If
+    End If
+    
+    If PassengerData.Outgoing <> 0 Then
+        If (BuildingData.EntranceFloor(i) = "No") And (IsServed(i) = True) And (BuildingData.NoPeople(i) <> 0) Then
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 8).Value = BuildingData.NoPeople(i) / BuildingData.TotalPeople
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 8).NumberFormat = "0.0%"
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 9).Value = ActiveWorkbook.Sheets("Пассажиропоток").Cells(2, 19).Value
+        ElseIf (BuildingData.EntranceFloor(i) = "Yes") And (BuildingData.Bias(i) <> 0) Then
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 11).Value = ActiveWorkbook.Sheets("Пассажиропоток").Cells(2, 19).Value
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 12).Value = BuildingData.Bias(i) / 100
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 12).NumberFormat = "0%"
+        End If
+    End If
+
+    If PassengerData.Interfloor <> 0 Then
+        If (BuildingData.EntranceFloor(i) = "No") And (IsServed(i) = True) And (BuildingData.NoPeople(i) <> 0) Then
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 13).Value = BuildingData.NoPeople(i) / BuildingData.TotalPeople
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 13).NumberFormat = "0.0%"
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 14).Value = ActiveWorkbook.Sheets("Пассажиропоток").Cells(2, 19).Value
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 16).Value = ActiveWorkbook.Sheets("Пассажиропоток").Cells(2, 19).Value
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 17).Value = BuildingData.NoPeople(i) / BuildingData.TotalPeople
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(5, 17).NumberFormat = "0.0%"
+        End If
+    End If
+    
+Next i
+
+With ActiveWorkbook.Sheets("Пассажиропоток")
+If PassengerData.Incoming <> 0 Then
+    .Range(.Cells(5, 5), .Cells(5 + BuildingData.NoFloors - 1, 5)).BorderAround _
+    LineStyle:=xlContinuous, Weight:=xlThin, Color:=RGB(10, 39, 81)
+End If
+
+If PassengerData.Outgoing <> 0 Then
+    .Range(.Cells(5, 10), .Cells(5 + BuildingData.NoFloors - 1, 10)).BorderAround _
+    LineStyle:=xlContinuous, Weight:=xlThin, Color:=RGB(10, 39, 81)
+End If
+
+If PassengerData.Interfloor <> 0 Then
+    .Range(.Cells(5, 15), .Cells(5 + BuildingData.NoFloors - 1, 15)).BorderAround _
+    LineStyle:=xlContinuous, Weight:=xlThin, Color:=RGB(10, 39, 81)
+End If
+End With
+
+'SHEET4
+Dim Dispatcher As String
+If (ElevatorData.Dispatcher Like "*ACA*") Or (ElevatorData.Dispatcher Like "*Double*") Then
+    Dispatcher = "На этаж назначения (DDS)"
+Else
+    Dispatcher = "Собирательная при движении вверх и вниз"
+End If
+
+ActiveWorkbook.Sheets("Лифтовая группа").Rows(14).Insert xlShiftDown, xlFormatFromLeftOrAbove
+
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(14, 2).Value = "Система управления"
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(14, 2).HorizontalAlignment = xlLeft
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(14, 2).Font.Bold = True
+
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(14, 3).Value = Dispatcher
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(14, 3).HorizontalAlignment = xlLeft
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(14, 3).Font.Bold = True
+
+For i = 1 To ElevatorData.NoElevators
+
+    ActiveWorkbook.Sheets("Лифтовая группа").Cells(4, 2 + i).Value = i
+    
+    For j = 1 To 9
+        If j < 5 Then
+            ActiveWorkbook.Sheets("Лифтовая группа").Cells(4 + j, 2 + i).Value = ElevatorData.Spec(i, j)
+        Else
+            ActiveWorkbook.Sheets("Лифтовая группа").Cells(4 + j, 2 + i).Value = ElevatorData.Spec(i, j + 1)
+        End If
+    Next j
+    
+Next i
+             
+For i = 1 To BuildingData.NoFloors
+
+    ActiveWorkbook.Sheets("Лифтовая группа").Rows(17).Insert xlShiftDown, xlFormatFromRightOrBelow
+    ActiveWorkbook.Sheets("Лифтовая группа").Cells(17, 2).Value = BuildingData.FloorName(i)
+    'crutch for decimal values
+    If InStr(ActiveWorkbook.Sheets("Лифтовая группа").Cells(17, 2).Value, ",") Then
+        ActiveWorkbook.Sheets("Лифтовая группа").Cells(17, 2).Value = "'" & Replace(ActiveWorkbook.Sheets("Лифтовая группа").Cells(17, 2).Value, ",", ".")
+    End If
+    
+    For j = 1 To ElevatorData.NoElevators
+    
+        If ElevatorData.FloorsServed(j, i) = "Yes" Then
+            ActiveWorkbook.Sheets("Лифтовая группа").Cells(17, 2 + j).Value = ActiveWorkbook.Sheets("Лифтовая группа").Cells(2, 13).Value
+        Else
+            ActiveWorkbook.Sheets("Лифтовая группа").Cells(17, 2 + j).Value = ActiveWorkbook.Sheets("Лифтовая группа").Cells(2, 12).Value
+        End If
+        
+    Next j
+    
+Next i
+
+'crutch for car floor area START
+
+ActiveWorkbook.Sheets("Лифтовая группа").Rows(6).Insert xlShiftDown, xlFormatFromLeftOrAbove
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(6, 2).Value = "Площадь кабины, м2"
+
+For i = 1 To ElevatorData.NoElevators
+    'ActiveWorkbook.Sheets("Лифтовая группа").Cells(6, 2 + i).Value = floor_area(CStr(ActiveWorkbook.Sheets("Лифтовая группа").Cells(5, 2 + i).Value))
+    ActiveWorkbook.Sheets("Лифтовая группа").Cells(6, 2 + i).Value = floor_area_xml(xmlFolder, i)
+    ActiveWorkbook.Sheets("Лифтовая группа").Cells(6, 2 + i).NumberFormat = "0.00"
+Next i
+
+'crutch for car floor area END
+
+'crutch for doors START
+
+ActiveWorkbook.Sheets("Лифтовая группа").Rows(11).Insert xlShiftDown, xlFormatFromLeftOrAbove
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(11, 2).Value = "Ширина дверей, мм"
+ActiveWorkbook.Sheets("Лифтовая группа").Rows(12).Insert xlShiftDown, xlFormatFromLeftOrAbove
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(12, 2).Value = "Тип дверей (ЦО/ТО)*"
+
+Dim dWidth As String
+Dim dType As String
+
+Dim dOpen As Double
+Dim dClose As Double
+
+For i = 1 To ElevatorData.NoElevators
+    dWidth = "-"
+    dType = "-"
+    dOpen = ActiveWorkbook.Sheets("Лифтовая группа").Cells(14, 2 + i).Value
+    dClose = ActiveWorkbook.Sheets("Лифтовая группа").Cells(15, 2 + i).Value
+    
+    Call door_type(dOpen, dClose, dWidth, dType)
+    ActiveWorkbook.Sheets("Лифтовая группа").Cells(11, 2 + i).Value = dWidth
+    ActiveWorkbook.Sheets("Лифтовая группа").Cells(12, 2 + i).Value = dType
+    
+Next i
+
+Dim TotalRows As Integer: TotalRows = ActiveWorkbook.Sheets("Лифтовая группа").UsedRange.Rows.Count
+
+ActiveWorkbook.Sheets("Лифтовая группа").Rows(TotalRows + 1).Insert xlShiftDown, xlFormatFromLeftOrAbove
+ActiveWorkbook.Sheets("Лифтовая группа").Cells(TotalRows + 2, 2).Value = "*ЦО - центральное открывание, ТО - телескопическое открывание"
+
+'crutch for doors END
+
+'SHEET5
+
+If BuildingData.BuildingType = "Office" Then
+    If PassengerData.Incoming = 100 Then
+        ActiveWorkbook.Sheets("Оценка").UsedRange.Find("Target WT", LookAt:=xlWhole).Offset(0, 1).Value = 30
+    ElseIf PassengerData.Incoming = 85 Then
+        ActiveWorkbook.Sheets("Оценка").UsedRange.Find("Target WT", LookAt:=xlWhole).Offset(0, 1).Value = 35
+    ElseIf (PassengerData.Incoming = 45) Or (PassengerData.Incoming = 40) Then
+        ActiveWorkbook.Sheets("Оценка").UsedRange.Find("Target WT", LookAt:=xlWhole).Offset(0, 1).Value = 40
+    End If
+End If
+
+Dim gLimit As Integer
+Dim nSteps As Integer
+Dim nStepsFromMain As Integer
+
+If BuildingData.BuildingType = "Residential" Then
+    gLimit = 120
+    nSteps = 8
+ElseIf BuildingData.BuildingType = "Hotel" Then
+    gLimit = 80
+    nSteps = 13
+ElseIf BuildingData.BuildingType = "Office" Then
+    gLimit = 80
+    nSteps = 13
+Else
+    gLimit = 80
+    nSteps = 13
+End If
+
+nStepsFromMain = UBound(AWT)
+
+ReDim Preserve AWT(1 To nSteps)
+ReDim Preserve ATTD(1 To nSteps)
+ReDim Preserve AIS(1 To nSteps)
+ReDim Preserve ALW(1 To nSteps)
+
+For i = nStepsFromMain + 1 To nSteps
+    AWT(i) = i * gLimit
+    ATTD(i) = i * gLimit
+    AIS(i) = i * gLimit
+    ALW(i) = i * gLimit
+Next i
+
+QuickSort AWT, LBound(AWT), UBound(AWT)
+QuickSort ATTD, LBound(ATTD), UBound(ATTD)
+QuickSort AIS, LBound(AIS), UBound(AIS)
+QuickSort ALW, LBound(ALW), UBound(ALW)
+
+'crutch for LINEST START
+Dim lastHC5 As Integer: lastHC5 = nSteps
+
+For i = 1 To nSteps
+    If AWT(i) > gLimit Then
+        lastHC5 = i - 1
+        Exit For
+    End If
+Next i
+
+Call linest(AIS, lastHC5)
+Call linest(ALW, lastHC5)
+
+QuickSort AIS, LBound(AIS), UBound(AIS)
+QuickSort ALW, LBound(ALW), UBound(ALW)
+
+'crutch for LINEST END
+
+Dim rCol As Integer: rCol = 0
+rCol = ActiveWorkbook.Sheets("Оценка").UsedRange.Find("Record", , , LookAt:=xlWhole).column
+
+Dim mScalseAIS As Integer: mScalseIS = 0
+Dim mScalseALW As Integer: mScalseLW = 0
+Dim mUnitAIS As Integer: mUnitIS = 0
+Dim mUnitALW As Integer: mUnitLW = 0
+Dim xScale As Integer: xScale = 0
+
+If BuildingData.BuildingType = "Residential" Then
+    xScale = 6
+Else
+    xScale = 8
+End If
+
+For i = 1 To UBound(AWT)
+
+    If AWT(i) < gLimit Then
+        ActiveWorkbook.Sheets("Оценка").Cells(7, rCol + i).Value = AWT(i)
+        ActiveWorkbook.Sheets("Оценка").Cells(9, rCol + i).Value = ATTD(i)
+        ActiveWorkbook.Sheets("Оценка").Cells(11, rCol + i).Value = AIS(i)
+        ActiveWorkbook.Sheets("Оценка").Cells(13, rCol + i).Value = ALW(i)
+    Else
+        Exit For
+    End If
+    
+Next i
+
+mScalseAIS = (Int(AIS(i - 1) / xScale) + 2) * xScale
+mUnitAIS = mScalseAIS / xScale
+mScalseALW = (Int(ALW(i - 1) / xScale) + 2) * xScale
+mUnitALW = mScalseALW / xScale
+
+ActiveWorkbook.Sheets("Оценка").ChartObjects("IS").Chart.Axes(xlValue).MaximumScale = mScalseAIS
+ActiveWorkbook.Sheets("Оценка").ChartObjects("IS").Chart.Axes(xlValue).MajorUnit = mUnitAIS
+ActiveWorkbook.Sheets("Оценка").ChartObjects("LW").Chart.Axes(xlValue).MaximumScale = mScalseALW
+ActiveWorkbook.Sheets("Оценка").ChartObjects("LW").Chart.Axes(xlValue).MajorUnit = mUnitALW
+
+If i <= UBound(AWT) Then
+    ActiveWorkbook.Sheets("Оценка").Cells(8, rCol + i - 1).Value = AWT(i - 1)
+    ActiveWorkbook.Sheets("Оценка").Cells(10, rCol + i - 1).Value = ATTD(i - 1)
+    ActiveWorkbook.Sheets("Оценка").Cells(12, rCol + i - 1).Value = AIS(i - 1)
+    ActiveWorkbook.Sheets("Оценка").Cells(14, rCol + i - 1).Value = ALW(i - 1)
+
+    For i = i To UBound(AWT)
+
+        ActiveWorkbook.Sheets("Оценка").Cells(8, rCol + i).Value = ActiveWorkbook.Sheets("Оценка").Cells(6, rCol + i).Value * gLimit
+        ActiveWorkbook.Sheets("Оценка").Cells(10, rCol + i).Value = ActiveWorkbook.Sheets("Оценка").Cells(6, rCol + i).Value * gLimit
+        ActiveWorkbook.Sheets("Оценка").Cells(12, rCol + i).Value = ActiveWorkbook.Sheets("Оценка").Cells(6, rCol + i).Value * gLimit
+        ActiveWorkbook.Sheets("Оценка").Cells(14, rCol + i).Value = ActiveWorkbook.Sheets("Оценка").Cells(6, rCol + i).Value * gLimit
+    
+    Next i
+End If
+
+'crutch for service floors and express zones START
+
+Dim arrStart() As Integer
+Dim fStart As Integer: fStart = 0
+
+Dim arrFinish() As Integer
+Dim fFinish As Integer: fFinish = 0
+
+For i = 2 To BuildingData.NoFloors - 1
+    If Not IsServed(i) Then
+        If (IsServed(i - 1)) And (IsServed(i + 1)) Then
+            fStart = fStart + 1
+            ReDim Preserve arrStart(1 To fStart)
+            arrStart(fStart) = i
+            
+            fFinish = fFinish + 1
+            ReDim Preserve arrFinish(1 To fFinish)
+            arrFinish(fFinish) = i
+        ElseIf (IsServed(i - 1)) And (Not IsServed(i + 1)) Then
+            fStart = fStart + 1
+            ReDim Preserve arrStart(1 To fStart)
+            arrStart(fStart) = i
+        ElseIf (Not IsServed(i - 1)) And (IsServed(i + 1)) Then
+            fFinish = fFinish + 1
+            ReDim Preserve arrFinish(1 To fFinish)
+            arrFinish(fFinish) = i
+        End If
+    End If
+Next i
+
+Dim sFloors As Integer: sFloors = 2
+Dim RowToHide As Integer: RowToHide = 0
+Dim RowSpan As Integer: RowSpan = 0
+Dim exHeight As Double: exHeight = 0
+
+If fStart Then
+
+    For i = 1 To UBound(arrStart)
+        RowSpan = arrFinish(i) - arrStart(i)
+
+        If RowSpan <= sFloors Then
+            For k = 1 To RowSpan + 1
+                ActiveWorkbook.Sheets("Здание").Range("B1:B1000").Find(BuildingData.FloorName(arrStart(i)), LookAt:=xlWhole).Offset(1 - k, 3).Value = "Техэтаж"
+            Next k
+        Else
+            RowToHide = ActiveWorkbook.Sheets("Здание").Range("B1:B1000").Find(BuildingData.FloorName(arrStart(i)), LookAt:=xlWhole).row
+            ActiveWorkbook.Sheets("Здание").Cells(RowToHide, 5).Value = "Экспресс зона"
+            ActiveWorkbook.Sheets("Здание").Cells(RowToHide, 4).Value = "-"
+            For k = 0 To RowSpan
+                exHeight = exHeight + ActiveWorkbook.Sheets("Здание").Cells(RowToHide - k, 3).Value
+            Next k
+            ActiveWorkbook.Sheets("Здание").Cells(RowToHide, 3).Value = exHeight
+            ActiveWorkbook.Sheets("Здание").Cells(RowToHide, 2).Value = "'" & CStr(BuildingData.FloorName(arrStart(i))) & " - " & CStr(BuildingData.FloorName(arrFinish(i)))
+            ActiveWorkbook.Sheets("Здание").Rows(CStr(RowToHide - RowSpan) & ":" & CStr(RowToHide - 1)).EntireRow.Hidden = True
+            
+            RowToHide = ActiveWorkbook.Sheets("Пассажиропоток").Range("B1:B1000").Find(BuildingData.FloorName(arrStart(i)), LookAt:=xlWhole).row
+            ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToHide, 2).Value = "'" & CStr(BuildingData.FloorName(arrStart(i))) & " - " & CStr(BuildingData.FloorName(arrFinish(i)))
+            ActiveWorkbook.Sheets("Пассажиропоток").Rows(CStr(RowToHide - RowSpan) & ":" & CStr(RowToHide - 1)).EntireRow.Hidden = True
+        
+            RowToHide = ActiveWorkbook.Sheets("Лифтовая группа").Range("B1:B1000").Find(BuildingData.FloorName(arrStart(i)), LookAt:=xlWhole).row
+            ActiveWorkbook.Sheets("Лифтовая группа").Cells(RowToHide, 2).Value = "'" & CStr(BuildingData.FloorName(arrStart(i))) & " - " & CStr(BuildingData.FloorName(arrFinish(i)))
+            ActiveWorkbook.Sheets("Лифтовая группа").Rows(CStr(RowToHide - RowSpan) & ":" & CStr(RowToHide - 1)).EntireRow.Hidden = True
+           
+        End If
+        
+    Next i
+
+End If
+
+'crutch for service floors and express zones END
+
+'crutch for DD START
+
+'SHEET2
+Dim RowLobby As Integer: RowLobby = 0
+Dim NoLobby As Integer: NoLobby = 0
+
+If ElevatorData.Dispatcher Like "*Double*" Then
+    For i = 1 To BuildingData.NoFloors
+        If BuildingData.FloorType(i) = "Лобби" Then
+            NoLobby = NoLobby + 1
+            RowLobby = ActiveWorkbook.Sheets("Здание").Range("B1:B1000").Find(BuildingData.FloorName(i), LookAt:=xlWhole).row
+            ActiveWorkbook.Sheets("Здание").Cells(RowLobby, 5).Value = ActiveWorkbook.Sheets("Здание").Cells(RowLobby, 5).Value & " #" & CStr(NoLobby)
+        End If
+    Next i
+End If
+
+'SHEET3
+Dim RowToMerge As Integer: RowToMerge = 0
+
+If ElevatorData.Dispatcher Like "*Double*" Then
+
+    If PassengerData.Incoming <> 0 Then
+        For i = 2 To BuildingData.NoFloors
+            If (BuildingData.EntranceFloor(i) = "Yes") And (BuildingData.EntranceFloor(i - 1) = "Yes") Then
+                RowToMerge = ActiveWorkbook.Sheets("Пассажиропоток").Range("B1:B1000").Find(BuildingData.FloorName(i), LookAt:=xlWhole).row
+                ActiveWorkbook.Sheets("Пассажиропоток").Range(ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge, 3), ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge + 1, 3)).Merge
+                ActiveWorkbook.Sheets("Пассажиропоток").Range(ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge, 4), ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge + 1, 4)).Merge
+                i = i + 1
+            End If
+        Next i
+    End If
+    
+    If PassengerData.Outgoing <> 0 Then
+        For i = 2 To BuildingData.NoFloors
+            If (BuildingData.EntranceFloor(i) = "Yes") And (BuildingData.EntranceFloor(i - 1) = "Yes") Then
+                RowToMerge = ActiveWorkbook.Sheets("Пассажиропоток").Range("B1:B1000").Find(BuildingData.FloorName(i), LookAt:=xlWhole).row
+                ActiveWorkbook.Sheets("Пассажиропоток").Range(ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge, 11), ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge + 1, 11)).Merge
+                ActiveWorkbook.Sheets("Пассажиропоток").Range(ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge, 12), ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge + 1, 12)).Merge
+                i = i + 1
+            End If
+        Next i
+    End If
+
+    If PassengerData.Interfloor <> 0 Then
+        For i = 2 To BuildingData.NoFloors
+            If (BuildingData.EntranceFloor(i) = "Yes") And (BuildingData.EntranceFloor(i - 1) = "Yes") Then
+                RowToMerge = ActiveWorkbook.Sheets("Пассажиропоток").Range("B1:B1000").Find(BuildingData.FloorName(i), LookAt:=xlWhole).row
+                ActiveWorkbook.Sheets("Пассажиропоток").Range(ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge, 16), ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge + 1, 16)).Merge
+                ActiveWorkbook.Sheets("Пассажиропоток").Range(ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge, 17), ActiveWorkbook.Sheets("Пассажиропоток").Cells(RowToMerge + 1, 17)).Merge
+                i = i + 1
+            End If
+        Next i
+    End If
+                
+End If
+
+'SHEET4
+If ElevatorData.Dispatcher Like "*Double*" Then
+
+    For i = 1 To ElevatorData.NoElevators
+        ActiveWorkbook.Sheets("Лифтовая группа").Cells(5, i + 2).Value = "2x" & ActiveWorkbook.Sheets("Лифтовая группа").Cells(5, i + 2).Value
+        ActiveWorkbook.Sheets("Лифтовая группа").Cells(6, i + 2).Value = "2x" & ActiveWorkbook.Sheets("Лифтовая группа").Cells(6, i + 2).Value
+    Next i
+End If
+
+'crutch for DD END
+
+'ПАРАМЕТРЫ ОБСЛУЖИВАНИЯ И ОЦЕНКА
+Call eRate(AWT, ATTD, AIS, ALW, BuildingData, PassengerData, gLimit)
+
+ActiveWorkbook.Sheets("Оценка").Cells(4, 2).Value = eGroup(ElevatorData, ServedFloors, BuildingData.NoFloors)
+ActiveWorkbook.Sheets("Критерии").Cells(10, 2).Value = eFlow(PassengerData)
+
+Dim bLength As Integer: bLength = 0
+bLength = 29 + Len(CStr(PassengerData.Incoming)) + Len(CStr(PassengerData.Outgoing)) + Len(CStr(PassengerData.Interfloor))
+
+ActiveWorkbook.Sheets("Критерии").Cells(10, 2).Characters(Start:=1, Length:=bLength).Font.FontStyle = "Bold"
+
+ActiveWorkbook.Sheets("Оценка").Activate
+
+FileName = JobData(1) + " " + JobData(2) + ".xlsx"
+Folder = "T:\Крупные проекты и высотное строительство\_Ele_temp\"
+
+Application.DisplayAlerts = False
+ActiveWorkbook.SaveAs FileName:=Folder & FileName
+Application.DisplayAlerts = True
+
+End Sub
+
+Function floor_area(capacity As String) As String
+
+floor_area = "-"
+
+Dim ref
+Set ref = CreateObject("Scripting.Dictionary")
+
+ref.Add "320", "'0,94"
+ref.Add "450", "'1,20"
+ref.Add "550", "'1,43"
+ref.Add "630", "'1,54"
+ref.Add "825", "'1,96"
+ref.Add "1000", "'2,31"
+ref.Add "1050", "'2,31"
+ref.Add "1200", "'2,73"
+ref.Add "1350", "'2,94"
+ref.Add "1600", "'3,36"
+ref.Add "1800", "'3,78"
+ref.Add "2000", "'4,20"
+ref.Add "2250", "'4,41"
+ref.Add "2500", "'4,83"
+
+If ref.Exists(capacity) Then
+    floor_area = ref.Item(capacity)
+End If
+
+End Function
+
+Function floor_area_xml(ByVal Folder As String, ByVal i As Integer) As Double
+
+On Error GoTo abort_function
+
+FileName = "floor_area.csv"
+Folder = Folder + "\"
+
+Workbooks.Open FileName:=Folder & FileName, Local:=True
+
+Dim area As String: area = ActiveSheet.Cells(i + 1, 2).Value
+
+floor_area_xml = CDbl(Replace(area, ".", ","))
+
+ActiveWorkbook.Close Savechanges:=False
+
+abort_function:
+
+End Function
+
+Function door_type(dOpen As Double, dClose As Double, dWidth As String, dType As String) As String
+
+Dim dTimes As String: dTimes = CStr(dOpen) & "-" & CStr(dClose)
+
+Dim ref
+Set ref = CreateObject("Scripting.Dictionary")
+
+'ref.Add "2,0-3,3", "600ТО"
+'ref.Add "2,1-3,5", "650ТО"
+ref.Add "2,1-3,7", "700ТО"
+ref.Add "2,2-3,9", "750ТО"
+ref.Add "2,3-4,1", "800ТО"
+ref.Add "2,4-4,3", "850ТО"
+ref.Add "2,5-4,5", "900ТО"
+ref.Add "2,6-4,7", "950ТО"
+ref.Add "2,6-4,9", "1000ТО"
+ref.Add "2,7-5,1", "1050ТО"
+ref.Add "2,8-5,3", "1100ТО"
+ref.Add "2,9-5,5", "1150ТО"
+ref.Add "2,9-5,7", "1200ТО"
+ref.Add "3-5,9", "1250ТО"
+ref.Add "3,1-6", "1300ТО"
+
+ref.Add "1,5-2,2", "600ЦО"
+ref.Add "1,6-2,3", "650ЦО"
+ref.Add "1,6-2,4", "700ЦО"
+ref.Add "1,7-2,5", "750ЦО"
+ref.Add "1,7-2,6", "800ЦО"
+ref.Add "1,7-2,7", "850ЦО"
+ref.Add "1,7-2,8", "900ЦО"
+'ref.Add "1,8-2,9", "950ЦО"
+ref.Add "1,8-2,9", "1000ЦО"
+ref.Add "1,9-3", "1050ЦО"
+ref.Add "1,9-3,1", "1100ЦО"
+ref.Add "2-3,2", "1150ЦО"
+ref.Add "2-3,3", "1200ЦО"
+ref.Add "2,1-3,4", "1250ЦО"
+ref.Add "2,1-3,5", "1300ЦО"
+
+
+If ref.Exists(dTimes) Then
+    dWidth = "'" & Left(ref.Item(dTimes), Len(ref.Item(dTimes)) - 2)
+    dType = Right(ref.Item(dTimes), 2)
+End If
+
+End Function
+
+Public Sub csvParse(ByVal FileName As String, ByVal Folder As String, ByRef AIS() As Variant, ByRef ALW() As Variant, ByRef BuildingData As BuildingDataType, ByRef ElevatorData As ElevatorDataType, ByVal step As Integer)
+    
+    If step < 10 Then
+        FileName = Left(FileName, Len(FileName) - 3) & " 0" & CStr(step)
+    Else
+        FileName = Left(FileName, Len(FileName) - 3) & " " & CStr(step)
+    End If
+    
+    FileName = FileName + ".csv"
+    Folder = Folder + "\"
+
+    Workbooks.Open FileName:=Folder & FileName, Local:=True
+    
+    Dim sRow As Long: sRow = 0
+    Dim eRow As Long: eRow = 0
+    Dim tPass As Long: tPass = 0
+    Dim LW As Double: LW = 0
+    
+    sRow = ActiveSheet.UsedRange.Find("breakdown", , , xlPart).row + 12
+    eRow = ActiveSheet.UsedRange.Find("spatial", , , xlPart).row - 2
+    
+    For i = sRow To eRow
+        tPass = tPass + 1
+        If ActiveSheet.Cells(i, 11).Value >= 90 Then
+            LW = LW + 1
+        End If
+    Next i
+      
+    ALW(step) = 100 * LW / tPass
+
+
+    
+    Dim cRow As Long: cRow = ActiveSheet.UsedRange.Find("spatial", , , xlPart).row + 2
+    
+    Dim hFloor As Double: hFloor = 0
+    Dim hFloorInd As Integer: hFloorInd = 0
+    
+    Dim sLen As Integer: sLen = 0
+    Dim sValue1 As Variant: sValue1 = ""
+    Dim sValue2 As Variant: sValue2 = ""
+    
+    Dim nrTrip As Integer: nrTrip = 0
+    Dim sumStop As Integer: sumStop = 0
+    Dim nrStop() As Integer
+    
+    Dim sumAIS As Double: sumALS = 0
+    Dim sAIS() As Double
+    ReDim sAIS(1 To ElevatorData.NoElevators)
+    
+    For i = 1 To ElevatorData.NoElevators
+    
+        sLen = Len(ElevatorData.Spec(i, 5))
+        sValue1 = ElevatorData.Spec(i, 5)
+        sValue2 = Right(ElevatorData.Spec(i, 5), sLen - 6)
+        'crutch for decimal values
+        sValue2 = Replace(sValue2, ".", ",")
+
+        hFloor = CDbl(sValue2)
+        
+        For j = 1 To BuildingData.NoFloors
+            If hFloor = BuildingData.FloorName(j) Then
+                hFloorInd = j
+                Exit For
+            End If
+        Next j
+        
+        nrTrip = 0
+        sumStop = 0
+        ReDim nrStop(1 To 1)
+
+        Do While (ActiveSheet.Cells(cRow, 1) = i) And (ActiveSheet.Cells(cRow + 1, 1) = i)
+
+            If (ActiveSheet.Cells(cRow, 3).Value = hFloorInd) And (ActiveSheet.Cells(cRow + 1, 3).Value = hFloorInd) Then
+                    nrTrip = nrTrip + 1
+                    ReDim Preserve nrStop(1 To nrTrip)
+                    nrStop(nrTrip) = 0
+                    
+                    Do While (ActiveSheet.Cells(cRow + 2, 3).Value <> hFloorInd) And (ActiveSheet.Cells(cRow + 2, 1) = i)
+                        
+                        If ActiveSheet.Cells(cRow + 2, 3) <> ActiveSheet.Cells(cRow + 3, 3) Then
+                            nrStop(nrTrip) = nrStop(nrTrip) + 1
+                        End If
+                        cRow = cRow + 1
+                    Loop
+                    
+            End If
+            cRow = cRow + 1
+            
+        Loop
+        cRow = cRow + 1
+        
+        For x = 1 To UBound(nrStop)
+            sumStop = sumStop + nrStop(x)
+        Next x
+        
+        If nrTrip Then
+            sAIS(i) = sumStop / nrTrip - 1
+        Else
+            sAIS(i) = 0
+        End If
+        
+    Next i
+        
+    For x = 1 To UBound(sAIS)
+        sumAIS = sumAIS + sAIS(x)
+    Next x
+    
+    AIS(step) = sumAIS / UBound(sAIS)
+    
+    ActiveWorkbook.Close Savechanges:=False
+
+End Sub
+
+Sub QuickSort(arr() As Variant, ByVal low As Long, ByVal high As Long)
+    Dim pivot As Variant
+    Dim i As Long, j As Long
+    Dim temp As Variant
+    
+    If low < high Then
+        pivot = arr((low + high) \ 2)
+        i = low
+        j = high
+        
+        Do While i <= j
+            Do While arr(i) < pivot And i < high
+                i = i + 1
+            Loop
+            Do While arr(j) > pivot And j > low
+                j = j - 1
+            Loop
+            
+            If i <= j Then
+                temp = arr(i)
+                arr(i) = arr(j)
+                arr(j) = temp
+                i = i + 1
+                j = j - 1
+            End If
+        Loop
+        
+        If low < j Then QuickSort arr, low, j
+        If i < high Then QuickSort arr, i, high
+    End If
+End Sub
+
+Function eRate(AWT() As Variant, ATTD() As Variant, AIS() As Variant, ALW() As Variant, ByRef BuildingData As BuildingDataType, ByRef PassengerData As PassengerDataType, gLimit As Integer)
+    Dim i As Integer: i = 0
+    With ActiveWorkbook.Sheets("Оценка")
+    
+        .Cells(47, 2).Value = PassengerData.Incoming & "%, " & PassengerData.Outgoing & "%, " & PassengerData.Interfloor & "%"
+        
+        If BuildingData.BuildingType = "Office" Then
+            If .Cells(47, 2).Value = ActiveWorkbook.Sheets("Критерии").Cells(5, 4).Value Then
+                If (AWT(13) < 25) And (ATTD(13) < 80) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 13, 5, BuildingData)
+                ElseIf (AWT(12) < 30) And (ATTD(12) < 100) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 12, 4, BuildingData)
+                ElseIf (AWT(11) < 40) And (ATTD(11) < 120) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 11, 3, BuildingData)
+                Else
+                    For i = 13 To 1 Step -1
+                        If AWT(i) < gLimit Then
+                            Call assPrint(AWT, ATTD, AIS, ALW, i, 1, BuildingData)
+                            Exit For
+                        End If
+                    Next i
+                End If
+                
+            ElseIf .Cells(47, 2).Value = ActiveWorkbook.Sheets("Критерии").Cells(6, 4).Value Then
+                If (AWT(12) < 25) And (ATTD(12) < 80) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 12, 5, BuildingData)
+                ElseIf (AWT(11) < 40) And (ATTD(11) < 100) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 11, 4, BuildingData)
+                ElseIf (AWT(10) < 40) And (ATTD(10) < 120) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 10, 3, BuildingData)
+                Else
+                    For i = 13 To 1 Step -1
+                        If AWT(i) < gLimit Then
+                            Call assPrint(AWT, ATTD, AIS, ALW, i, 1, BuildingData)
+                            Exit For
+                        End If
+                    Next i
+                End If
+            Else
+                MsgBox ("No Rating Data.")
+            End If
+        
+        ElseIf BuildingData.BuildingType = "Hotel" Then
+            If .Cells(47, 2).Value = ActiveWorkbook.Sheets("Критерии").Cells(7, 4).Value Then
+                If (AWT(13) < 25) And (ATTD(13) < 80) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 13, 5, BuildingData)
+                ElseIf (AWT(12) < 40) And (ATTD(12) < 100) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 12, 4, BuildingData)
+                ElseIf (AWT(11) < 40) And (ATTD(11) < 120) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 11, 3, BuildingData)
+                Else
+                    For i = 13 To 1 Step -1
+                        If AWT(i) < gLimit Then
+                            Call assPrint(AWT, ATTD, AIS, ALW, i, 1, BuildingData)
+                            Exit For
+                        End If
+                    Next i
+                End If
+            Else
+                MsgBox ("No Rating Data.")
+            End If
+        
+        ElseIf BuildingData.BuildingType = "Residential" Then
+            If .Cells(47, 2).Value = ActiveWorkbook.Sheets("Критерии").Cells(8, 4).Value Then
+                If (AWT(8) < 40) And (ATTD(8) < 90) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 8, 5, BuildingData)
+                ElseIf (AWT(7) < 60) And (ATTD(7) < 120) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 7, 4, BuildingData)
+                ElseIf (AWT(6) < 60) And (ATTD(6) < 150) Then
+                    Call assPrint(AWT, ATTD, AIS, ALW, 6, 3, BuildingData)
+                Else
+                    For i = 8 To 1 Step -1
+                        If AWT(i) < gLimit Then
+                            Call assPrint(AWT, ATTD, AIS, ALW, i, 1, BuildingData)
+                            Exit For
+                        End If
+                    Next i
+                End If
+            Else
+                MsgBox ("No Rating Data.")
+            End If
+        
+        Else
+            MsgBox ("No Rating Data.")
+        End If
+    
+    End With
+
+End Function
+
+Function assPrint(AWT() As Variant, ATTD() As Variant, AIS() As Variant, ALW() As Variant, HC5 As Integer, Rating As Integer, ByRef BuildingData As BuildingDataType)
+
+    If BuildingData.BuildingType = "Residential" Then
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 5).Value = HC5
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 9).Value = AWT(HC5)
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 13).Value = ATTD(HC5)
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 17).Value = AIS(HC5)
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 21).Value = ALW(HC5)
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 25).Value = ActiveWorkbook.Sheets("Оценка").Cells(45, 29 + Rating)
+        If Rating = 1 Then
+            ActiveWorkbook.Sheets("Оценка").Cells(47, 25).Font.Color = RGB(255, 0, 0)
+        End If
+    Else
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 4).Value = HC5
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 6).Value = AWT(HC5)
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 8).Value = ATTD(HC5)
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 10).Value = AIS(HC5)
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 12).Value = ALW(HC5)
+        ActiveWorkbook.Sheets("Оценка").Cells(47, 14).Value = ActiveWorkbook.Sheets("Оценка").Cells(45, 16 + Rating)
+        If Rating = 1 Then
+            ActiveWorkbook.Sheets("Оценка").Cells(47, 14).Font.Color = RGB(255, 0, 0)
+        End If
+    End If
+
+End Function
+
+Function eGroup(ByRef ElevatorData As ElevatorDataType, sFloors As Integer, Floors As Integer) As String
+
+    Dim eCAP As Object
+    Set eCAP = CreateObject("Scripting.Dictionary")
+    
+    For i = 1 To ElevatorData.NoElevators
+        If Not eCAP.Exists(ElevatorData.Spec(i, 1)) Then
+            eCAP.Add Key:=ElevatorData.Spec(i, 1), Item:=1
+        Else
+            eCAP.Item(ElevatorData.Spec(i, 1)) = eCAP.Item(ElevatorData.Spec(i, 1)) + 1
+        End If
+    Next i
+    
+    Dim x2 As String: x2 = ""
+    If ElevatorData.Dispatcher Like "*Double*" Then
+        x2 = "2x"
+    End If
+    
+    Dim nEle As String: nEle = ""
+    Dim nQuo As String: nQuo = ""
+    For Each CAP In eCAP.Keys
+        If eCAP.Item(CAP) < 2 Then
+            nQuo = "лифт"
+        ElseIf eCAP.Item(CAP) < 5 Then
+            nQuo = "лифта"
+        Else
+            nQuo = "лифтов"
+        End If
+        nEle = nEle & " " & eCAP.Item(CAP) & " " & nQuo & " с грузоподъемностью " & x2 & CAP & " кг,"
+    Next CAP
+
+    eGroup = "Лифтовая группа:" & nEle & " со скоростью " & ElevatorData.Spec(1, 2) & " м/с. Количество остановок " & sFloors & "/" & Floors & "."
+
+End Function
+
+Function eFlow(ByRef PassengerData As PassengerDataType) As String
+
+    eFlow = "Тип пассажиропотока (" & PassengerData.Incoming & "%, " & PassengerData.Outgoing & "%, " & PassengerData.Interfloor & "%): " & _
+    "направление движения пассажиров во время часа пик." & vbNewLine & _
+    "Входной пассажиропоток (" & PassengerData.Incoming & "%) - " & "пассажиропоток с конкретного посадочного этажа при входе в здание." & vbNewLine & _
+    "Выходной пассажиропоток (" & PassengerData.Outgoing & "%) - " & "пассажиропоток с этажей здания на выход из здания." & vbNewLine & _
+    "Межэтажный пассажиропоток (" & PassengerData.Interfloor & "%) - " & "одновременное перемещение пассажиров между этажами задния."
+
+End Function
+
+Function linest(ByRef data() As Variant, lastHC5 As Integer)
+    
+    Dim linestResult As Variant
+    
+    Dim aX() As Variant
+    Dim aY() As Variant
+    
+    Dim x4 As Double: x4 = 0
+    Dim x3 As Double: x3 = 0
+    Dim x2 As Double: x2 = 0
+    Dim x1 As Double: x1 = 0
+    Dim x0 As Double: x0 = 0
+    
+    ReDim aX(1 To 4, 1 To lastHC5)
+    For i = 1 To lastHC5
+        aX(1, i) = i
+        aX(2, i) = i ^ 2
+        aX(3, i) = i ^ 3
+        aX(4, i) = i ^ 4
+    Next i
+    
+    ReDim aY(1 To lastHC5)
+    For i = 1 To lastHC5
+        aY(i) = data(i)
+    Next i
+    
+    linestResult = Application.WorksheetFunction.linest(aY, aX, True, False)
+    x4 = linestResult(1)
+    x3 = linestResult(2)
+    x2 = linestResult(3)
+    x1 = linestResult(4)
+    x0 = linestResult(5)
+    
+    For i = 1 To lastHC5
+        data(i) = x4 * i ^ 4 + x3 * i ^ 3 + x2 * i ^ 2 + x1 * i + x0
+        
+        If data(i) < 0.1 Then
+            data(i) = 0
+        End If
+    Next i
+    
+End Function
+
+Sub ElevateReportV1()
+
+    Dim FileName As String
+    Dim Folder As String
+
+    Dim AWT() As Variant
+    Dim ATTD() As Variant
+    Dim AIS() As Variant
+    Dim ALW() As Variant
+
+    Dim JobData() As String
+    Dim BuildingData As BuildingDataType
+    Dim ElevatorData As ElevatorDataType
+    Dim PassengerData As PassengerDataType
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    If ActiveSheet.Name <> "batch_results" Then
+        MsgBox ("Open ""batch_results.csv"" file!")
+        Exit Sub
+    End If
+    
+    Call CopyDataMain(FileName, Folder, AWT, ATTD)
+    Call CopyDataSub(FileName, Folder, JobData, BuildingData, ElevatorData, PassengerData)
+    
+    Dim nSteps As Integer: nSteps = UBound(AWT)
+    ReDim AIS(1 To nSteps)
+    ReDim ALW(1 To nSteps)
+    For i = 1 To nSteps
+        Call csvParse(FileName, Folder, AIS, ALW, BuildingData, ElevatorData, i)
+    Next i
+    
+    Call PrintData(Folder, AWT, ATTD, AIS, ALW, JobData, BuildingData, ElevatorData, PassengerData)
+    
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
+End Sub

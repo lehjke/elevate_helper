@@ -1,57 +1,107 @@
-# Elevate Helper
+# Elevate Helper (WinUI 3)
 
-The Elevate Helper is a software application that assists with the management and processing of Elevate files, a specialized file format used in the building industry. This tool provides a user-friendly interface to perform various tasks, such as creating copies of Elevate files, modifying building types, and generating reports.
+Desktop-приложение для автоматизации сценариев в Peters Research Elevate:
+- подготовка `.elvx` файлов под Office/Residence/Hotel;
+- запуск расчетов Elevate;
+- генерация Excel-отчетов через VBA-макросы `KIP.xlam`.
 
-## Installation
+## Что умеет
 
-To use the Elevate Helper, follow these steps:
+- Выбор типа здания: `Office`, `Residence`, `Hotel`.
+- Автоматическая подготовка копий `.elvx` и модификация XML-параметров:
+  - `HandlingCapacity`;
+  - `BuildingType`;
+  - распределение `SplitUp/SplitDown/SplitInterfloor`;
+  - `JobTitle` для peak-сценариев.
+- Отдельные сценарии:
+  - `Run` (полный запуск);
+  - `Run Morning Only` (для Office);
+  - `Print Report` / `Print Morning Report` / `Print Lunch Report`.
+- Генерация отчета в Excel по шаблону:
+  - `Office.xlsx`
+  - `Hotel.xlsx`
+  - `Residential.xlsx`
 
-1. Ensure you have Python 3.12 or higher installed on your system.
-2. Install the required dependencies by running the following command in your terminal or command prompt:
+## Архитектура
 
-   ```
-   pip install -r requirements.txt
-   ```
+```mermaid
+flowchart LR
+    UI["MainPage (WinUI)"] --> PROC["ElevateProcessingService"]
+    UI --> LAUNCH["ElevateLauncherService"]
+    UI --> REPORT["ElevateReportService"]
+    UI --> INTEGRATION["ElevateIntegrationService"]
 
-3. Run the `app.py` file to launch the Elevate Helper application.
+    PROC --> ELVX[".elvx / XML"]
+    PROC --> CSV["floor_area.csv / batch_results.csv"]
+    LAUNCH --> ELEVATE["Elevate.exe"]
+    REPORT --> EXCEL["Excel COM + KIP.xlam"]
+```
 
-## Usage
+## Требования
 
-The Elevate Helper provides the following functionality:
+- Windows 10/11 x64.
+- Установленный Peters Research Elevate (`Elevate.exe`).
+- Microsoft Excel (для печати отчетов через `KIP.xlam`).
+- .NET SDK 8+ (в CI используется .NET SDK 10).
 
-1. **Building Type Selection**: Choose the building type (Office, Residence, or Hotel) for the Elevate file you want to process.
-2. **File Path**: Specify the path to the Elevate file you want to work with.
-3. **Run**: Execute the Elevate file processing based on the selected building type and morning/full-day options.
-4. **Print Report**: Generate a report based on the processed Elevate file.
+## Быстрый старт
 
-## API
+```powershell
+dotnet restore ElevateHelperWinUI.csproj
+dotnet build ElevateHelperWinUI.csproj -p:Platform=x64
+dotnet run --project ElevateHelperWinUI.csproj -p:Platform=x64
+```
 
-The Elevate Helper utilizes the following Python libraries:
+## Использование
 
-- `tkinter`: For creating the graphical user interface.
-- `body`: Handles the main functionality of the application, such as creating file copies, modifying building types, and generating reports.
-- `app_icon`: Provides the application icon.
+1. Укажи путь к папке с исходными `.elvx`.
+2. Выбери `Building Type`.
+3. Нажми:
+   - `Run` для расчета;
+   - `Run Morning Only` для office morning;
+   - кнопки печати для генерации отчетов.
+4. Смотри статус выполнения в `Checkup` (InfoBar).
 
-## Contributing
+## Тесты
 
-If you would like to contribute to the Elevate Helper project, please follow these guidelines:
+Юнит-тесты покрывают критичную логику `ElevateProcessingService`:
+- модификации XML;
+- генерацию `floor_area.csv`;
+- сценарии `RunAsync` с фейковым launcher.
 
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix.
-3. Implement your changes and ensure they work as expected.
-4. Submit a pull request with a detailed description of your changes.
+Локальный запуск:
 
-## License
+```powershell
+dotnet test tests/ElevateHelper.Tests/ElevateHelper.Tests.csproj
+```
 
-The Elevate Helper is released under the [MIT License](LICENSE).
+## CI (GitHub Actions)
 
-## Testing
+Workflow: `.github/workflows/ci.yml`
 
-To ensure the Elevate Helper functions correctly, the following test cases have been implemented:
+- `Unit Tests` (Ubuntu): restore + test.
+- `Build WinUI App` (Windows): restore + build `ElevateHelperWinUI.csproj`.
 
-1. **Building Type Selection**: Verify that the application correctly handles the selection of different building types (Office, Residence, and Hotel).
-2. **File Path**: Ensure the application can correctly process the provided Elevate file path.
-3. **Run**: Test the execution of the Elevate file processing for each building type, including the morning-only and full-day options.
-4. **Print Report**: Validate the generation of the report based on the processed Elevate file.
+## Структура проекта
 
-These test cases can be executed manually or integrated into an automated testing framework.
+```text
+.
+├─ Models/                     # DTO и enum
+├─ Services/                   # Интеграция, запуск, обработка, отчеты
+├─ Views/                      # WinUI страницы
+├─ tests/ElevateHelper.Tests/  # xUnit тесты
+└─ .github/workflows/          # CI
+```
+
+## Частые проблемы
+
+- `Unable to send keyboard input to Elevate`:
+  - проверь, что Elevate и Elevate Helper запущены с одинаковыми правами.
+- `MSB3021/MSB3027` во время сборки:
+  - закрой уже запущенный `ElevateHelperWinUI.exe`, он блокирует выходной файл.
+- `Elevate not found`:
+  - проверь установку Elevate или задай `ELEVATE_EXE_PATH`.
+
+## Лицензия
+
+MIT, см. файл `LICENSE`.

@@ -1,0 +1,1727 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ElevateDocument>
+	<DocumentData DataVersion="1.000000" ElevateVersion="Elevate 7.0" DesignFileName="T:\Крупные проекты и высотное строительство\Спецификации\ELEVATE\Meteor\Residential.elvx" Saved="Friday, September 05, 10:34:S 2025"/>
+	<JobData JobTitle="Жилье" JobNo="R00" CalculationTitle="г. Москва" MadeBy="Мастеров" CheckedBy="Мастеров" LogoFile="C:\Users\user\Desktop\АГНИ.jpg" Company="Метеор"/>
+	<AnalysisData>
+		<Analysis AnalysisType="Simulation" MeasurementSystem="Metric"/>
+		<Dispatcher>
+			<Algorithm AlgorithmSource="Standard" AlgorithmName="Group Collective" Mode="Up peak 1"/>
+			<AdvancedSettings>
+				<GroupCollective UpPeakLoad="67" UpPeakOnLevel="3" UpPeakClockInhibitLevel="2" UpPeakClockRate="60" DownPeakLoad="67" DownPeakOnLevel="3" DownPeakClockInhibitLevel="2" DownPeakClockRate="60"/>
+			</AdvancedSettings>
+		</Dispatcher>
+		<Interfaces Mode="Xml Mode Off"/>
+		<SimulationParameters TimeSliceBetweenSimulationCalculations="0.100000" NoOfTimeSlicesBetweenScreenUpdates="10" NoOfSimulationsToRunForEachConfiguration="10" NoOfLearningRuns="0" RandomNumberSeedForPassengerGenerator="1" MinimumDwellCarCall="2000" MinimumDwellLandingCall="2000" MinimumPhotocellDelay="2000" PassengerLoadingTime="1200" PassengerUnloadingTime="1200" PassengerWalkingSpeed="1400" LoggingEnabled="0" LoggingFromTime="0.000000" LoggingLiftMode="1" LoggingyLiftIndex="1" LoggingPassengerMode="1" LoggingPersonIndex="1" LoggingCallMode="1" LoggingCallIndex="1"/>
+		<RoundTripTime Losses="5.000000"/>
+		<Energy EnergyModel="Off" CurrencySymbol="$" EnergykWhrCost="0.060000"/>
+		<OtherData DispatcherDebug="False" SimulationFontSize="12" SimulationComplete="False" LinesPerPage="95"/>
+	</AnalysisData>
+	<BuildingData NoOfFloors="31" UseFloorLevel="0" LowestFloorFirst="True" NoShafts="0" NoConnections="0" AbsenteeismPercent="0.000000" BuildingType="3" Express="0" ExpressStartPosition="0.000000" ExpressEndPosition="0.000000">
+		<Floor FloorName="Level -3" FloorLevel="0.000000" NoOfPeople="0" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="True" UserInterface="0"/>
+		<Floor FloorName="Level -2" FloorLevel="3.600000" NoOfPeople="0" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="True" UserInterface="0"/>
+		<Floor FloorName="Level -1" FloorLevel="7.500000" NoOfPeople="0" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="True" UserInterface="0"/>
+		<Floor FloorName="Level 1" FloorLevel="11.550000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="True" UserInterface="0"/>
+		<Floor FloorName="Level 2" FloorLevel="18.250000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 3" FloorLevel="21.700000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 4" FloorLevel="25.150000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 5" FloorLevel="28.600000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 6" FloorLevel="32.050000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 7" FloorLevel="35.500000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 8" FloorLevel="38.950000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 9" FloorLevel="42.400000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 10" FloorLevel="45.850000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 11" FloorLevel="49.300000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 12" FloorLevel="52.750000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 13" FloorLevel="56.200000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 14" FloorLevel="59.650000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 15" FloorLevel="63.100000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 16" FloorLevel="66.550000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 17" FloorLevel="70.000000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 18" FloorLevel="73.450000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 19" FloorLevel="76.900000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 20" FloorLevel="80.350000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 21" FloorLevel="83.800000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 22" FloorLevel="87.250000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 23" FloorLevel="90.700000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 24" FloorLevel="94.150000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 25" FloorLevel="97.600000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 26" FloorLevel="101.050000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 27" FloorLevel="104.500000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<Floor FloorName="Level 28" FloorLevel="107.950000" NoOfPeople="14" Area="0.000000" AreaPerPerson="-1.000000" EntranceFloor="False" UserInterface="0"/>
+		<SpeedFill MaxSpeedFillIndex="10" AntiBunching="False">
+			<SpeedFillSeries SpeedFillIndex="0">
+				<Series Id="0" Data="Level -5"/>
+				<Series Id="1" Data="Level -4"/>
+				<Series Id="2" Data="Level -3"/>
+				<Series Id="3" Data="Level -2"/>
+				<Series Id="4" Data="Level -1"/>
+				<Series Id="5" Data="Level 1"/>
+				<Series Id="6" Data="Level 2"/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="1">
+				<Series Id="0" Data="Level -4"/>
+				<Series Id="1" Data="Level -3"/>
+				<Series Id="2" Data="Level -2"/>
+				<Series Id="3" Data="Level -1"/>
+				<Series Id="4" Data="Level 1"/>
+				<Series Id="5" Data="Level 2"/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="2">
+				<Series Id="0" Data="Level -3"/>
+				<Series Id="1" Data="Level -2"/>
+				<Series Id="2" Data="Level -1"/>
+				<Series Id="3" Data="Level 1"/>
+				<Series Id="4" Data="Level 2"/>
+				<Series Id="5" Data=""/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="3">
+				<Series Id="0" Data="Level -2"/>
+				<Series Id="1" Data="Level -1"/>
+				<Series Id="2" Data="Level 1"/>
+				<Series Id="3" Data="Level 2"/>
+				<Series Id="4" Data=""/>
+				<Series Id="5" Data=""/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="4">
+				<Series Id="0" Data="Level -1"/>
+				<Series Id="1" Data="Level 1"/>
+				<Series Id="2" Data="Level 2"/>
+				<Series Id="3" Data=""/>
+				<Series Id="4" Data=""/>
+				<Series Id="5" Data=""/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="5">
+				<Series Id="0" Data="Level 1"/>
+				<Series Id="1" Data="Level 2"/>
+				<Series Id="2" Data=""/>
+				<Series Id="3" Data=""/>
+				<Series Id="4" Data=""/>
+				<Series Id="5" Data=""/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="6">
+				<Series Id="0" Data="Level 0"/>
+				<Series Id="1" Data="Level 1"/>
+				<Series Id="2" Data="Level 2"/>
+				<Series Id="3" Data=""/>
+				<Series Id="4" Data=""/>
+				<Series Id="5" Data=""/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="7">
+				<Series Id="0" Data="Ground"/>
+				<Series Id="1" Data="Level 2"/>
+				<Series Id="2" Data=""/>
+				<Series Id="3" Data=""/>
+				<Series Id="4" Data=""/>
+				<Series Id="5" Data=""/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="8">
+				<Series Id="0" Data="Basement"/>
+				<Series Id="1" Data="Ground"/>
+				<Series Id="2" Data="Level 2"/>
+				<Series Id="3" Data=""/>
+				<Series Id="4" Data=""/>
+				<Series Id="5" Data=""/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+			<SpeedFillSeries SpeedFillIndex="9">
+				<Series Id="0" Data="Car Park"/>
+				<Series Id="1" Data="Ground"/>
+				<Series Id="2" Data="Level 2"/>
+				<Series Id="3" Data=""/>
+				<Series Id="4" Data=""/>
+				<Series Id="5" Data=""/>
+				<Series Id="6" Data=""/>
+				<Series Id="7" Data=""/>
+				<Series Id="8" Data=""/>
+				<Series Id="9" Data=""/>
+			</SpeedFillSeries>
+		</SpeedFill>
+	</BuildingData>
+	<ElevatorData ElevatorDataMode="Advanced">
+		<StandardValues>
+			<MetricCapacityKg>
+				<Value>450.000000</Value>
+				<Value>630.000000</Value>
+				<Value>800.000000</Value>
+				<Value>1000.000000</Value>
+				<Value>1275.000000</Value>
+				<Value>1350.000000</Value>
+				<Value>1600.000000</Value>
+				<Value>1800.000000</Value>
+				<Value>2000.000000</Value>
+				<Value>2500.000000</Value>
+			</MetricCapacityKg>
+			<ImperialCapacityLb>
+				<Value>1500.000000</Value>
+				<Value>2000.000000</Value>
+				<Value>2500.000000</Value>
+				<Value>3000.000000</Value>
+				<Value>3500.000000</Value>
+				<Value>4000.000000</Value>
+				<Value>4500.000000</Value>
+				<Value>5000.000000</Value>
+				<Value>5500.000000</Value>
+				<Value>6000.000000</Value>
+			</ImperialCapacityLb>
+			<MetricAreaM2>
+				<Value>1.300000</Value>
+				<Value>1.660000</Value>
+				<Value>2.000000</Value>
+				<Value>2.400000</Value>
+				<Value>2.950000</Value>
+				<Value>3.100000</Value>
+				<Value>3.560000</Value>
+				<Value>3.880000</Value>
+				<Value>4.200000</Value>
+				<Value>5.000000</Value>
+			</MetricAreaM2>
+			<ImperialAreaFt2>
+				<Value>19.000000</Value>
+				<Value>23.890000</Value>
+				<Value>28.330000</Value>
+				<Value>31.660000</Value>
+				<Value>36.110000</Value>
+				<Value>41.530000</Value>
+				<Value>45.360000</Value>
+				<Value>49.960000</Value>
+				<Value>53.740000</Value>
+				<Value>-2997703.510000</Value>
+			</ImperialAreaFt2>
+			<StandardMetricSpeedMs>
+				<Value>0.300000</Value>
+				<Value>0.630000</Value>
+				<Value>1.000000</Value>
+				<Value>1.600000</Value>
+				<Value>2.500000</Value>
+				<Value>3.000000</Value>
+				<Value>5.000000</Value>
+				<Value>6.000000</Value>
+				<Value>7.000000</Value>
+				<Value>8.000000</Value>
+			</StandardMetricSpeedMs>
+			<StandardImperialSpeedFtMin>
+				<Value>150.000000</Value>
+				<Value>200.000000</Value>
+				<Value>300.000000</Value>
+				<Value>400.000000</Value>
+				<Value>500.000000</Value>
+				<Value>700.000000</Value>
+				<Value>1000.000000</Value>
+				<Value>1200.000000</Value>
+				<Value>1400.000000</Value>
+				<Value>1600.000000</Value>
+			</StandardImperialSpeedFtMin>
+		</StandardValues>
+		<Standard NoOfElevatorsMode="Specified" NoOfLifts="4" MinNoOfLifts="2" MaxNoOfLifts="6" CarType="Single Deck" CapacityMode="2" Capacity="1350.000000" MinCapacity="630.000000" MaxCapacity="1600.000000" CarAreaMode="Auto" CarAreaM2="2.400000" DoorMode="Auto" Pre-Open="0.000000" Open="1.800000" Close="2.900000" DoorDwell1="3.000000" DoorDwell2="2.000000" SpeedMode="Specified" Speed="4.000000" MinSpeed="1.000000" MaxSpeed="2.500000" AccelerationMode="Auto (CIBSE Guide D 2020)" Acceleration="0.700000" JerkMode="Auto (CIBSE Guide D 2020)" Jerk="1.400000" StartDelay="0.500000" LevelingDelay="0.000000" HomeFloor="3" ResultFilter="Off" MaxAWTFilter="18" MaxAJTFilter="90" MaxInterval="30" MaxCapacityFactor="80" Min5MinHandlingCapacity="12" DriveModel="Hydraulic"/>
+		<Advanced>
+			<Configuration NoOfLifts="2">
+				<Car Id="1" CarType="Single Deck" Capacity="1050.000000" FloorAreaM2="2.310000" DoorPreOpening="0.000000" DoorOpenTime="2.900000" DoorCloseTime="5.700000" HomeDoorDwell1="3.000000" HomeDoorDwell2="2.000000" DoorDwell1="3.000000" DoorDwell2="2.000000" MaxDoorReOpenings="-1" Speed="2.500000" Acceleration="0.900000" Jerk="1.000000" MotorStartDelay="0.500000" LevelingDelay="0.000000" HomeFloor="4" MGShutDownAfterTime="0.000000" MGRestartTime="0.000000" HomeShaft="1" VelocityXAxis="1.000000" AccelerationXAxis="0.500000" JerkXAxis="0.400000" LoadConnectionDelayXAxis="4.000000" UnLoadConnectionDelayXAxis="5.000000" StandardMetricCapacity="630.000000" StandardImperialCapacity="2000.000000" StandardMetricSpeed="0.630000" StandardImperialSpeed="200.000000" m_StandardNoLifts="1">
+					<FloorServed FloorName="Level -3" FloorIndex="1" Doors="Front Doors"/>
+					<FloorServed FloorName="Level -2" FloorIndex="2" Doors="Front Doors"/>
+					<FloorServed FloorName="Level -1" FloorIndex="3" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 1" FloorIndex="4" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 2" FloorIndex="5" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 3" FloorIndex="6" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 4" FloorIndex="7" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 5" FloorIndex="8" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 6" FloorIndex="9" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 7" FloorIndex="10" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 8" FloorIndex="11" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 9" FloorIndex="12" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 10" FloorIndex="13" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 11" FloorIndex="14" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 12" FloorIndex="15" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 13" FloorIndex="16" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 14" FloorIndex="17" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 15" FloorIndex="18" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 16" FloorIndex="19" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 17" FloorIndex="20" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 18" FloorIndex="21" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 19" FloorIndex="22" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 20" FloorIndex="23" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 21" FloorIndex="24" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 22" FloorIndex="25" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 23" FloorIndex="26" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 24" FloorIndex="27" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 25" FloorIndex="28" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 26" FloorIndex="29" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 27" FloorIndex="30" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 28" FloorIndex="31" Doors="Front Doors"/>
+					<DriveEnergy KwDriveOff="0.000000"/>
+					<DriveEnergy KwDriveOn="0.000000"/>
+					<DriveEnergy Kw0PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw25PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw50PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw75PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw100PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw0PercentLoadDown="0.000000"/>
+					<DriveEnergy Kw25PercentLoadDown="0.000000"/>
+					<DriveEnergy Kw50PercentLoadDown="0.000000"/>
+					<DriveEnergy Kw75PercentLoadDown="0.000000"/>
+					<DriveEnergy Kw100PercentLoadDown="0.000000"/>
+				</Car>
+				<Car Id="2" CarType="Single Deck" Capacity="1050.000000" FloorAreaM2="2.310000" DoorPreOpening="0.000000" DoorOpenTime="2.900000" DoorCloseTime="5.700000" HomeDoorDwell1="3.000000" HomeDoorDwell2="2.000000" DoorDwell1="3.000000" DoorDwell2="2.000000" MaxDoorReOpenings="-1" Speed="2.500000" Acceleration="0.900000" Jerk="1.000000" MotorStartDelay="0.500000" LevelingDelay="0.000000" HomeFloor="4" MGShutDownAfterTime="0.000000" MGRestartTime="0.000000" HomeShaft="2" VelocityXAxis="1.000000" AccelerationXAxis="0.500000" JerkXAxis="0.400000" LoadConnectionDelayXAxis="4.000000" UnLoadConnectionDelayXAxis="5.000000" StandardMetricCapacity="800.000000" StandardImperialCapacity="2500.000000" StandardMetricSpeed="1.000000" StandardImperialSpeed="300.000000" m_StandardNoLifts="1">
+					<FloorServed FloorName="Level -3" FloorIndex="1" Doors="Front Doors"/>
+					<FloorServed FloorName="Level -2" FloorIndex="2" Doors="Front Doors"/>
+					<FloorServed FloorName="Level -1" FloorIndex="3" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 1" FloorIndex="4" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 2" FloorIndex="5" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 3" FloorIndex="6" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 4" FloorIndex="7" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 5" FloorIndex="8" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 6" FloorIndex="9" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 7" FloorIndex="10" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 8" FloorIndex="11" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 9" FloorIndex="12" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 10" FloorIndex="13" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 11" FloorIndex="14" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 12" FloorIndex="15" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 13" FloorIndex="16" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 14" FloorIndex="17" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 15" FloorIndex="18" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 16" FloorIndex="19" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 17" FloorIndex="20" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 18" FloorIndex="21" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 19" FloorIndex="22" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 20" FloorIndex="23" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 21" FloorIndex="24" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 22" FloorIndex="25" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 23" FloorIndex="26" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 24" FloorIndex="27" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 25" FloorIndex="28" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 26" FloorIndex="29" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 27" FloorIndex="30" Doors="Front Doors"/>
+					<FloorServed FloorName="Level 28" FloorIndex="31" Doors="Front Doors"/>
+					<DriveEnergy KwDriveOff="0.000000"/>
+					<DriveEnergy KwDriveOn="0.000000"/>
+					<DriveEnergy Kw0PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw25PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw50PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw75PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw100PercentLoadUp="0.000000"/>
+					<DriveEnergy Kw0PercentLoadDown="0.000000"/>
+					<DriveEnergy Kw25PercentLoadDown="0.000000"/>
+					<DriveEnergy Kw50PercentLoadDown="0.000000"/>
+					<DriveEnergy Kw75PercentLoadDown="0.000000"/>
+					<DriveEnergy Kw100PercentLoadDown="0.000000"/>
+				</Car>
+			</Configuration>
+		</Advanced>
+		<XDispatch>
+			<Floor FloorName="Level -3" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level -2" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level -1" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 1" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 2" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 3" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 4" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 5" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 6" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 7" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 8" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 9" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 10" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 11" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 12" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 13" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 14" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 15" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 16" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 17" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 18" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 19" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 20" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 21" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 22" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 23" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 24" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 25" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 26" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 27" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+			<Floor FloorName="Level 28" DestinationButtons="False" UpCallsServedUpPeak="True" DownCallsServedUpPeak="True"/>
+		</XDispatch>
+	</ElevatorData>
+	<PassengerData PassengerDataMode="Standard">
+		<Standard StartTimeHours="0" StartTimeMins="0" EndTimeHours="1" EndTimeMins="0" LoadingTime="1.200000" UnloadingTime="1.200000" PassengerMass="75.000000" CapacityFactorByMass="80" PassengerAreaM2="0.210000" CapacityFactorByAreaPerCent="100" StairFactor="0.000000">
+			<Arrangement>Conventional for Single Deck elevators</Arrangement>
+			<Template>Constant traffic (% building pop per 5 mins)</Template>
+			<FirstFloorServedUpperZone>Level -3</FirstFloorServedUpperZone>
+			<HandlingCapacity>1.000000</HandlingCapacity>
+			<Incoming>50.000000</Incoming>
+			<Outgoing>50.000000</Outgoing>
+			<Interfloor>0.000000</Interfloor>
+			<MinHC>1.000000</MinHC>
+			<MaxHC>9.000000</MaxHC>
+			<StepDuration>30.000000</StepDuration>
+			<StepHeight>1.000000</StepHeight>
+			<Floor EntranceBias="10.000000"/>
+			<Floor EntranceBias="10.000000"/>
+			<Floor EntranceBias="10.000000"/>
+			<Floor EntranceBias="70.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+			<Floor EntranceBias="0.000000"/>
+		</Standard>
+		<Advanced NoTrafficPeriods="1">
+			<Period Number="1" StartTime="00:00" EndTime="01:00" PassengerMass="75.000000" CapacityFactorByMass="80" PassengerAreaM2="0.210000" CapacityFactorByAreaPerCent="100" LoadingTime="1.000000" UnloadingTime="1.000000" StairFactor="0.000000" PeriodNotes="Passengers">
+				<PassengerDemand>
+					<From FloorName="Level -3" ArrivalRate="0.196000">
+						<To FloorName="Level -3" DestinationProbability="0.000000"/>
+						<To FloorName="Level -2" DestinationProbability="0.000000"/>
+						<To FloorName="Level -1" DestinationProbability="0.000000"/>
+						<To FloorName="Level 1" DestinationProbability="3.571429"/>
+						<To FloorName="Level 2" DestinationProbability="3.571429"/>
+						<To FloorName="Level 3" DestinationProbability="3.571429"/>
+						<To FloorName="Level 4" DestinationProbability="3.571429"/>
+						<To FloorName="Level 5" DestinationProbability="3.571429"/>
+						<To FloorName="Level 6" DestinationProbability="3.571429"/>
+						<To FloorName="Level 7" DestinationProbability="3.571429"/>
+						<To FloorName="Level 8" DestinationProbability="3.571429"/>
+						<To FloorName="Level 9" DestinationProbability="3.571429"/>
+						<To FloorName="Level 10" DestinationProbability="3.571429"/>
+						<To FloorName="Level 11" DestinationProbability="3.571429"/>
+						<To FloorName="Level 12" DestinationProbability="3.571429"/>
+						<To FloorName="Level 13" DestinationProbability="3.571429"/>
+						<To FloorName="Level 14" DestinationProbability="3.571429"/>
+						<To FloorName="Level 15" DestinationProbability="3.571429"/>
+						<To FloorName="Level 16" DestinationProbability="3.571429"/>
+						<To FloorName="Level 17" DestinationProbability="3.571429"/>
+						<To FloorName="Level 18" DestinationProbability="3.571429"/>
+						<To FloorName="Level 19" DestinationProbability="3.571429"/>
+						<To FloorName="Level 20" DestinationProbability="3.571429"/>
+						<To FloorName="Level 21" DestinationProbability="3.571429"/>
+						<To FloorName="Level 22" DestinationProbability="3.571429"/>
+						<To FloorName="Level 23" DestinationProbability="3.571429"/>
+						<To FloorName="Level 24" DestinationProbability="3.571429"/>
+						<To FloorName="Level 25" DestinationProbability="3.571429"/>
+						<To FloorName="Level 26" DestinationProbability="3.571429"/>
+						<To FloorName="Level 27" DestinationProbability="3.571429"/>
+						<To FloorName="Level 28" DestinationProbability="3.571429"/>
+					</From>
+					<From FloorName="Level -2" ArrivalRate="0.196000">
+						<To FloorName="Level -3" DestinationProbability="0.000000"/>
+						<To FloorName="Level -2" DestinationProbability="0.000000"/>
+						<To FloorName="Level -1" DestinationProbability="0.000000"/>
+						<To FloorName="Level 1" DestinationProbability="3.571429"/>
+						<To FloorName="Level 2" DestinationProbability="3.571429"/>
+						<To FloorName="Level 3" DestinationProbability="3.571429"/>
+						<To FloorName="Level 4" DestinationProbability="3.571429"/>
+						<To FloorName="Level 5" DestinationProbability="3.571429"/>
+						<To FloorName="Level 6" DestinationProbability="3.571429"/>
+						<To FloorName="Level 7" DestinationProbability="3.571429"/>
+						<To FloorName="Level 8" DestinationProbability="3.571429"/>
+						<To FloorName="Level 9" DestinationProbability="3.571429"/>
+						<To FloorName="Level 10" DestinationProbability="3.571429"/>
+						<To FloorName="Level 11" DestinationProbability="3.571429"/>
+						<To FloorName="Level 12" DestinationProbability="3.571429"/>
+						<To FloorName="Level 13" DestinationProbability="3.571429"/>
+						<To FloorName="Level 14" DestinationProbability="3.571429"/>
+						<To FloorName="Level 15" DestinationProbability="3.571429"/>
+						<To FloorName="Level 16" DestinationProbability="3.571429"/>
+						<To FloorName="Level 17" DestinationProbability="3.571429"/>
+						<To FloorName="Level 18" DestinationProbability="3.571429"/>
+						<To FloorName="Level 19" DestinationProbability="3.571429"/>
+						<To FloorName="Level 20" DestinationProbability="3.571429"/>
+						<To FloorName="Level 21" DestinationProbability="3.571429"/>
+						<To FloorName="Level 22" DestinationProbability="3.571429"/>
+						<To FloorName="Level 23" DestinationProbability="3.571429"/>
+						<To FloorName="Level 24" DestinationProbability="3.571429"/>
+						<To FloorName="Level 25" DestinationProbability="3.571429"/>
+						<To FloorName="Level 26" DestinationProbability="3.571429"/>
+						<To FloorName="Level 27" DestinationProbability="3.571429"/>
+						<To FloorName="Level 28" DestinationProbability="3.571429"/>
+					</From>
+					<From FloorName="Level -1" ArrivalRate="0.196000">
+						<To FloorName="Level -3" DestinationProbability="0.000000"/>
+						<To FloorName="Level -2" DestinationProbability="0.000000"/>
+						<To FloorName="Level -1" DestinationProbability="0.000000"/>
+						<To FloorName="Level 1" DestinationProbability="3.571429"/>
+						<To FloorName="Level 2" DestinationProbability="3.571429"/>
+						<To FloorName="Level 3" DestinationProbability="3.571429"/>
+						<To FloorName="Level 4" DestinationProbability="3.571429"/>
+						<To FloorName="Level 5" DestinationProbability="3.571429"/>
+						<To FloorName="Level 6" DestinationProbability="3.571429"/>
+						<To FloorName="Level 7" DestinationProbability="3.571429"/>
+						<To FloorName="Level 8" DestinationProbability="3.571429"/>
+						<To FloorName="Level 9" DestinationProbability="3.571429"/>
+						<To FloorName="Level 10" DestinationProbability="3.571429"/>
+						<To FloorName="Level 11" DestinationProbability="3.571429"/>
+						<To FloorName="Level 12" DestinationProbability="3.571429"/>
+						<To FloorName="Level 13" DestinationProbability="3.571429"/>
+						<To FloorName="Level 14" DestinationProbability="3.571429"/>
+						<To FloorName="Level 15" DestinationProbability="3.571429"/>
+						<To FloorName="Level 16" DestinationProbability="3.571429"/>
+						<To FloorName="Level 17" DestinationProbability="3.571429"/>
+						<To FloorName="Level 18" DestinationProbability="3.571429"/>
+						<To FloorName="Level 19" DestinationProbability="3.571429"/>
+						<To FloorName="Level 20" DestinationProbability="3.571429"/>
+						<To FloorName="Level 21" DestinationProbability="3.571429"/>
+						<To FloorName="Level 22" DestinationProbability="3.571429"/>
+						<To FloorName="Level 23" DestinationProbability="3.571429"/>
+						<To FloorName="Level 24" DestinationProbability="3.571429"/>
+						<To FloorName="Level 25" DestinationProbability="3.571429"/>
+						<To FloorName="Level 26" DestinationProbability="3.571429"/>
+						<To FloorName="Level 27" DestinationProbability="3.571429"/>
+						<To FloorName="Level 28" DestinationProbability="3.571429"/>
+					</From>
+					<From FloorName="Level 1" ArrivalRate="1.344000">
+						<To FloorName="Level -3" DestinationProbability="0.520833"/>
+						<To FloorName="Level -2" DestinationProbability="0.520833"/>
+						<To FloorName="Level -1" DestinationProbability="0.520833"/>
+						<To FloorName="Level 1" DestinationProbability="0.000000"/>
+						<To FloorName="Level 2" DestinationProbability="3.645833"/>
+						<To FloorName="Level 3" DestinationProbability="3.645833"/>
+						<To FloorName="Level 4" DestinationProbability="3.645833"/>
+						<To FloorName="Level 5" DestinationProbability="3.645833"/>
+						<To FloorName="Level 6" DestinationProbability="3.645833"/>
+						<To FloorName="Level 7" DestinationProbability="3.645833"/>
+						<To FloorName="Level 8" DestinationProbability="3.645833"/>
+						<To FloorName="Level 9" DestinationProbability="3.645833"/>
+						<To FloorName="Level 10" DestinationProbability="3.645833"/>
+						<To FloorName="Level 11" DestinationProbability="3.645833"/>
+						<To FloorName="Level 12" DestinationProbability="3.645833"/>
+						<To FloorName="Level 13" DestinationProbability="3.645833"/>
+						<To FloorName="Level 14" DestinationProbability="3.645833"/>
+						<To FloorName="Level 15" DestinationProbability="3.645833"/>
+						<To FloorName="Level 16" DestinationProbability="3.645833"/>
+						<To FloorName="Level 17" DestinationProbability="3.645833"/>
+						<To FloorName="Level 18" DestinationProbability="3.645833"/>
+						<To FloorName="Level 19" DestinationProbability="3.645833"/>
+						<To FloorName="Level 20" DestinationProbability="3.645833"/>
+						<To FloorName="Level 21" DestinationProbability="3.645833"/>
+						<To FloorName="Level 22" DestinationProbability="3.645833"/>
+						<To FloorName="Level 23" DestinationProbability="3.645833"/>
+						<To FloorName="Level 24" DestinationProbability="3.645833"/>
+						<To FloorName="Level 25" DestinationProbability="3.645833"/>
+						<To FloorName="Level 26" DestinationProbability="3.645833"/>
+						<To FloorName="Level 27" DestinationProbability="3.645833"/>
+						<To FloorName="Level 28" DestinationProbability="3.645833"/>
+					</From>
+					<From FloorName="Level 2" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 3" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 4" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 5" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 6" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 7" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 8" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 9" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 10" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 11" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 12" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 13" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 14" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 15" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 16" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 17" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 18" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 19" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 20" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 21" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 22" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 23" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 24" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 25" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 26" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 27" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+					<From FloorName="Level 28" ArrivalRate="0.070000">
+						<To FloorName="Level -3" DestinationProbability="10.000000"/>
+						<To FloorName="Level -2" DestinationProbability="10.000000"/>
+						<To FloorName="Level -1" DestinationProbability="10.000000"/>
+						<To FloorName="Level 1" DestinationProbability="70.000000"/>
+						<To FloorName="Level 2" DestinationProbability="0.000000"/>
+						<To FloorName="Level 3" DestinationProbability="0.000000"/>
+						<To FloorName="Level 4" DestinationProbability="0.000000"/>
+						<To FloorName="Level 5" DestinationProbability="0.000000"/>
+						<To FloorName="Level 6" DestinationProbability="0.000000"/>
+						<To FloorName="Level 7" DestinationProbability="0.000000"/>
+						<To FloorName="Level 8" DestinationProbability="0.000000"/>
+						<To FloorName="Level 9" DestinationProbability="0.000000"/>
+						<To FloorName="Level 10" DestinationProbability="0.000000"/>
+						<To FloorName="Level 11" DestinationProbability="0.000000"/>
+						<To FloorName="Level 12" DestinationProbability="0.000000"/>
+						<To FloorName="Level 13" DestinationProbability="0.000000"/>
+						<To FloorName="Level 14" DestinationProbability="0.000000"/>
+						<To FloorName="Level 15" DestinationProbability="0.000000"/>
+						<To FloorName="Level 16" DestinationProbability="0.000000"/>
+						<To FloorName="Level 17" DestinationProbability="0.000000"/>
+						<To FloorName="Level 18" DestinationProbability="0.000000"/>
+						<To FloorName="Level 19" DestinationProbability="0.000000"/>
+						<To FloorName="Level 20" DestinationProbability="0.000000"/>
+						<To FloorName="Level 21" DestinationProbability="0.000000"/>
+						<To FloorName="Level 22" DestinationProbability="0.000000"/>
+						<To FloorName="Level 23" DestinationProbability="0.000000"/>
+						<To FloorName="Level 24" DestinationProbability="0.000000"/>
+						<To FloorName="Level 25" DestinationProbability="0.000000"/>
+						<To FloorName="Level 26" DestinationProbability="0.000000"/>
+						<To FloorName="Level 27" DestinationProbability="0.000000"/>
+						<To FloorName="Level 28" DestinationProbability="0.000000"/>
+					</From>
+				</PassengerDemand>
+			</Period>
+		</Advanced>
+		<PassengerDataFile>no file selected</PassengerDataFile>
+		<Calculator BuildingType="0" QualityService="1" NoFloors="1" Units="1" Population="1" DriveType="0" LobbyFloorHeight="0.000000" FloorHeight="0.000000"/>
+		<Traffic>
+			<Period Id="0" TotalArrivalRate="1.000000" SplitUp="50.000000" SplitDown="50.000000" SplitInterfloor="0.000000"/>
+			<Period Id="1" TotalArrivalRate="1.000000" SplitUp="50.000000" SplitDown="50.000000" SplitInterfloor="0.000000"/>
+		</Traffic>
+	</PassengerData>
+	<Results HandlingCapacityOption="0" IntervalOption="0" CapacityFactorByMassOption="filter off" CapacityFactorByAreaOption="filter off" SimulationTimeOption="0" WaitingTimeOption="0" TransitTimeOption="0" TimeToDestinationOption="0" MaxATT="90.000000" MaxAWT="20.000000" MaxCapacityByMassPercent="80.000000" MaxCapacityByAreaPercent="100.000000" MaxINT="30.000000" MaxTTD="110.000000" MinHC="12.000000" SelectedRunNo="0" StartTime="0.000000" EndTime="86340.000000">
+		<Graphs Colour="True">
+			<Graph Id="9" AutoScale="1" ScaleMaximum="0.000000">
+				<Floor Id="0" PlotGraph="1"/>
+			</Graph>
+		</Graphs>
+		<FilterPassengersInPeriod>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+			<InPeriod Value="1"/>
+		</FilterPassengersInPeriod>
+		<Configs CurrentConfiguration="0">
+			<Config Id="0" AWT="-1.000000" LWT="-1.000000" ATT="-1.000000" LTT="-1.000000" AJT="-1.000000" LJT="-1.000000" IsAnalysed="1" MeetResultsOptionsCriteria="2"/>
+		</Configs>
+	</Results>
+	<LogoFileName>C:\Users\user\Desktop\АГНИ.jpg</LogoFileName>
+	<LiftSimulatorServerMenuItem>NotChecked</LiftSimulatorServerMenuItem>
+</ElevateDocument>

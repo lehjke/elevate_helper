@@ -1,0 +1,312 @@
+<Window
+    x:Class="ElevateHelperWinUI.Views.ElevateProjectEditorWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel MaxWidth="1120" Margin="20,18,20,24" HorizontalAlignment="Center" Spacing="16">
+                <Border Style="{StaticResource HeroCardStyle}">
+                    <Grid ColumnSpacing="20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="320" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Spacing="12">
+                            <TextBlock x:Name="HeroTitleTextBlock" Style="{StaticResource HeroTitleTextStyle}" />
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="180" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock x:Name="WorkingFolderLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBlock x:Name="WorkingFolderValueTextBlock" TextWrapping="WrapWholeWords" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock x:Name="BuildingTypeLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBlock x:Name="BuildingTypeValueTextBlock" TextWrapping="WrapWholeWords" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="8">
+                            <TextBlock x:Name="SourceLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                            <TextBlock x:Name="SourceValueTextBlock" TextWrapping="WrapWholeWords" />
+                            <TextBlock x:Name="OutputLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                            <TextBlock x:Name="OutputValueTextBlock" TextWrapping="WrapWholeWords" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="LoadExistingButton" Grid.Column="0" Click="OnLoadExistingButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                    <Button x:Name="LoadTemplateButton" Grid.Column="1" Click="OnLoadTemplateButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                    <Button x:Name="SaveButton" Grid.Column="2" Click="OnSaveButtonClick" Style="{StaticResource PrimaryActionButtonStyle}" />
+                    <Button x:Name="CloseButton" Grid.Column="4" Click="OnCloseButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                </Grid>
+
+                <Border Style="{StaticResource SectionCardStyle}">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="ProjectTabButton" Grid.Column="0" Click="OnProjectTabButtonClick" Style="{StaticResource PrimaryActionButtonStyle}" />
+                        <Button x:Name="AnalysisTabButton" Grid.Column="1" Click="OnAnalysisTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                        <Button x:Name="BuildingTabButton" Grid.Column="2" Click="OnBuildingTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                        <Button x:Name="LiftGroupTabButton" Grid.Column="3" Click="OnLiftGroupTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SectionCardStyle}">
+                    <Grid>
+                        <StackPanel x:Name="ProjectPanel" Spacing="12">
+                            <Grid ColumnSpacing="16" RowSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="6">
+                                    <TextBlock x:Name="ProjectTitleLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="ProjectTitleTextBox" PlaceholderText="MIG 6 Office" TextChanged="OnOutputRelevantFieldChanged" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="6">
+                                    <TextBlock x:Name="ProjectNumberLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="ProjectNumberTextBox" PlaceholderText="R00" TextChanged="OnOutputRelevantFieldChanged" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6">
+                                    <TextBlock x:Name="ProjectCalculationTitleLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="ProjectCalculationTitleTextBox" PlaceholderText="Moscow / Office" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6">
+                                    <TextBlock x:Name="ProjectCompanyLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="ProjectCompanyTextBox" PlaceholderText="Meteor" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="0" Spacing="6">
+                                    <TextBlock x:Name="ProjectMadeByLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="ProjectMadeByTextBox" PlaceholderText="Aleskey" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="1" Spacing="6">
+                                    <TextBlock x:Name="ProjectCheckedByLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="ProjectCheckedByTextBox" PlaceholderText="Reviewer" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel x:Name="AnalysisPanel" Spacing="12" Visibility="Collapsed">
+                            <StackPanel Spacing="6">
+                                <TextBlock x:Name="DispatcherLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                <ComboBox x:Name="DispatcherComboBox" DisplayMemberPath="DisplayName" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <TextBlock x:Name="SimulationsLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                <TextBox x:Name="SimulationCountTextBox" PlaceholderText="10" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel x:Name="BuildingPanel" Spacing="16" Visibility="Collapsed">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button x:Name="AddFloorAboveButton" Grid.Column="0" Click="OnAddFloorAboveButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                                <Button x:Name="AddFloorBelowButton" Grid.Column="1" Click="OnAddFloorBelowButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                                <Button x:Name="SortTopFirstButton" Grid.Column="2" Click="OnSortTopFirstButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                                <Button x:Name="SortBottomFirstButton" Grid.Column="3" Click="OnSortBottomFirstButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                            </Grid>
+
+                            <Border x:Name="AbsenteeismCard" Style="{StaticResource SectionCardStyle}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock x:Name="AbsenteeismLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="AbsenteeismTextBox" PlaceholderText="20" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="16">
+                                <StackPanel>
+                                    <Grid Padding="12,10" Background="{ThemeResource AccentFillColorTertiaryBrush}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2.2*" />
+                                            <ColumnDefinition Width="1.4*" />
+                                            <ColumnDefinition Width="1.2*" />
+                                            <ColumnDefinition Width="0.8*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock x:Name="FloorNameColumnTextBlock" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="InterfloorHeightColumnTextBlock" Grid.Column="1" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="PopulationColumnTextBlock" Grid.Column="2" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="EntranceColumnTextBlock" Grid.Column="3" FontWeight="SemiBold" />
+                                    </Grid>
+
+                                    <ItemsControl x:Name="FloorsItemsControl">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+                                                    <Grid ColumnSpacing="10">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="2.2*" />
+                                                            <ColumnDefinition Width="1.4*" />
+                                                            <ColumnDefinition Width="1.2*" />
+                                                            <ColumnDefinition Width="0.8*" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <TextBox PlaceholderText="Level 1" Text="{Binding FloorName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBox Grid.Column="1" PlaceholderText="3,9" Text="{Binding InterfloorHeightText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBox Grid.Column="2" PlaceholderText="150" Text="{Binding PopulationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <CheckBox Grid.Column="3" HorizontalAlignment="Center" IsChecked="{Binding EntranceFloor, Mode=TwoWay}" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel x:Name="LiftGroupPanel" Spacing="16" Visibility="Collapsed">
+                            <Border Style="{StaticResource SectionCardStyle}">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button x:Name="AddLiftButton" Grid.Column="0" Click="OnAddLiftButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                                    <TextBlock x:Name="LiftCountSummaryTextBlock" Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                </Grid>
+                            </Border>
+
+                            <ItemsControl x:Name="LiftItemsControl">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource SectionCardStyle}">
+                                            <StackPanel Spacing="12">
+                                                <Grid ColumnSpacing="12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock VerticalAlignment="Center" FontSize="18" FontWeight="SemiBold" Text="{Binding Title}" />
+                                                    <Button Grid.Column="1" Click="OnRemoveLiftCardButtonClick" Content="{Binding RemoveButtonLabel}" Style="{StaticResource ActionButtonStyle}" Tag="{Binding}" />
+                                                </Grid>
+
+                                                <Grid ColumnSpacing="12" RowSpacing="12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+
+                                                    <StackPanel Grid.Row="0" Grid.Column="0" Spacing="6">
+                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding CapacityLabel}" />
+                                                        <ComboBox ItemsSource="{Binding CapacityOptions}" SelectedItem="{Binding CapacityOption, Mode=TwoWay}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="0" Grid.Column="1" Spacing="6">
+                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding CabWidthLabel}" />
+                                                        <TextBox PlaceholderText="1600" Text="{Binding CabWidthText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="0" Grid.Column="2" Spacing="6">
+                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding CabHeightLabel}" />
+                                                        <TextBox PlaceholderText="2100" Text="{Binding CabHeightText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6">
+                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding SpeedLabel}" />
+                                                        <ComboBox ItemsSource="{Binding SpeedOptions}" SelectedItem="{Binding SpeedOption, Mode=TwoWay}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6">
+                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding DoorWidthLabel}" />
+                                                        <ComboBox ItemsSource="{Binding DoorWidthOptions}" SelectedItem="{Binding SelectedDoorWidth, Mode=TwoWay}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="1" Grid.Column="2" Spacing="6">
+                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding DoorOpeningLabel}" />
+                                                        <ComboBox DisplayMemberPath="DisplayName" ItemsSource="{Binding DoorOpeningOptions}" SelectedItem="{Binding SelectedDoorOpening, Mode=TwoWay}" />
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <StackPanel Spacing="6">
+                                                    <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding HomeFloorLabel}" />
+                                                    <TextBox PlaceholderText="1" Text="{Binding HomeFloor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                </StackPanel>
+
+                                                <StackPanel Spacing="8">
+                                                    <TextBlock FontWeight="SemiBold" Text="{Binding ServedFloorsLabel}" />
+                                                    <ItemsControl ItemsSource="{Binding ServedFloors}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <WrapGrid Orientation="Horizontal" MaximumRowsOrColumns="3" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <CheckBox Margin="0,0,18,8" Content="{Binding FloorName}" IsChecked="{Binding IsServed, Mode=TwoWay}" />
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <InfoBar x:Name="StatusInfoBar" IsClosable="False" IsOpen="False" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

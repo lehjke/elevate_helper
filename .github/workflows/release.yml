@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - workflow_refactor
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish
+        required: true
+        default: v2.0.2-preview.1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v2.0.2-preview.1') }}
+      RELEASE_RUNTIME: win-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build release archive
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -Tag $env:RELEASE_TAG -Runtime $env:RELEASE_RUNTIME -Configuration Release
+
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1 -Tag $env:RELEASE_TAG -Runtime $env:RELEASE_RUNTIME -Configuration Release
+
+      - name: Resolve release metadata
+        shell: pwsh
+        run: |
+          $notesPath = Join-Path $PWD "docs/releases/$env:RELEASE_TAG.md"
+          if (-not (Test-Path $notesPath)) {
+              $previousTag = git tag --sort=-creatordate | Where-Object { $_ -ne $env:RELEASE_TAG } | Select-Object -First 1
+              $generatedPath = Join-Path $PWD 'artifacts/generated-release-notes.md'
+              $lines = @("# Elevate Helper $env:RELEASE_TAG", "")
+              if ($previousTag) {
+                  $lines += "Changes since $previousTag"
+                  $lines += ""
+                  $lines += (git log --pretty=format:'- %s' "$previousTag..$env:RELEASE_TAG")
+              }
+              else {
+                  $lines += "Changes"
+                  $lines += ""
+                  $lines += (git log --pretty=format:'- %s' $env:RELEASE_TAG)
+              }
+
+              $lines | Set-Content -Path $generatedPath -Encoding UTF8
+              $notesPath = $generatedPath
+          }
+
+          $zipPath = Join-Path $PWD "artifacts/release/ElevateHelper-$env:RELEASE_RUNTIME-$env:RELEASE_TAG.zip"
+          $installerPath = Join-Path $PWD "artifacts/release/ElevateHelper-$env:RELEASE_RUNTIME-$env:RELEASE_TAG-setup.exe"
+
+          "RELEASE_NOTES_PATH=$notesPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_ZIP_PATH=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_INSTALLER_PATH=$installerPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.RELEASE_TAG }}-${{ env.RELEASE_RUNTIME }}
+          path: |
+            ${{ env.RELEASE_ZIP_PATH }}
+            ${{ env.RELEASE_INSTALLER_PATH }}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: Elevate Helper ${{ env.RELEASE_TAG }}
+          body_path: ${{ env.RELEASE_NOTES_PATH }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          files: |
+            ${{ env.RELEASE_ZIP_PATH }}
+            ${{ env.RELEASE_INSTALLER_PATH }}
+          generate_release_notes: false

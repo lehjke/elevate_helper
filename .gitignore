@@ -10,6 +10,15 @@ wheels/
 .venv
 
 .vscode
+.DS_Store
 
 *.spec
 *.bat
+
+.vs/
+artifacts/
+bin/
+obj/
+tests/**/bin/
+tests/**/obj/
+build_diag.log

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ElevateHelperWinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "ElevateHelperWinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

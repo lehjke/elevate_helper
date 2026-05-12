@@ -1,0 +1,2159 @@
+﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
+using ElevateHelperWinUI.Models;
+using ElevateHelperWinUI.Services;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
+
+namespace ElevateHelperWinUI.Views;
+
+public sealed partial class MainPage : Page
+{
+    private readonly AppLocalizationService localizationService = AppLocalizationService.Instance;
+    private readonly IElevateProjectEditorService projectEditorService = new ElevateProjectEditorService();
+    private readonly IElevateIntegrationService integrationService = new ElevateIntegrationService();
+    private readonly IElevateProcessingService processingService = new ElevateProcessingService();
+    private readonly IElevateReportService reportService = new ElevateReportService();
+    private readonly SemaphoreSlim reportExecutionLock = new(1, 1);
+    private readonly object activeProcessingFoldersSync = new();
+    private readonly HashSet<string> activeProcessingFolders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ObservableCollection<JobProgressViewModel> jobs = [];
+    private readonly ObservableCollection<FloorEditorRowViewModel> editorFloors = [];
+    private readonly ObservableCollection<CarEditorRowViewModel> editorCars = [];
+    private ElevateProjectEditorWindow? editorWindow;
+    private ElevateProjectEditorDocument? loadedEditorDocument;
+    private bool suppressBuildingTypeStatus;
+    private int nextJobId = 1;
+
+    public MainPage()
+    {
+        this.InitializeComponent();
+        localizationService.LanguageChanged += OnLanguageChanged;
+
+        LanguageComboBox.SelectedItem = LanguageOptions.First(option => option.Language == localizationService.CurrentLanguage);
+        OfficeRadioButton.IsChecked = true;
+
+        if (App.MainWindow is not null)
+        {
+            App.MainWindow.Title = Text.WindowTitle;
+        }
+
+        ResetEditorStatus();
+        UpdateModeButtons(BuildingType.Office);
+        RefreshIntegrationStatus(showStatusMessage: true);
+        RefreshJobsSummary();
+    }
+
+    public ObservableCollection<JobProgressViewModel> Jobs => jobs;
+
+    public ObservableCollection<FloorEditorRowViewModel> EditorFloors => editorFloors;
+
+    public ObservableCollection<CarEditorRowViewModel> EditorCars => editorCars;
+
+    public IReadOnlyList<LanguageOption> LanguageOptions { get; } =
+    [
+        new(AppLanguage.English, "English"),
+        new(AppLanguage.Russian, "Русский"),
+    ];
+
+    public AppLocalizationService.AppTextCatalog Text => localizationService.CurrentText;
+
+    private void OnRunButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        if (!TryEnsureIntegrationForLaunch())
+        {
+            return;
+        }
+
+        StartProcessingJob(path, buildingType, includeLunchPeak: true);
+    }
+
+    private void OnRunMorningOnlyButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        if (!TryEnsureIntegrationForLaunch())
+        {
+            return;
+        }
+
+        if (buildingType != BuildingType.Office)
+        {
+            SetStatus(Text.OfficeMorningOnlyMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        StartProcessingJob(path, buildingType, includeLunchPeak: false);
+    }
+
+    private async void OnBrowseFolderButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (App.MainWindow is null)
+        {
+            return;
+        }
+
+        FolderPicker picker = new();
+        picker.FileTypeFilter.Add("*");
+
+        IntPtr windowHandle = WindowNative.GetWindowHandle(App.MainWindow);
+        InitializeWithWindow.Initialize(picker, windowHandle);
+
+        Windows.Storage.StorageFolder? folder = await picker.PickSingleFolderAsync();
+        if (folder is null)
+        {
+            return;
+        }
+
+        PathTextBox.Text = folder.Path;
+        loadedEditorDocument = null;
+        ResetEditorStatus();
+    }
+
+    private async void OnLoadEditorButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        try
+        {
+            ElevateProjectEditorDocument document = await LoadExistingProjectEditorDocumentAsync(path);
+            ApplyEditorDocument(document);
+            loadedEditorDocument = document;
+            SaveEditorButton.IsEnabled = true;
+            SetStatus(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.EditorLoadSuccessFormat,
+                    Path.GetFileName(document.SourcePath ?? document.TemplatePath ?? string.Empty)),
+                InfoBarSeverity.Success);
+        }
+        catch (Exception ex)
+        {
+            SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnLoadEditorTemplateButtonClick(object sender, RoutedEventArgs e)
+    {
+        BuildingType? selectedType = GetSelectedBuildingType();
+        if (!selectedType.HasValue)
+        {
+            SetStatus(Text.BuildingTypeRequiredMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        try
+        {
+            ElevateProjectEditorDocument document = await projectEditorService.LoadTemplate(selectedType.Value);
+            ApplyEditorDocument(document);
+            loadedEditorDocument = document;
+            SaveEditorButton.IsEnabled = true;
+            SetStatus(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.EditorLoadSuccessFormat,
+                    Path.GetFileName(document.TemplatePath ?? string.Empty)),
+                InfoBarSeverity.Success);
+        }
+        catch (Exception ex)
+        {
+            SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+        }
+    }
+
+    private void OnEditorPathTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateEditorOutputPreview();
+    }
+
+    private void OnEditorOutputFieldsChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateEditorOutputPreview();
+    }
+
+    private async void OnSaveEditorButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        if (loadedEditorDocument is null)
+        {
+            SetStatus(Text.EditorNotLoadedMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        if (!TryBuildEditorDocument(buildingType, out ElevateProjectEditorDocument? document))
+        {
+            return;
+        }
+
+        if (document is null)
+        {
+            SetStatus(Text.EditorNotLoadedMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        try
+        {
+            string outputPath = ResolveEditorOutputPath(path, document);
+            ProcessingResult result = await projectEditorService.SaveAsync(document, outputPath);
+            if (!result.Success)
+            {
+                SetStatus(FormatResultMessage(result), InfoBarSeverity.Error);
+                return;
+            }
+
+            ElevateProjectEditorDocument refreshedDocument = await projectEditorService.LoadFile(outputPath);
+            ApplyEditorDocument(refreshedDocument);
+            loadedEditorDocument = refreshedDocument;
+            SetStatus(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.EditorSaveSuccessFormat,
+                    Path.GetFileName(outputPath)),
+                InfoBarSeverity.Success);
+        }
+        catch (Exception ex)
+        {
+            SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnReportButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        await ExecuteReportActionAsync(
+            Text.GeneratingReport,
+            async () =>
+            {
+                ProcessingResult result = await reportService.PrintReportAsync(path, buildingType);
+                HandleReportResult(result, Text.ReportGenerated);
+            });
+    }
+
+    private async void OnMorningReportButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        await ExecuteReportActionAsync(
+            Text.GeneratingMorningReport,
+            async () =>
+            {
+                string morningPath = Path.Combine(path, "morning");
+                ProcessingResult result = await reportService.PrintReportAsync(morningPath, buildingType);
+                HandleReportResult(result, Text.MorningReportGenerated);
+            });
+    }
+
+    private async void OnLunchReportButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        await ExecuteReportActionAsync(
+            Text.GeneratingLunchReport,
+            async () =>
+            {
+                string lunchPath = Path.Combine(path, "lunch");
+                ProcessingResult result = await reportService.PrintReportAsync(lunchPath, buildingType);
+                HandleReportResult(result, Text.LunchReportGenerated);
+            });
+    }
+
+    private async void OnJobReportButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: JobProgressViewModel job })
+        {
+            return;
+        }
+
+        await ExecuteReportActionAsync(
+            GetJobReportBusyText(job),
+            async () =>
+            {
+                ProcessingResult result = await PrintReportsForJobAsync(job);
+                HandleReportResult(result, GetJobReportSuccessText(job));
+            });
+    }
+
+    private void OnExitButtonClick(object sender, RoutedEventArgs e)
+    {
+        Application.Current.Exit();
+    }
+
+    private void OnOpenEditorWindowClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        if (editorWindow is not null)
+        {
+            editorWindow.Activate();
+            return;
+        }
+
+        editorWindow = new ElevateProjectEditorWindow(path, buildingType);
+        editorWindow.Closed += OnEditorWindowClosed;
+        editorWindow.Activate();
+    }
+
+    private void OnEditorWindowClosed(object sender, WindowEventArgs args)
+    {
+        if (editorWindow is not null)
+        {
+            editorWindow.Closed -= OnEditorWindowClosed;
+            editorWindow = null;
+        }
+    }
+
+    private void OnLanguageComboBoxSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LanguageComboBox.SelectedItem is not LanguageOption option)
+        {
+            return;
+        }
+
+        localizationService.SetLanguage(option.Language);
+    }
+
+    private void OnBetaFeaturesCheckBoxChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateBetaFeatureVisibility();
+    }
+
+    private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
+    {
+        BuildingType? selectedType = GetSelectedBuildingType();
+        if (!selectedType.HasValue)
+        {
+            return;
+        }
+
+        UpdateModeButtons(selectedType.Value);
+        UpdateEditorOutputPreview();
+
+        if (suppressBuildingTypeStatus)
+        {
+            return;
+        }
+
+        SetStatus(localizationService.FormatSelectedBuildingType(selectedType.Value), InfoBarSeverity.Informational);
+    }
+
+    private bool TryGetInputs(out string path, out BuildingType buildingType)
+    {
+        path = PathTextBox.Text?.Trim() ?? string.Empty;
+        buildingType = BuildingType.Office;
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            SetStatus(Text.PathRequiredMessage, InfoBarSeverity.Warning);
+            return false;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            SetStatus(Text.FolderMissingMessage, InfoBarSeverity.Error);
+            return false;
+        }
+
+        BuildingType? selectedType = GetSelectedBuildingType();
+        if (!selectedType.HasValue)
+        {
+            SetStatus(Text.BuildingTypeRequiredMessage, InfoBarSeverity.Warning);
+            return false;
+        }
+
+        buildingType = selectedType.Value;
+        return true;
+    }
+
+    private void ResetEditorStatus()
+    {
+        EditorSourceTextBlock.Text = "-";
+        EditorOutputTextBlock.Text = "-";
+        SaveEditorButton.IsEnabled = false;
+        ClearEditorControls();
+    }
+
+    private void ClearEditorControls()
+    {
+        EditorJobTitleTextBox.Text = string.Empty;
+        EditorJobNoTextBox.Text = string.Empty;
+        EditorCalculationTitleTextBox.Text = string.Empty;
+        EditorMadeByTextBox.Text = string.Empty;
+        EditorCheckedByTextBox.Text = string.Empty;
+        EditorCompanyTextBox.Text = string.Empty;
+        EditorDispatcherTextBox.Text = string.Empty;
+        EditorTrafficModeTextBox.Text = string.Empty;
+        EditorSimulationsTextBox.Text = string.Empty;
+        EditorLearningRunsTextBox.Text = string.Empty;
+        EditorRandomSeedTextBox.Text = string.Empty;
+        EditorAbsenteeismTextBox.Text = string.Empty;
+        EditorIncomingTextBox.Text = string.Empty;
+        EditorOutgoingTextBox.Text = string.Empty;
+        EditorInterfloorTextBox.Text = string.Empty;
+        EditorHandlingCapacityTextBox.Text = string.Empty;
+        EditorLoadingTimeTextBox.Text = string.Empty;
+        EditorUnloadingTimeTextBox.Text = string.Empty;
+        editorFloors.Clear();
+        editorCars.Clear();
+    }
+
+    private void ApplyEditorDocument(ElevateProjectEditorDocument document)
+    {
+        EditorSourceTextBlock.Text = document.SourcePath ?? document.TemplatePath ?? "-";
+
+        EditorJobTitleTextBox.Text = document.Job.Title;
+        EditorJobNoTextBox.Text = document.Job.Number;
+        EditorCalculationTitleTextBox.Text = document.Job.CalculationTitle;
+        EditorMadeByTextBox.Text = document.Job.MadeBy;
+        EditorCheckedByTextBox.Text = document.Job.CheckedBy;
+        EditorCompanyTextBox.Text = document.Job.Company;
+        EditorDispatcherTextBox.Text = document.Analysis.DispatcherAlgorithmName;
+        EditorTrafficModeTextBox.Text = document.Analysis.TrafficMode;
+        EditorSimulationsTextBox.Text = document.Analysis.SimulationsPerConfiguration.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        EditorLearningRunsTextBox.Text = document.Analysis.LearningRuns.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        EditorRandomSeedTextBox.Text = document.Analysis.RandomSeed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        EditorAbsenteeismTextBox.Text = FormatEditorNumber(document.Building.AbsenteeismPercent);
+        EditorIncomingTextBox.Text = FormatEditorNumber(document.Traffic.IncomingPercent);
+        EditorOutgoingTextBox.Text = FormatEditorNumber(document.Traffic.OutgoingPercent);
+        EditorInterfloorTextBox.Text = FormatEditorNumber(document.Traffic.InterfloorPercent);
+        EditorHandlingCapacityTextBox.Text = FormatEditorNumber(document.Traffic.HandlingCapacity);
+        EditorLoadingTimeTextBox.Text = FormatEditorNumber(document.Traffic.LoadingTimeSeconds);
+        EditorUnloadingTimeTextBox.Text = FormatEditorNumber(document.Traffic.UnloadingTimeSeconds);
+
+        ApplyEditorBuildingType(document.BuildingType);
+
+        editorFloors.Clear();
+        foreach (ElevateProjectEditorFloor floor in document.Floors)
+        {
+            FloorEditorRowViewModel row = new(floor, localizationService);
+            editorFloors.Add(row);
+        }
+
+        editorCars.Clear();
+        foreach (ElevateProjectEditorCar car in document.Cars)
+        {
+            CarEditorRowViewModel row = new(car, localizationService);
+            editorCars.Add(row);
+        }
+
+        UpdateEditorOutputPreview();
+    }
+
+    private void ApplyEditorBuildingType(BuildingType buildingType)
+    {
+        suppressBuildingTypeStatus = true;
+        try
+        {
+            switch (buildingType)
+            {
+                case BuildingType.Office:
+                    OfficeRadioButton.IsChecked = true;
+                    break;
+                case BuildingType.Residence:
+                    ResidenceRadioButton.IsChecked = true;
+                    break;
+                case BuildingType.Hotel:
+                    HotelRadioButton.IsChecked = true;
+                    break;
+            }
+        }
+        finally
+        {
+            suppressBuildingTypeStatus = false;
+        }
+
+        UpdateModeButtons(buildingType);
+    }
+
+    private bool TryBuildEditorDocument(BuildingType buildingType, out ElevateProjectEditorDocument? document)
+    {
+        document = null;
+        if (loadedEditorDocument is null)
+        {
+            SetStatus(Text.EditorNotLoadedMessage, InfoBarSeverity.Warning);
+            return false;
+        }
+
+        if (!TryParseEditorDouble(EditorAbsenteeismTextBox.Text, Text.EditorAbsenteeismHeader, out double absenteeism) ||
+            !TryParseEditorDouble(EditorIncomingTextBox.Text, Text.EditorIncomingHeader, out double incoming) ||
+            !TryParseEditorDouble(EditorOutgoingTextBox.Text, Text.EditorOutgoingHeader, out double outgoing) ||
+            !TryParseEditorDouble(EditorInterfloorTextBox.Text, Text.EditorInterfloorHeader, out double interfloor) ||
+            !TryParseEditorDouble(EditorHandlingCapacityTextBox.Text, Text.EditorHandlingCapacityHeader, out double handlingCapacity) ||
+            !TryParseEditorDouble(EditorLoadingTimeTextBox.Text, Text.EditorLoadingTimeHeader, out double loadingTime) ||
+            !TryParseEditorDouble(EditorUnloadingTimeTextBox.Text, Text.EditorUnloadingTimeHeader, out double unloadingTime) ||
+            !TryParseEditorInt(EditorSimulationsTextBox.Text, Text.EditorSimulationsHeader, out int simulationsPerConfiguration) ||
+            !TryParseEditorInt(EditorLearningRunsTextBox.Text, Text.EditorLearningRunsHeader, out int learningRuns) ||
+            !TryParseEditorInt(EditorRandomSeedTextBox.Text, Text.EditorRandomSeedHeader, out int randomSeed))
+        {
+            return false;
+        }
+
+        if (Math.Abs((incoming + outgoing + interfloor) - 100d) > 0.01d)
+        {
+            SetStatus(Text.EditorTrafficSplitTotalMessage, InfoBarSeverity.Warning);
+            return false;
+        }
+
+        List<ElevateProjectEditorFloor> floors = [];
+        foreach (FloorEditorRowViewModel row in editorFloors)
+        {
+            if (!TryParseEditorDouble(row.FloorLevelText, row.LevelLabel, out double floorLevel) ||
+                !TryParseEditorDouble(row.PopulationText, row.PopulationLabel, out double population))
+            {
+                return false;
+            }
+
+            floors.Add(new ElevateProjectEditorFloor
+            {
+                FloorName = row.FloorName,
+                FloorLevel = floorLevel,
+                Population = population,
+                EntranceFloor = row.EntranceFloor,
+            });
+        }
+
+        List<ElevateProjectEditorCar> cars = [];
+        foreach (CarEditorRowViewModel row in editorCars)
+        {
+            if (!TryNormalizeEditorDoubleText(row.CapacityText, row.CapacityLabel, out string capacityKg) ||
+                !TryNormalizeEditorDoubleText(row.AreaText, row.AreaLabel, out string floorAreaM2) ||
+                !TryNormalizeEditorDoubleText(row.SpeedText, row.SpeedLabel, out string speed) ||
+                !TryNormalizeEditorDoubleText(row.AccelerationText, row.AccelerationLabel, out string acceleration) ||
+                !TryNormalizeEditorDoubleText(row.JerkText, row.JerkLabel, out string jerk) ||
+                !TryNormalizeEditorDoubleText(row.PreOpeningText, row.PreOpeningLabel, out string doorPreOpening) ||
+                !TryNormalizeEditorDoubleText(row.OpenTimeText, row.OpenTimeLabel, out string doorOpenTime) ||
+                !TryNormalizeEditorDoubleText(row.CloseTimeText, row.CloseTimeLabel, out string doorCloseTime) ||
+                !TryParseEditorInt(row.HomeFloorText, row.HomeFloorLabel, out int homeFloor))
+            {
+                return false;
+            }
+
+            cars.Add(new ElevateProjectEditorCar
+            {
+                Id = row.Id,
+                CapacityKg = capacityKg,
+                FloorAreaM2 = floorAreaM2,
+                Speed = speed,
+                Acceleration = acceleration,
+                Jerk = jerk,
+                DoorPreOpening = doorPreOpening,
+                DoorOpenTime = doorOpenTime,
+                DoorCloseTime = doorCloseTime,
+                HomeFloor = homeFloor.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            });
+        }
+
+        document = new ElevateProjectEditorDocument
+        {
+            SourcePath = loadedEditorDocument.SourcePath,
+            TemplatePath = loadedEditorDocument.TemplatePath,
+            BuildingType = buildingType,
+            Job = new ElevateProjectEditorJobSection
+            {
+                Title = EditorJobTitleTextBox.Text?.Trim() ?? string.Empty,
+                Number = EditorJobNoTextBox.Text?.Trim() ?? string.Empty,
+                CalculationTitle = EditorCalculationTitleTextBox.Text?.Trim() ?? string.Empty,
+                MadeBy = EditorMadeByTextBox.Text?.Trim() ?? string.Empty,
+                CheckedBy = EditorCheckedByTextBox.Text?.Trim() ?? string.Empty,
+                Company = EditorCompanyTextBox.Text?.Trim() ?? string.Empty,
+                LogoFile = loadedEditorDocument.Job.LogoFile,
+            },
+            Analysis = new ElevateProjectEditorAnalysisSection
+            {
+                DispatcherAlgorithmName = EditorDispatcherTextBox.Text?.Trim() ?? string.Empty,
+                TrafficMode = EditorTrafficModeTextBox.Text?.Trim() ?? string.Empty,
+                SimulationsPerConfiguration = simulationsPerConfiguration,
+                LearningRuns = learningRuns,
+                RandomSeed = randomSeed,
+            },
+            Building = new ElevateProjectEditorBuildingSection
+            {
+                BuildingType = buildingType,
+                AbsenteeismPercent = absenteeism,
+                NumberOfFloors = floors.Count,
+            },
+            Traffic = new ElevateProjectEditorTrafficSection
+            {
+                IncomingPercent = incoming,
+                OutgoingPercent = outgoing,
+                InterfloorPercent = interfloor,
+                HandlingCapacity = handlingCapacity,
+                LoadingTimeSeconds = loadingTime,
+                UnloadingTimeSeconds = unloadingTime,
+            },
+            Floors = floors,
+            Cars = cars,
+        };
+
+        return true;
+    }
+
+    private async Task<ElevateProjectEditorDocument> LoadExistingProjectEditorDocumentAsync(string workingFolder)
+    {
+        string[] files = Directory.GetFiles(workingFolder, "*.elvx", SearchOption.TopDirectoryOnly);
+        string? existingElvxPath = files
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(path => path.EndsWith("01.elvx", StringComparison.OrdinalIgnoreCase))
+            ?? files.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+
+        if (existingElvxPath is null)
+        {
+            throw new InvalidOperationException(Text.EditorExistingFileMissingMessage);
+        }
+
+        return await projectEditorService.LoadFile(existingElvxPath);
+    }
+
+    private string ResolveEditorOutputPath(string workingFolder, ElevateProjectEditorDocument document)
+    {
+        string suggestedFileName = projectEditorService.SuggestFileName(document);
+        string suggestedOutputPath = Path.Combine(Path.GetFullPath(workingFolder), suggestedFileName);
+
+        if (!string.IsNullOrWhiteSpace(document.SourcePath) && File.Exists(document.SourcePath))
+        {
+            string currentFolder = Path.GetFullPath(workingFolder);
+            string? loadedFolder = Path.GetDirectoryName(document.SourcePath);
+            if (!string.IsNullOrWhiteSpace(loadedFolder) &&
+                string.Equals(Path.GetFullPath(loadedFolder), currentFolder, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(Path.GetFileName(document.SourcePath), suggestedFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                return document.SourcePath;
+            }
+        }
+
+        return suggestedOutputPath;
+    }
+
+    private void UpdateEditorOutputPreview()
+    {
+        if (loadedEditorDocument is null)
+        {
+            EditorOutputTextBlock.Text = "-";
+            return;
+        }
+
+        ElevateProjectEditorDocument previewDocument = BuildEditorPreviewDocument();
+        string workingFolder = PathTextBox.Text?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(workingFolder))
+        {
+            EditorOutputTextBlock.Text = projectEditorService.SuggestFileName(previewDocument);
+            return;
+        }
+
+        try
+        {
+            EditorOutputTextBlock.Text = ResolveEditorOutputPath(workingFolder, previewDocument);
+        }
+        catch
+        {
+            EditorOutputTextBlock.Text = projectEditorService.SuggestFileName(previewDocument);
+        }
+    }
+
+    private ElevateProjectEditorDocument BuildEditorPreviewDocument()
+    {
+        BuildingType buildingType = GetSelectedBuildingType() ?? loadedEditorDocument?.BuildingType ?? BuildingType.Office;
+        ElevateProjectEditorDocument source = loadedEditorDocument ?? new ElevateProjectEditorDocument();
+
+        return new ElevateProjectEditorDocument
+        {
+            SourcePath = source.SourcePath,
+            TemplatePath = source.TemplatePath,
+            BuildingType = buildingType,
+            Job = new ElevateProjectEditorJobSection
+            {
+                Title = EditorJobTitleTextBox.Text?.Trim() ?? source.Job.Title,
+                Number = EditorJobNoTextBox.Text?.Trim() ?? source.Job.Number,
+                CalculationTitle = source.Job.CalculationTitle,
+                MadeBy = source.Job.MadeBy,
+                CheckedBy = source.Job.CheckedBy,
+                Company = source.Job.Company,
+                LogoFile = source.Job.LogoFile,
+            },
+        };
+    }
+
+    private bool TryParseEditorDouble(string? rawValue, string fieldName, out double value)
+    {
+        value = 0;
+        string text = rawValue?.Trim() ?? string.Empty;
+        if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value))
+        {
+            return true;
+        }
+
+        if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.GetCultureInfo("ru-RU"), out value))
+        {
+            return true;
+        }
+
+        SetStatus(
+            string.Format(
+                System.Globalization.CultureInfo.CurrentCulture,
+                Text.EditorInvalidNumberFormat,
+                fieldName),
+            InfoBarSeverity.Warning);
+        return false;
+    }
+
+    private bool TryParseEditorInt(string? rawValue, string fieldName, out int value)
+    {
+        value = 0;
+        string text = rawValue?.Trim() ?? string.Empty;
+        if (int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value))
+        {
+            return true;
+        }
+
+        if (int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.GetCultureInfo("ru-RU"), out value))
+        {
+            return true;
+        }
+
+        SetStatus(
+            string.Format(
+                System.Globalization.CultureInfo.CurrentCulture,
+                Text.EditorInvalidNumberFormat,
+                fieldName),
+            InfoBarSeverity.Warning);
+        return false;
+    }
+
+    private bool TryNormalizeEditorDoubleText(string? rawValue, string fieldName, out string normalized)
+    {
+        normalized = string.Empty;
+        if (!TryParseEditorDouble(rawValue, fieldName, out double value))
+        {
+            return false;
+        }
+
+        normalized = value.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
+        return true;
+    }
+
+    private static string FormatEditorNumber(double value)
+    {
+        return value.ToString("0.###", System.Globalization.CultureInfo.GetCultureInfo("ru-RU"));
+    }
+
+    private void StartProcessingJob(string path, BuildingType buildingType, bool includeLunchPeak)
+    {
+        string normalizedPath = NormalizeProcessingFolder(path);
+        if (!TryRegisterProcessingFolder(normalizedPath))
+        {
+            SetStatus(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.RunFolderBusyMessage,
+                    normalizedPath),
+                InfoBarSeverity.Warning);
+            return;
+        }
+
+        JobProgressViewModel job;
+        try
+        {
+            job = CreateJob(normalizedPath, buildingType, includeLunchPeak);
+        }
+        catch
+        {
+            UnregisterProcessingFolder(normalizedPath);
+            throw;
+        }
+
+        _ = RunProcessingJobAsync(job, normalizedPath, buildingType, includeLunchPeak, normalizedPath);
+    }
+
+    private async Task RunProcessingJobAsync(
+        JobProgressViewModel job,
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        string activeProcessingFolder)
+    {
+        job.MarkRunning(localizationService);
+        RefreshJobsSummary();
+        SetStatus(localizationService.FormatRunStarted(job.Title), InfoBarSeverity.Informational);
+
+        try
+        {
+            ProcessingResult result = await InvokeProcessingAsync(job, path, buildingType, includeLunchPeak);
+            ApplyProcessingResult(job, result);
+        }
+        catch (Exception ex)
+        {
+            string message = BuildExceptionMessage(ex);
+            job.MarkFailed(message);
+            SetStatus(message, InfoBarSeverity.Error);
+            ScheduleFinishedJobRemoval(job);
+        }
+        finally
+        {
+            UnregisterProcessingFolder(activeProcessingFolder);
+            RefreshJobsSummary();
+        }
+    }
+
+    private bool TryRegisterProcessingFolder(string path)
+    {
+        lock (activeProcessingFoldersSync)
+        {
+            return activeProcessingFolders.Add(path);
+        }
+    }
+
+    private void UnregisterProcessingFolder(string path)
+    {
+        lock (activeProcessingFoldersSync)
+        {
+            activeProcessingFolders.Remove(path);
+        }
+    }
+
+    private static string NormalizeProcessingFolder(string path)
+    {
+        string trimmedPath = path.Trim();
+        try
+        {
+            string fullPath = Path.GetFullPath(trimmedPath);
+            string root = Path.GetPathRoot(fullPath) ?? string.Empty;
+            return fullPath.Length <= root.Length
+                ? fullPath
+                : fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch
+        {
+            return trimmedPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+    }
+
+    private async Task ExecuteReportActionAsync(string busyText, Func<Task> action)
+    {
+        if (!await reportExecutionLock.WaitAsync(0))
+        {
+            SetStatus(Text.ReportBusyMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        SetReportButtonsEnabled(isEnabled: false);
+        try
+        {
+            SetStatus(busyText, InfoBarSeverity.Informational);
+            await action();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+        }
+        finally
+        {
+            SetReportButtonsEnabled(isEnabled: true);
+            _ = reportExecutionLock.Release();
+        }
+    }
+
+    private void HandleReportResult(ProcessingResult result, string successMessage)
+    {
+        if (result.Success)
+        {
+            SetStatus(successMessage, InfoBarSeverity.Success);
+            return;
+        }
+
+        SetStatus(FormatResultMessage(result), InfoBarSeverity.Error);
+    }
+
+    private void ApplyProcessingResult(JobProgressViewModel job, ProcessingResult result)
+    {
+        if (result.Success)
+        {
+            job.MarkCompleted(localizationService);
+            SetStatus(localizationService.FormatRunCompleted(job.Title), InfoBarSeverity.Success);
+            return;
+        }
+
+        string message = FormatResultMessage(result);
+        job.MarkFailed(message);
+        SetStatus(message, InfoBarSeverity.Error);
+        ScheduleFinishedJobRemoval(job);
+    }
+
+    private async Task<ProcessingResult> InvokeProcessingAsync(
+        JobProgressViewModel job,
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak)
+    {
+        Progress<ElevateProgressInfo> morningProgress = new(update => HandleProgressUpdate(job, update));
+        Progress<ElevateProgressInfo>? lunchProgress = buildingType == BuildingType.Office && includeLunchPeak
+            ? new Progress<ElevateProgressInfo>(update => HandleProgressUpdate(job, update))
+            : null;
+
+        return await processingService.RunAsync(
+            path,
+            buildingType,
+            includeLunchPeak,
+            morningProgress,
+            lunchProgress,
+            CancellationToken.None);
+    }
+
+    private void HandleProgressUpdate(JobProgressViewModel job, ElevateProgressInfo update)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => HandleProgressUpdate(job, update));
+            return;
+        }
+
+        job.UpdateProgress(update.Scenario, update.Completed, update.Total, localizationService);
+    }
+
+    private void SetStatus(string message, InfoBarSeverity severity)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => SetStatus(message, severity));
+            return;
+        }
+
+        StatusInfoBar.Severity = severity;
+        StatusInfoBar.Message = message;
+        StatusInfoBar.IsOpen = true;
+    }
+
+    private void RefreshJobsSummary()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(RefreshJobsSummary);
+            return;
+        }
+
+        int runningJobs = Jobs.Count(job => job.IsRunning);
+        BusyRing.IsActive = runningJobs > 0;
+        BusyTextBlock.Text = localizationService.GetQueueSummary(runningJobs);
+
+        bool hasJobs = Jobs.Count > 0;
+        JobsItemsControl.Visibility = hasJobs ? Visibility.Visible : Visibility.Collapsed;
+        EmptyQueueBorder.Visibility = hasJobs ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void SetReportButtonsEnabled(bool isEnabled)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => SetReportButtonsEnabled(isEnabled));
+            return;
+        }
+
+        ReportButton.IsEnabled = isEnabled;
+        MorningReportButton.IsEnabled = isEnabled;
+        LunchReportButton.IsEnabled = isEnabled;
+
+        foreach (JobProgressViewModel job in Jobs)
+        {
+            job.SetReportActionEnabled(isEnabled);
+        }
+    }
+
+    private string GetJobReportBusyText(JobProgressViewModel job)
+    {
+        if (job.PrintsMultipleReports)
+        {
+            return Text.GeneratingReports;
+        }
+
+        return job.BuildingType == BuildingType.Office
+            ? Text.GeneratingMorningReport
+            : Text.GeneratingReport;
+    }
+
+    private string GetJobReportSuccessText(JobProgressViewModel job)
+    {
+        if (job.PrintsMultipleReports)
+        {
+            return Text.ReportsGenerated;
+        }
+
+        return job.BuildingType == BuildingType.Office
+            ? Text.MorningReportGenerated
+            : Text.ReportGenerated;
+    }
+
+    private async Task<ProcessingResult> PrintReportsForJobAsync(JobProgressViewModel job)
+    {
+        if (job.BuildingType != BuildingType.Office)
+        {
+            return await reportService.PrintReportAsync(job.JobPath, job.BuildingType);
+        }
+
+        string morningPath = Path.Combine(job.JobPath, "morning");
+        ProcessingResult morningResult = await reportService.PrintReportAsync(morningPath, job.BuildingType);
+        if (!morningResult.Success || !job.IncludeLunchPeak)
+        {
+            return morningResult;
+        }
+
+        string lunchPath = Path.Combine(job.JobPath, "lunch");
+        return await reportService.PrintReportAsync(lunchPath, job.BuildingType);
+    }
+
+    private void ScheduleFinishedJobRemoval(JobProgressViewModel job)
+    {
+        _ = RemoveFinishedJobAsync(job);
+    }
+
+    private async Task RemoveFinishedJobAsync(JobProgressViewModel job)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(3));
+
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => RemoveFinishedJob(job));
+            return;
+        }
+
+        RemoveFinishedJob(job);
+    }
+
+    private void RemoveFinishedJob(JobProgressViewModel job)
+    {
+        if (!job.IsFinished || job.IsRunning)
+        {
+            return;
+        }
+
+        if (Jobs.Remove(job))
+        {
+            RefreshJobsSummary();
+        }
+    }
+
+    private void UpdateModeButtons(BuildingType buildingType)
+    {
+        bool isOffice = buildingType == BuildingType.Office;
+
+        RunMorningOnlyButton.Visibility = isOffice ? Visibility.Visible : Visibility.Collapsed;
+        MorningReportButton.Visibility = isOffice ? Visibility.Visible : Visibility.Collapsed;
+        LunchReportButton.Visibility = isOffice ? Visibility.Visible : Visibility.Collapsed;
+        ReportButton.Visibility = isOffice ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void UpdateBetaFeatureVisibility()
+    {
+        EditorWindowCard.Visibility = BetaFeaturesCheckBox.IsChecked == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private BuildingType? GetSelectedBuildingType()
+    {
+        if (OfficeRadioButton.IsChecked == true)
+        {
+            return BuildingType.Office;
+        }
+
+        if (ResidenceRadioButton.IsChecked == true)
+        {
+            return BuildingType.Residence;
+        }
+
+        if (HotelRadioButton.IsChecked == true)
+        {
+            return BuildingType.Hotel;
+        }
+
+        return null;
+    }
+
+    private bool TryEnsureIntegrationForLaunch()
+    {
+        ElevateIntegrationInfo info = integrationService.GetIntegrationInfo();
+        if (info.IsDetected)
+        {
+            return true;
+        }
+
+        SetStatus(Text.IntegrationMissingLaunch, InfoBarSeverity.Error);
+        return false;
+    }
+
+    private void RefreshIntegrationStatus(bool showStatusMessage)
+    {
+        ElevateIntegrationInfo info = integrationService.GetIntegrationInfo();
+
+        if (!showStatusMessage)
+        {
+            return;
+        }
+
+        if (info.IsDetected)
+        {
+            string versionPart = string.IsNullOrWhiteSpace(info.ProductVersion)
+                ? string.Empty
+                : string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.IntegrationVersionFormat,
+                    info.ProductVersion);
+            SetStatus(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.IntegrationFoundFormat,
+                    versionPart,
+                    info.ExecutablePath),
+                InfoBarSeverity.Success);
+            return;
+        }
+
+        SetStatus(Text.IntegrationMissingCheck, InfoBarSeverity.Warning);
+    }
+
+    private JobProgressViewModel CreateJob(string path, BuildingType buildingType, bool includeLunchPeak)
+    {
+        JobProgressViewModel job = new(nextJobId++, path, buildingType, includeLunchPeak, localizationService);
+        Jobs.Insert(0, job);
+        RefreshJobsSummary();
+        return job;
+    }
+
+    private string FormatResultMessage(ProcessingResult result)
+    {
+        string message = string.IsNullOrWhiteSpace(result.Message)
+            ? Text.OperationFailedMessage
+            : localizationService.TranslateRuntimeMessage(result.Message);
+        if (!message.Contains(Text.OperationFailedMessage, StringComparison.CurrentCultureIgnoreCase))
+        {
+            message = $"{Text.OperationFailedMessage} {message}";
+        }
+
+        if (result.Exception is null)
+        {
+            return message;
+        }
+
+        return $"{message} | {localizationService.TranslateRuntimeMessage(result.Exception.Message)}";
+    }
+
+    private string BuildExceptionMessage(Exception exception)
+    {
+        string message = localizationService.TranslateRuntimeMessage(exception.Message);
+        if (exception.InnerException is not null)
+        {
+            message = $"{message} | {localizationService.TranslateRuntimeMessage(exception.InnerException.Message)}";
+        }
+
+        return $"{Text.OperationFailedMessage} {message}";
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => OnLanguageChanged(sender, e));
+            return;
+        }
+
+        foreach (JobProgressViewModel job in Jobs)
+        {
+            job.ApplyLocalization(localizationService);
+        }
+
+        foreach (FloorEditorRowViewModel row in editorFloors)
+        {
+            row.ApplyLocalization(localizationService);
+        }
+
+        foreach (CarEditorRowViewModel row in editorCars)
+        {
+            row.ApplyLocalization(localizationService);
+        }
+
+        LanguageComboBox.SelectedItem = LanguageOptions.First(option => option.Language == localizationService.CurrentLanguage);
+
+        if (App.MainWindow is not null)
+        {
+            App.MainWindow.Title = Text.WindowTitle;
+        }
+
+        Bindings.Update();
+        RefreshJobsSummary();
+    }
+
+    public sealed class JobProgressViewModel : INotifyPropertyChanged
+    {
+        private readonly int jobId;
+        private readonly string path;
+        private readonly BuildingType buildingType;
+        private readonly bool includeLunchPeak;
+        private readonly ScenarioProgressViewModel? primaryScenario;
+        private readonly ScenarioProgressViewModel? morningScenario;
+        private readonly ScenarioProgressViewModel? lunchScenario;
+        private JobScenarioKind activeScenarioKind;
+        private JobStateKind stateKind;
+        private string? failureMessage;
+        private string title;
+        private string details;
+        private string statusText;
+        private string reportButtonText;
+        private bool isRunning;
+        private bool isFinished;
+        private bool reportActionEnabled = true;
+
+        public JobProgressViewModel(
+            int jobId,
+            string path,
+            BuildingType buildingType,
+            bool includeLunchPeak,
+            AppLocalizationService localizationService)
+        {
+            this.jobId = jobId;
+            this.path = path;
+            this.buildingType = buildingType;
+            this.includeLunchPeak = includeLunchPeak;
+
+            title = string.Empty;
+            details = string.Empty;
+            statusText = string.Empty;
+            reportButtonText = string.Empty;
+            stateKind = JobStateKind.Queued;
+
+            bool isOffice = buildingType == BuildingType.Office;
+            if (isOffice && includeLunchPeak)
+            {
+                morningScenario = new ScenarioProgressViewModel(JobScenarioKind.Morning);
+                lunchScenario = new ScenarioProgressViewModel(JobScenarioKind.Lunch);
+                Scenarios = new ObservableCollection<ScenarioProgressViewModel>
+                {
+                    morningScenario,
+                    lunchScenario,
+                };
+            }
+            else if (isOffice)
+            {
+                primaryScenario = new ScenarioProgressViewModel(JobScenarioKind.Morning);
+                Scenarios = new ObservableCollection<ScenarioProgressViewModel>
+                {
+                    primaryScenario!,
+                };
+            }
+            else
+            {
+                primaryScenario = new ScenarioProgressViewModel(JobScenarioKind.Progress);
+                Scenarios = new ObservableCollection<ScenarioProgressViewModel>
+                {
+                    primaryScenario!,
+                };
+            }
+
+            activeScenarioKind = Scenarios[0].ScenarioKind;
+            ApplyLocalization(localizationService);
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string Title
+        {
+            get => title;
+            private set
+            {
+                if (title == value)
+                {
+                    return;
+                }
+
+                title = value;
+                OnPropertyChanged(nameof(Title));
+            }
+        }
+
+        public string Details
+        {
+            get => details;
+            private set
+            {
+                if (details == value)
+                {
+                    return;
+                }
+
+                details = value;
+                OnPropertyChanged(nameof(Details));
+            }
+        }
+
+        public string StatusText
+        {
+            get => statusText;
+            private set
+            {
+                if (statusText == value)
+                {
+                    return;
+                }
+
+                statusText = value;
+                OnPropertyChanged(nameof(StatusText));
+            }
+        }
+
+        public string JobPath => path;
+
+        public BuildingType BuildingType => buildingType;
+
+        public bool IncludeLunchPeak => includeLunchPeak;
+
+        public bool PrintsMultipleReports => buildingType == BuildingType.Office && includeLunchPeak;
+
+        public string ReportButtonText
+        {
+            get => reportButtonText;
+            private set
+            {
+                if (reportButtonText == value)
+                {
+                    return;
+                }
+
+                reportButtonText = value;
+                OnPropertyChanged(nameof(ReportButtonText));
+            }
+        }
+
+        public bool IsRunning
+        {
+            get => isRunning;
+            private set
+            {
+                if (isRunning == value)
+                {
+                    return;
+                }
+
+                isRunning = value;
+                OnPropertyChanged(nameof(IsRunning));
+            }
+        }
+
+        public ObservableCollection<ScenarioProgressViewModel> Scenarios { get; }
+
+        public bool IsFinished => isFinished;
+
+        public bool CanPrintReport => stateKind == JobStateKind.Completed && reportActionEnabled;
+
+        public Visibility PrintReportVisibility => stateKind == JobStateKind.Completed
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        public void MarkRunning(AppLocalizationService localizationService)
+        {
+            isFinished = false;
+            failureMessage = null;
+            stateKind = JobStateKind.Running;
+            IsRunning = true;
+            StatusText = localizationService.GetJobStateLabel(JobStateKind.Running);
+            NotifyReportActionStateChanged();
+        }
+
+        public void MarkCompleted(AppLocalizationService localizationService)
+        {
+            isFinished = true;
+            failureMessage = null;
+            stateKind = JobStateKind.Completed;
+            IsRunning = false;
+            StatusText = localizationService.GetJobStateLabel(JobStateKind.Completed);
+            NotifyReportActionStateChanged();
+        }
+
+        public void MarkFailed(string message)
+        {
+            isFinished = true;
+            failureMessage = message;
+            IsRunning = false;
+            StatusText = message;
+            NotifyReportActionStateChanged();
+        }
+
+        public void UpdateProgress(string? scenario, int completed, int total, AppLocalizationService localizationService)
+        {
+            if (isFinished)
+            {
+                return;
+            }
+
+            ScenarioProgressViewModel target = ResolveScenario(scenario);
+            activeScenarioKind = target.ScenarioKind;
+            target.Update(completed, total);
+            StatusText = string.IsNullOrWhiteSpace(target.Label)
+                ? $"{completed}/{total}"
+                : $"{target.Label}: {completed}/{total}";
+            stateKind = JobStateKind.Running;
+            IsRunning = true;
+            failureMessage = null;
+
+            if (completed == 0 && total == 0)
+            {
+                StatusText = localizationService.GetJobStateLabel(JobStateKind.Running);
+            }
+        }
+
+        public void ApplyLocalization(AppLocalizationService localizationService)
+        {
+            Title = localizationService.FormatJobTitle(jobId, buildingType);
+            Details = localizationService.FormatJobDetails(path, buildingType, includeLunchPeak);
+            ReportButtonText = PrintsMultipleReports
+                ? localizationService.CurrentText.PrintReportsButton
+                : localizationService.CurrentText.ReportButton;
+
+            foreach (ScenarioProgressViewModel scenario in Scenarios)
+            {
+                scenario.ApplyLocalization(localizationService);
+            }
+
+            if (!string.IsNullOrWhiteSpace(failureMessage))
+            {
+                StatusText = failureMessage;
+                return;
+            }
+
+            switch (stateKind)
+            {
+                case JobStateKind.Completed:
+                    StatusText = localizationService.GetJobStateLabel(JobStateKind.Completed);
+                    break;
+                case JobStateKind.Running:
+                {
+                    ScenarioProgressViewModel activeScenario = ResolveScenario(activeScenarioKind);
+                    StatusText = activeScenario.Total > 0 || activeScenario.Completed > 0
+                        ? $"{activeScenario.Label}: {activeScenario.Completed}/{activeScenario.Total}"
+                        : localizationService.GetJobStateLabel(JobStateKind.Running);
+                    break;
+                }
+                default:
+                    StatusText = localizationService.GetJobStateLabel(JobStateKind.Queued);
+                    break;
+            }
+        }
+
+        public void SetReportActionEnabled(bool isEnabled)
+        {
+            if (reportActionEnabled == isEnabled)
+            {
+                return;
+            }
+
+            reportActionEnabled = isEnabled;
+            OnPropertyChanged(nameof(CanPrintReport));
+        }
+
+        private ScenarioProgressViewModel ResolveScenario(string? scenario)
+        {
+            if (morningScenario is not null && IsMorningScenario(scenario))
+            {
+                return morningScenario;
+            }
+
+            if (lunchScenario is not null && IsLunchScenario(scenario))
+            {
+                return lunchScenario;
+            }
+
+            return primaryScenario ?? morningScenario ?? lunchScenario!;
+        }
+
+        private ScenarioProgressViewModel ResolveScenario(JobScenarioKind scenarioKind)
+        {
+            if (scenarioKind == JobScenarioKind.Morning && morningScenario is not null)
+            {
+                return morningScenario;
+            }
+
+            if (scenarioKind == JobScenarioKind.Lunch && lunchScenario is not null)
+            {
+                return lunchScenario;
+            }
+
+            return primaryScenario ?? morningScenario ?? lunchScenario!;
+        }
+
+        private static bool IsMorningScenario(string? scenario)
+        {
+            return ContainsScenario(scenario, "morning");
+        }
+
+        private static bool IsLunchScenario(string? scenario)
+        {
+            return ContainsScenario(scenario, "lunch");
+        }
+
+        private static bool ContainsScenario(string? scenario, string token)
+        {
+            return !string.IsNullOrWhiteSpace(scenario) &&
+                   scenario.Contains(token, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void NotifyReportActionStateChanged()
+        {
+            OnPropertyChanged(nameof(IsFinished));
+            OnPropertyChanged(nameof(CanPrintReport));
+            OnPropertyChanged(nameof(PrintReportVisibility));
+        }
+
+        private void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public sealed class ScenarioProgressViewModel : INotifyPropertyChanged
+    {
+        private readonly JobScenarioKind scenarioKind;
+        private string label;
+        private int completed;
+        private int total;
+        private double value;
+        private double maximum;
+        private bool isIndeterminate = true;
+        private string progressText = "0/0";
+
+        public ScenarioProgressViewModel(JobScenarioKind scenarioKind)
+        {
+            this.scenarioKind = scenarioKind;
+            label = string.Empty;
+            maximum = 1;
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public JobScenarioKind ScenarioKind => scenarioKind;
+
+        public string Label
+        {
+            get => label;
+            private set
+            {
+                if (label == value)
+                {
+                    return;
+                }
+
+                label = value;
+                OnPropertyChanged(nameof(Label));
+            }
+        }
+
+        public string ProgressText
+        {
+            get => progressText;
+            private set
+            {
+                if (progressText == value)
+                {
+                    return;
+                }
+
+                progressText = value;
+                OnPropertyChanged(nameof(ProgressText));
+            }
+        }
+
+        public int Completed
+        {
+            get => completed;
+            private set
+            {
+                if (completed == value)
+                {
+                    return;
+                }
+
+                completed = value;
+                OnPropertyChanged(nameof(Completed));
+            }
+        }
+
+        public int Total
+        {
+            get => total;
+            private set
+            {
+                if (total == value)
+                {
+                    return;
+                }
+
+                total = value;
+                OnPropertyChanged(nameof(Total));
+            }
+        }
+
+        public double Value
+        {
+            get => value;
+            private set
+            {
+                if (Math.Abs(this.value - value) < double.Epsilon)
+                {
+                    return;
+                }
+
+                this.value = value;
+                OnPropertyChanged(nameof(Value));
+            }
+        }
+
+        public double Maximum
+        {
+            get => maximum;
+            private set
+            {
+                if (Math.Abs(maximum - value) < double.Epsilon)
+                {
+                    return;
+                }
+
+                maximum = value;
+                OnPropertyChanged(nameof(Maximum));
+            }
+        }
+
+        public bool IsIndeterminate
+        {
+            get => isIndeterminate;
+            private set
+            {
+                if (isIndeterminate == value)
+                {
+                    return;
+                }
+
+                isIndeterminate = value;
+                OnPropertyChanged(nameof(IsIndeterminate));
+            }
+        }
+
+        public void Update(int completed, int total)
+        {
+            Completed = Math.Max(0, completed);
+            Total = Math.Max(0, total);
+            Maximum = Total > 0 ? Total : 1;
+            Value = Total > 0 ? Math.Min(Completed, Total) : 0;
+            IsIndeterminate = Total <= 0;
+            ProgressText = $"{Completed}/{Total}";
+        }
+
+        public void ApplyLocalization(AppLocalizationService localizationService)
+        {
+            Label = localizationService.GetScenarioLabel(scenarioKind);
+        }
+
+        private void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public sealed class FloorEditorRowViewModel : INotifyPropertyChanged
+    {
+        private string floorLevelText;
+        private string populationText;
+        private string levelLabel;
+        private string populationLabel;
+        private string entranceLabel;
+
+        public FloorEditorRowViewModel(ElevateProjectEditorFloor floor, AppLocalizationService localizationService)
+        {
+            FloorName = floor.FloorName;
+            EntranceFloor = floor.EntranceFloor;
+            floorLevelText = FormatEditorNumber(floor.FloorLevel);
+            populationText = FormatEditorNumber(floor.Population);
+            levelLabel = string.Empty;
+            populationLabel = string.Empty;
+            entranceLabel = string.Empty;
+            ApplyLocalization(localizationService);
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string FloorName { get; }
+
+        public bool EntranceFloor { get; }
+
+        public string FloorLevelText
+        {
+            get => floorLevelText;
+            set
+            {
+                if (floorLevelText == value)
+                {
+                    return;
+                }
+
+                floorLevelText = value;
+                OnPropertyChanged(nameof(FloorLevelText));
+            }
+        }
+
+        public string PopulationText
+        {
+            get => populationText;
+            set
+            {
+                if (populationText == value)
+                {
+                    return;
+                }
+
+                populationText = value;
+                OnPropertyChanged(nameof(PopulationText));
+            }
+        }
+
+        public string LevelLabel
+        {
+            get => levelLabel;
+            private set
+            {
+                if (levelLabel == value)
+                {
+                    return;
+                }
+
+                levelLabel = value;
+                OnPropertyChanged(nameof(LevelLabel));
+            }
+        }
+
+        public string PopulationLabel
+        {
+            get => populationLabel;
+            private set
+            {
+                if (populationLabel == value)
+                {
+                    return;
+                }
+
+                populationLabel = value;
+                OnPropertyChanged(nameof(PopulationLabel));
+            }
+        }
+
+        public string EntranceLabel
+        {
+            get => entranceLabel;
+            private set
+            {
+                if (entranceLabel == value)
+                {
+                    return;
+                }
+
+                entranceLabel = value;
+                OnPropertyChanged(nameof(EntranceLabel));
+            }
+        }
+
+        public void ApplyLocalization(AppLocalizationService localizationService)
+        {
+            LevelLabel = localizationService.CurrentText.EditorFloorLevelLabel;
+            PopulationLabel = localizationService.CurrentText.EditorFloorPopulationLabel;
+            EntranceLabel = localizationService.CurrentText.EditorFloorEntranceLabel;
+        }
+
+        private void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public sealed class CarEditorRowViewModel : INotifyPropertyChanged
+    {
+        private string title;
+        private string capacityText;
+        private string areaText;
+        private string speedText;
+        private string accelerationText;
+        private string jerkText;
+        private string preOpeningText;
+        private string openTimeText;
+        private string closeTimeText;
+        private string homeFloorText;
+        private string capacityLabel;
+        private string areaLabel;
+        private string speedLabel;
+        private string accelerationLabel;
+        private string jerkLabel;
+        private string preOpeningLabel;
+        private string openTimeLabel;
+        private string closeTimeLabel;
+        private string homeFloorLabel;
+
+        public CarEditorRowViewModel(ElevateProjectEditorCar car, AppLocalizationService localizationService)
+        {
+            Id = car.Id;
+            title = string.Empty;
+            capacityText = car.CapacityKg;
+            areaText = car.FloorAreaM2;
+            speedText = car.Speed;
+            accelerationText = car.Acceleration;
+            jerkText = car.Jerk;
+            preOpeningText = car.DoorPreOpening;
+            openTimeText = car.DoorOpenTime;
+            closeTimeText = car.DoorCloseTime;
+            homeFloorText = car.HomeFloor;
+            capacityLabel = string.Empty;
+            areaLabel = string.Empty;
+            speedLabel = string.Empty;
+            accelerationLabel = string.Empty;
+            jerkLabel = string.Empty;
+            preOpeningLabel = string.Empty;
+            openTimeLabel = string.Empty;
+            closeTimeLabel = string.Empty;
+            homeFloorLabel = string.Empty;
+            ApplyLocalization(localizationService);
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string Id { get; }
+
+        public string Title
+        {
+            get => title;
+            private set
+            {
+                if (title == value)
+                {
+                    return;
+                }
+
+                title = value;
+                OnPropertyChanged(nameof(Title));
+            }
+        }
+
+        public string CapacityText
+        {
+            get => capacityText;
+            set
+            {
+                if (capacityText == value)
+                {
+                    return;
+                }
+
+                capacityText = value;
+                OnPropertyChanged(nameof(CapacityText));
+            }
+        }
+
+        public string AreaText
+        {
+            get => areaText;
+            set
+            {
+                if (areaText == value)
+                {
+                    return;
+                }
+
+                areaText = value;
+                OnPropertyChanged(nameof(AreaText));
+            }
+        }
+
+        public string SpeedText
+        {
+            get => speedText;
+            set
+            {
+                if (speedText == value)
+                {
+                    return;
+                }
+
+                speedText = value;
+                OnPropertyChanged(nameof(SpeedText));
+            }
+        }
+
+        public string AccelerationText
+        {
+            get => accelerationText;
+            set
+            {
+                if (accelerationText == value)
+                {
+                    return;
+                }
+
+                accelerationText = value;
+                OnPropertyChanged(nameof(AccelerationText));
+            }
+        }
+
+        public string JerkText
+        {
+            get => jerkText;
+            set
+            {
+                if (jerkText == value)
+                {
+                    return;
+                }
+
+                jerkText = value;
+                OnPropertyChanged(nameof(JerkText));
+            }
+        }
+
+        public string PreOpeningText
+        {
+            get => preOpeningText;
+            set
+            {
+                if (preOpeningText == value)
+                {
+                    return;
+                }
+
+                preOpeningText = value;
+                OnPropertyChanged(nameof(PreOpeningText));
+            }
+        }
+
+        public string OpenTimeText
+        {
+            get => openTimeText;
+            set
+            {
+                if (openTimeText == value)
+                {
+                    return;
+                }
+
+                openTimeText = value;
+                OnPropertyChanged(nameof(OpenTimeText));
+            }
+        }
+
+        public string CloseTimeText
+        {
+            get => closeTimeText;
+            set
+            {
+                if (closeTimeText == value)
+                {
+                    return;
+                }
+
+                closeTimeText = value;
+                OnPropertyChanged(nameof(CloseTimeText));
+            }
+        }
+
+        public string HomeFloorText
+        {
+            get => homeFloorText;
+            set
+            {
+                if (homeFloorText == value)
+                {
+                    return;
+                }
+
+                homeFloorText = value;
+                OnPropertyChanged(nameof(HomeFloorText));
+            }
+        }
+
+        public string CapacityLabel
+        {
+            get => capacityLabel;
+            private set
+            {
+                if (capacityLabel == value)
+                {
+                    return;
+                }
+
+                capacityLabel = value;
+                OnPropertyChanged(nameof(CapacityLabel));
+            }
+        }
+
+        public string AreaLabel
+        {
+            get => areaLabel;
+            private set
+            {
+                if (areaLabel == value)
+                {
+                    return;
+                }
+
+                areaLabel = value;
+                OnPropertyChanged(nameof(AreaLabel));
+            }
+        }
+
+        public string SpeedLabel
+        {
+            get => speedLabel;
+            private set
+            {
+                if (speedLabel == value)
+                {
+                    return;
+                }
+
+                speedLabel = value;
+                OnPropertyChanged(nameof(SpeedLabel));
+            }
+        }
+
+        public string AccelerationLabel
+        {
+            get => accelerationLabel;
+            private set
+            {
+                if (accelerationLabel == value)
+                {
+                    return;
+                }
+
+                accelerationLabel = value;
+                OnPropertyChanged(nameof(AccelerationLabel));
+            }
+        }
+
+        public string JerkLabel
+        {
+            get => jerkLabel;
+            private set
+            {
+                if (jerkLabel == value)
+                {
+                    return;
+                }
+
+                jerkLabel = value;
+                OnPropertyChanged(nameof(JerkLabel));
+            }
+        }
+
+        public string PreOpeningLabel
+        {
+            get => preOpeningLabel;
+            private set
+            {
+                if (preOpeningLabel == value)
+                {
+                    return;
+                }
+
+                preOpeningLabel = value;
+                OnPropertyChanged(nameof(PreOpeningLabel));
+            }
+        }
+
+        public string OpenTimeLabel
+        {
+            get => openTimeLabel;
+            private set
+            {
+                if (openTimeLabel == value)
+                {
+                    return;
+                }
+
+                openTimeLabel = value;
+                OnPropertyChanged(nameof(OpenTimeLabel));
+            }
+        }
+
+        public string CloseTimeLabel
+        {
+            get => closeTimeLabel;
+            private set
+            {
+                if (closeTimeLabel == value)
+                {
+                    return;
+                }
+
+                closeTimeLabel = value;
+                OnPropertyChanged(nameof(CloseTimeLabel));
+            }
+        }
+
+        public string HomeFloorLabel
+        {
+            get => homeFloorLabel;
+            private set
+            {
+                if (homeFloorLabel == value)
+                {
+                    return;
+                }
+
+                homeFloorLabel = value;
+                OnPropertyChanged(nameof(HomeFloorLabel));
+            }
+        }
+
+        public void ApplyLocalization(AppLocalizationService localizationService)
+        {
+            Title = localizationService.CurrentLanguage == AppLanguage.Russian
+                ? $"Лифт {Id}"
+                : $"Car {Id}";
+            CapacityLabel = localizationService.CurrentText.EditorCarCapacityLabel;
+            AreaLabel = localizationService.CurrentText.EditorCarAreaLabel;
+            SpeedLabel = localizationService.CurrentText.EditorCarSpeedLabel;
+            AccelerationLabel = localizationService.CurrentText.EditorCarAccelerationLabel;
+            JerkLabel = localizationService.CurrentText.EditorCarJerkLabel;
+            PreOpeningLabel = localizationService.CurrentText.EditorCarPreOpeningLabel;
+            OpenTimeLabel = localizationService.CurrentText.EditorCarOpenTimeLabel;
+            CloseTimeLabel = localizationService.CurrentText.EditorCarCloseTimeLabel;
+            HomeFloorLabel = localizationService.CurrentText.EditorCarHomeFloorLabel;
+        }
+
+        private void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public sealed record LanguageOption(AppLanguage Language, string DisplayName);
+}
