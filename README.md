@@ -56,6 +56,8 @@ flowchart LR
 - .NET SDK 10 для разработки и тестов.
 - Inno Setup 6 нужен только для локальной сборки installer `.exe`.
 
+Release-сборки публикуются self-contained для .NET и Windows App SDK, поэтому отдельная установка Windows App Runtime на тестовой машине не требуется.
+
 Elevate Helper ищет `Elevate.exe` через:
 
 - переменную окружения `ELEVATE_EXE_PATH`;
@@ -144,13 +146,13 @@ Manifest помогает понять, на каком шаге упал рас
 Portable zip:
 
 ```powershell
-.\scripts\build-release.ps1 -Tag v2.0.2-preview.1 -Runtime win-x64 -Configuration Release
+.\scripts\build-release.ps1 -Tag v2.0.2-preview.2 -Runtime win-x64 -Configuration Release
 ```
 
 Installer:
 
 ```powershell
-.\scripts\build-installer.ps1 -Tag v2.0.2-preview.1 -Runtime win-x64 -Configuration Release
+.\scripts\build-installer.ps1 -Tag v2.0.2-preview.2 -Runtime win-x64 -Configuration Release
 ```
 
 GitHub Actions release workflow собирает:
@@ -158,7 +160,7 @@ GitHub Actions release workflow собирает:
 - `ElevateHelper-win-x64-<tag>.zip`;
 - `ElevateHelper-win-x64-<tag>-setup.exe`.
 
-Теги с дефисом, например `v2.0.2-preview.1`, публикуются как GitHub prerelease.
+Теги с дефисом, например `v2.0.2-preview.2`, публикуются как GitHub prerelease.
 
 ## CI
 

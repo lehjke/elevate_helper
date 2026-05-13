@@ -9,16 +9,18 @@
         <UseWinUI>true</UseWinUI>
         <EnableMsixTooling>true</EnableMsixTooling>
         <WindowsPackageType>None</WindowsPackageType>
+        <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+        <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
 
         <!-- Project Options -->
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <RootNamespace>ElevateHelperWinUI</RootNamespace>
-        <Version>2.0.2-preview.1</Version>
+        <Version>2.0.2-preview.2</Version>
         <AssemblyVersion>2.0.2.0</AssemblyVersion>
         <FileVersion>2.0.2.0</FileVersion>
-        <InformationalVersion>2.0.2-preview.1</InformationalVersion>
+        <InformationalVersion>2.0.2-preview.2</InformationalVersion>
         <RepositoryUrl>https://github.com/lehjke/elevate_helper</RepositoryUrl>
 
         <!-- App Options -->
@@ -77,7 +79,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.*" />
+        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260416003" />
         <PackageReference Include="Microsoft.Web.WebView2" Version="1.*" />
         <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.*" />
 
