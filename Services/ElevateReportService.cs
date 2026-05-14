@@ -537,11 +537,16 @@ public sealed class ElevateReportService : IElevateReportService
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
             sheet.Cells(4, 2 + i).Value = i;
-            for (int j = 1; j <= 9; j++)
+            (string _, string doorType) = ResolveReportedDoorInfo(elevatorData, i);
+            string[] equipmentValues = BuildReportEquipmentSpecValues(
+                elevatorData.Spec,
+                elevatorData.DoorPreOpening,
+                doorType,
+                i);
+
+            for (int j = 0; j < equipmentValues.Length; j++)
             {
-                sheet.Cells(4 + j, 2 + i).Value = j < 5
-                    ? elevatorData.Spec[i, j]
-                    : elevatorData.Spec[i, j + 1];
+                sheet.Cells(5 + j, 2 + i).Value = equipmentValues[j];
             }
         }
 
@@ -2263,6 +2268,48 @@ public sealed class ElevateReportService : IElevateReportService
         return index >= 1 && index < areas.Length
             ? areas[index]
             : 0;
+    }
+
+    internal static string[] BuildReportEquipmentSpecValues(
+        string[,] spec,
+        double[] doorPreOpening,
+        string? reportedDoorType,
+        int elevatorIndex)
+    {
+        return
+        [
+            spec[elevatorIndex, 1],
+            spec[elevatorIndex, 2],
+            spec[elevatorIndex, 3],
+            spec[elevatorIndex, 4],
+            spec[elevatorIndex, 9],
+            FormatReportedDoorPreOpening(GetOneBasedValueOrNaN(doorPreOpening, elevatorIndex), reportedDoorType),
+            spec[elevatorIndex, 6],
+            spec[elevatorIndex, 7],
+            spec[elevatorIndex, 8],
+        ];
+    }
+
+    internal static string FormatReportedDoorPreOpening(double value, string? reportedDoorType)
+    {
+        if (!double.IsNaN(value))
+        {
+            return FormatNumericSpec(value.ToString(CultureInfo.InvariantCulture), "0.00");
+        }
+
+        return reportedDoorType?.Trim() switch
+        {
+            "ЦО" => FormatNumericSpec("0.5", "0.00"),
+            "ТО" => FormatNumericSpec("0", "0.00"),
+            _ => string.Empty,
+        };
+    }
+
+    private static double GetOneBasedValueOrNaN(double[] values, int index)
+    {
+        return index >= 1 && index < values.Length
+            ? values[index]
+            : double.NaN;
     }
 
     internal static double ResolveReportedCabinAreaValue(string? floorAreaText, double fallbackArea)

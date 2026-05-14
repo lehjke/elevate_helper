@@ -314,6 +314,56 @@ public sealed class ElevateReportServiceTests
         Assert.Equal("-", type);
     }
 
+    [Fact]
+    public void BuildReportEquipmentSpecValues_KeepsDoorAndStartDelayRowsAligned()
+    {
+        string[,] spec = new string[2, 11];
+        spec[1, 1] = "1050";
+        spec[1, 2] = "3,00";
+        spec[1, 3] = "1,10";
+        spec[1, 4] = "1,50";
+        spec[1, 6] = "2,00";
+        spec[1, 7] = "3,30";
+        spec[1, 8] = "1,00";
+        spec[1, 9] = "0,50";
+        spec[1, 10] = "0,00";
+        double[] doorPreOpening = [double.NaN, 0.5];
+
+        string[] actual = ElevateReportService.BuildReportEquipmentSpecValues(
+            spec,
+            doorPreOpening,
+            "ЦО",
+            1);
+
+        Assert.Equal(
+            [
+                "1050",
+                "3,00",
+                "1,10",
+                "1,50",
+                "0,50",
+                "0,50",
+                "2,00",
+                "3,30",
+                "1,00",
+            ],
+            actual);
+    }
+
+    [Theory]
+    [InlineData(double.NaN, "ЦО", "0,50")]
+    [InlineData(double.NaN, "ТО", "0,00")]
+    [InlineData(0.3, "", "0,30")]
+    public void FormatReportedDoorPreOpening_UsesElvxValueOrDoorTypeFallback(
+        double value,
+        string doorType,
+        string expected)
+    {
+        string actual = ElevateReportService.FormatReportedDoorPreOpening(value, doorType);
+
+        Assert.Equal(expected, actual);
+    }
+
     [Theory]
     [InlineData("3.360000", 0.0, 3.36)]
     [InlineData("", 2.31, 2.31)]

@@ -535,50 +535,24 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 
         string officeBaseFilePath = Path.Combine(path, baseFileName);
         string morningPath = Path.Combine(path, "morning");
-        ResetScenarioDirectory(morningPath);
-        string morningBaseFilePath = Path.Combine(morningPath, baseFileName);
-        File.Copy(officeBaseFilePath, morningBaseFilePath, overwrite: true);
+        PrepareOfficeScenarioIfNeeded(
+            officeBaseFilePath,
+            morningPath,
+            baseFileName,
+            "Morning",
+            copiesCount,
+            cancellationToken);
 
-        string lunchPath = string.Empty;
-        string lunchBaseFilePath = string.Empty;
         if (includeLunchPeak)
         {
-            lunchPath = Path.Combine(path, "lunch");
-            ResetScenarioDirectory(lunchPath);
-            lunchBaseFilePath = Path.Combine(lunchPath, baseFileName);
-            File.Copy(officeBaseFilePath, lunchBaseFilePath, overwrite: true);
-            ModifyBuildingTypeOffice(lunchBaseFilePath, "Lunch");
-            ModifyTitle(lunchBaseFilePath, "Lunch");
-        }
-        else if (Directory.Exists(Path.Combine(path, "lunch")))
-        {
-            Directory.Delete(Path.Combine(path, "lunch"), recursive: true);
-        }
-
-        ModifyBuildingTypeOffice(morningBaseFilePath, "Morning");
-        ModifyTitle(morningBaseFilePath, "Morning");
-
-        for (int i = 2; i <= copiesCount; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            string newFileName = BuildCopyFileName(baseFileName, i);
-            string morningCopyPath = Path.Combine(morningPath, newFileName);
-
-            File.Copy(
-                morningBaseFilePath,
-                morningCopyPath,
-                overwrite: false);
-            ModifyHandlingCapacity(morningCopyPath, i);
-
-            if (includeLunchPeak)
-            {
-                string lunchCopyPath = Path.Combine(lunchPath, newFileName);
-                File.Copy(
-                    lunchBaseFilePath,
-                    lunchCopyPath,
-                    overwrite: false);
-                ModifyHandlingCapacity(lunchCopyPath, i);
-            }
+            string lunchPath = Path.Combine(path, "lunch");
+            PrepareOfficeScenarioIfNeeded(
+                officeBaseFilePath,
+                lunchPath,
+                baseFileName,
+                "Lunch",
+                copiesCount,
+                cancellationToken);
         }
 
         await launcherService.LaunchOfficeAsync(
@@ -587,6 +561,39 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             morningProgress,
             lunchProgress,
             cancellationToken);
+    }
+
+    private void PrepareOfficeScenarioIfNeeded(
+        string sourceBaseFilePath,
+        string scenarioPath,
+        string baseFileName,
+        string peak,
+        int copiesCount,
+        CancellationToken cancellationToken)
+    {
+        if (ElevateLauncherService.HasCompletedScenarioOutputs(scenarioPath, copiesCount))
+        {
+            return;
+        }
+
+        ResetScenarioDirectory(scenarioPath);
+        string scenarioBaseFilePath = Path.Combine(scenarioPath, baseFileName);
+        File.Copy(sourceBaseFilePath, scenarioBaseFilePath, overwrite: true);
+        ModifyBuildingTypeOffice(scenarioBaseFilePath, peak);
+        ModifyTitle(scenarioBaseFilePath, peak);
+
+        for (int i = 2; i <= copiesCount; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string newFileName = BuildCopyFileName(baseFileName, i);
+            string copyPath = Path.Combine(scenarioPath, newFileName);
+
+            File.Copy(
+                scenarioBaseFilePath,
+                copyPath,
+                overwrite: false);
+            ModifyHandlingCapacity(copyPath, i);
+        }
     }
 
     private static string BuildCopyFileName(string sourceFileName, int copyIndex)

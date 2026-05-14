@@ -63,7 +63,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         CancellationToken cancellationToken = default)
     {
         string morningPath = Path.Combine(path, "morning");
-        Task morningTask = LaunchAndSubmitPathAsync(morningPath, morningProgress, cancellationToken);
+        Task morningTask = LaunchAndSubmitPathIfNeededAsync(morningPath, morningProgress, cancellationToken);
 
         if (!includeLunchPeak)
         {
@@ -72,9 +72,24 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
 
         string lunchPath = Path.Combine(path, "lunch");
-        Task lunchTask = LaunchAndSubmitPathAsync(lunchPath, lunchProgress, cancellationToken);
+        Task lunchTask = LaunchAndSubmitPathIfNeededAsync(lunchPath, lunchProgress, cancellationToken);
 
         await Task.WhenAll(morningTask, lunchTask);
+    }
+
+    private async Task LaunchAndSubmitPathIfNeededAsync(
+        string path,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (TryBuildProgressContext(path, out ProgressContext progressContext) &&
+            HasCompletedScenarioOutputs(path, progressContext))
+        {
+            ReportProgress(progress, progressContext, progressContext.Total, "csv", null, isFinal: true);
+            return;
+        }
+
+        await LaunchAndSubmitPathAsync(path, progress, cancellationToken);
     }
 
     private async Task LaunchAndSubmitPathAsync(
@@ -171,6 +186,38 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
         string scenario = GetScenarioFromPath(path);
         return new ProgressContext(projectPrefix, scenario, elvxBaseNames, elvxFiles.Count);
+    }
+
+    internal static bool HasCompletedScenarioOutputs(string path, int? expectedTotal = null)
+    {
+        return TryBuildProgressContext(path, out ProgressContext progressContext) &&
+               HasCompletedScenarioOutputs(path, progressContext, expectedTotal);
+    }
+
+    private static bool TryBuildProgressContext(string path, out ProgressContext progressContext)
+    {
+        try
+        {
+            progressContext = BuildProgressContext(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is DirectoryNotFoundException or FileNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            progressContext = new ProgressContext(string.Empty, GetScenarioFromPath(path), [], 0);
+            return false;
+        }
+    }
+
+    private static bool HasCompletedScenarioOutputs(
+        string path,
+        ProgressContext progressContext,
+        int? expectedTotal = null)
+    {
+        int requiredTotal = expectedTotal ?? progressContext.Total;
+        return requiredTotal > 0 &&
+               progressContext.Total == requiredTotal &&
+               HasFreshBatchResults(path, baseline: null) &&
+               CountCompletedCsvFiles(path, progressContext.ElvxBaseNames, baseline: null) >= requiredTotal;
     }
 
     private static async Task SubmitBatchFolderAsync(

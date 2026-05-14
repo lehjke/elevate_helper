@@ -157,6 +157,65 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_OfficeFlow_PreservesCompletedMorningWhenAddingLunch()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        string morningPath = System.IO.Path.Combine(workspace.Path, "morning");
+        Directory.CreateDirectory(morningPath);
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "Project01.elvx"), "<Project />");
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "Project02.elvx"), "<Project />");
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "Project01_elvx.csv"), "morning 1");
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "Project02_elvx.csv"), "morning 2");
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "batch_results.csv"), "morning batch");
+        string preservedFilePath = System.IO.Path.Combine(morningPath, "keep.txt");
+        File.WriteAllText(preservedFilePath, "do not delete");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: true);
+
+        Assert.True(result.Success, result.Message);
+        Assert.True(File.Exists(preservedFilePath));
+        Assert.Equal("morning 1", File.ReadAllText(System.IO.Path.Combine(morningPath, "Project01_elvx.csv")));
+        Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "lunch", "Project01.elvx")));
+        Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "lunch", "Project02.elvx")));
+        Assert.Single(launcher.OfficeCalls);
+        Assert.Equal((workspace.Path, true), launcher.OfficeCalls[0]);
+    }
+
+    [Fact]
+    public async Task RunAsync_OfficeMorningOnly_DoesNotDeleteExistingLunchFolder()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        string lunchPath = System.IO.Path.Combine(workspace.Path, "lunch");
+        Directory.CreateDirectory(lunchPath);
+        string lunchResultPath = System.IO.Path.Combine(lunchPath, "Project01_elvx.csv");
+        File.WriteAllText(lunchResultPath, "lunch result");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+
+        Assert.True(result.Success, result.Message);
+        Assert.True(File.Exists(lunchResultPath));
+        Assert.Equal("lunch result", File.ReadAllText(lunchResultPath));
+        Assert.Single(launcher.OfficeCalls);
+        Assert.Equal((workspace.Path, false), launcher.OfficeCalls[0]);
+    }
+
+    [Fact]
     public async Task RunAsync_OfficeFlow_WritesCompletedRunManifest()
     {
         using TestWorkspace workspace = new();

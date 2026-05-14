@@ -150,6 +150,48 @@ public sealed class ElevateLauncherServiceTests
         Assert.Equal(1, actual);
     }
 
+    [Fact]
+    public void HasCompletedScenarioOutputs_ReturnsTrueWhenBatchAndAllCsvOutputsExist()
+    {
+        using LauncherTestWorkspace workspace = new();
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 01.elvx"), "<Project />");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 02.elvx"), "<Project />");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 01_elvx.csv"), "done");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 02_elvx.csv"), "done");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "batch_results.csv"), "done");
+
+        bool actual = ElevateLauncherService.HasCompletedScenarioOutputs(workspace.RootPath);
+
+        Assert.True(actual);
+    }
+
+    [Fact]
+    public void HasCompletedScenarioOutputs_ReturnsFalseWhenAnyCsvOutputIsMissing()
+    {
+        using LauncherTestWorkspace workspace = new();
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 01.elvx"), "<Project />");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 02.elvx"), "<Project />");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 01_elvx.csv"), "done");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "batch_results.csv"), "done");
+
+        bool actual = ElevateLauncherService.HasCompletedScenarioOutputs(workspace.RootPath);
+
+        Assert.False(actual);
+    }
+
+    [Fact]
+    public void HasCompletedScenarioOutputs_ReturnsFalseWhenExpectedCopyCountDiffers()
+    {
+        using LauncherTestWorkspace workspace = new();
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 01.elvx"), "<Project />");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 01_elvx.csv"), "done");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "batch_results.csv"), "done");
+
+        bool actual = ElevateLauncherService.HasCompletedScenarioOutputs(workspace.RootPath, expectedTotal: 2);
+
+        Assert.False(actual);
+    }
+
     private sealed class LauncherTestWorkspace : IDisposable
     {
         public string RootPath { get; } = Path.Combine(
