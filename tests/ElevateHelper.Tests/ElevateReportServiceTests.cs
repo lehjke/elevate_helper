@@ -122,6 +122,17 @@ public sealed class ElevateReportServiceTests
     }
 
     [Fact]
+    public void BuildOutputPaths_AddsScenarioSuffixWhenProvided()
+    {
+        string outputFolder = Path.Combine("C:\\", "Reports");
+        ElevateReportService.GeneratedReportPaths outputPaths =
+            ElevateReportService.BuildOutputPaths(outputFolder, "Project", "Tower", "morning");
+
+        Assert.Equal(Path.Combine(outputFolder, "Project Tower morning.xlsx"), outputPaths.ExcelPath);
+        Assert.Equal(Path.Combine(outputFolder, "Project Tower morning.pdf"), outputPaths.PdfPath);
+    }
+
+    [Fact]
     public void BuildOutputPaths_SanitizesWindowsInvalidCharactersOnEveryOs()
     {
         string outputFolder = Path.Combine("C:\\", "Reports");
@@ -130,6 +141,35 @@ public sealed class ElevateReportServiceTests
 
         Assert.Equal(Path.Combine(outputFolder, "A_B_C_D E_F_G_H.xlsx"), outputPaths.ExcelPath);
         Assert.Equal(Path.Combine(outputFolder, "A_B_C_D E_F_G_H.pdf"), outputPaths.PdfPath);
+    }
+
+    [Theory]
+    [InlineData("morning")]
+    [InlineData("lunch")]
+    [InlineData("MORNING")]
+    public void ResolveReportOutputTarget_UsesProjectRootForOfficeScenarioFolders(string scenarioFolder)
+    {
+        using ReportTestWorkspace workspace = new();
+        string scenarioPath = workspace.CreateDirectory(scenarioFolder);
+
+        ElevateReportService.ReportOutputTarget outputTarget =
+            ElevateReportService.ResolveReportOutputTarget(scenarioPath);
+
+        Assert.Equal(workspace.RootPath, outputTarget.OutputFolder);
+        Assert.Equal(scenarioFolder.ToLowerInvariant(), outputTarget.FileNameSuffix);
+    }
+
+    [Fact]
+    public void ResolveReportOutputTarget_KeepsNonScenarioFolderAsOutputFolder()
+    {
+        using ReportTestWorkspace workspace = new();
+        string projectPath = workspace.CreateDirectory("project");
+
+        ElevateReportService.ReportOutputTarget outputTarget =
+            ElevateReportService.ResolveReportOutputTarget(projectPath);
+
+        Assert.Equal(projectPath, outputTarget.OutputFolder);
+        Assert.Null(outputTarget.FileNameSuffix);
     }
 
     [Theory]

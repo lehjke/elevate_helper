@@ -119,10 +119,15 @@ dotnet test .\tests\ElevateHelper.Tests\ElevateHelper.Tests.csproj --configurati
 
 Папка `.example` включается в publish output и release packages. Скрипт релиза проверяет наличие обязательных шаблонов перед сборкой.
 
-Выходные файлы отчета создаются рядом с результатами расчета:
+Выходные файлы отчета создаются в корне выбранной папки проекта:
 
-- `<Project>_<Building>.xlsx`;
-- `<Project>_<Building>.pdf`.
+- `<Project> <Building>.xlsx`;
+- `<Project> <Building>.pdf`.
+
+Для Office-сценариев `morning` и `lunch` отчеты также сохраняются в корень проекта, а к имени файла добавляется суффикс сценария, чтобы утренний и обеденный отчеты не перезаписывали друг друга:
+
+- `<Project> <Building> morning.xlsx`;
+- `<Project> <Building> lunch.xlsx`.
 
 ## Workflow и диагностика
 
@@ -146,13 +151,13 @@ Manifest помогает понять, на каком шаге упал рас
 Portable zip:
 
 ```powershell
-.\scripts\build-release.ps1 -Tag v2.0.2-preview.5 -Runtime win-x64 -Configuration Release
+.\scripts\build-release.ps1 -Tag v2.0.2-preview.6 -Runtime win-x64 -Configuration Release
 ```
 
 Installer:
 
 ```powershell
-.\scripts\build-installer.ps1 -Tag v2.0.2-preview.5 -Runtime win-x64 -Configuration Release
+.\scripts\build-installer.ps1 -Tag v2.0.2-preview.6 -Runtime win-x64 -Configuration Release
 ```
 
 GitHub Actions release workflow собирает:
@@ -160,7 +165,7 @@ GitHub Actions release workflow собирает:
 - `ElevateHelper-win-x64-<tag>.zip`;
 - `ElevateHelper-win-x64-<tag>-setup.exe`.
 
-Теги с дефисом, например `v2.0.2-preview.5`, публикуются как GitHub prerelease.
+Теги с дефисом, например `v2.0.2-preview.6`, публикуются как GitHub prerelease.
 
 ## CI
 

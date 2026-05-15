@@ -113,10 +113,13 @@ public sealed class ElevateReportService : IElevateReportService
                 ParseStepCsv(mainData.FileName, mainData.SourceFileName, path, mainData.Folder, projectData.Building, projectData.Elevator, step, ais, alw);
             }
 
+            ReportOutputTarget outputTarget = ResolveReportOutputTarget(path);
+
             GeneratedReportPaths outputPaths = BuildReportWorkbook(
                 templatePath,
+                outputTarget.OutputFolder,
                 path,
-                path,
+                outputTarget.FileNameSuffix,
                 mainData.AWT,
                 mainData.ATTD,
                 ais,
@@ -145,6 +148,7 @@ public sealed class ElevateReportService : IElevateReportService
         string templatePath,
         string outputFolder,
         string xmlFolder,
+        string? fileNameSuffix,
         double[] awt,
         double[] attd,
         double[] ais,
@@ -190,7 +194,7 @@ public sealed class ElevateReportService : IElevateReportService
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            GeneratedReportPaths outputPaths = BuildOutputPaths(outputFolder, jobData[1], jobData[2]);
+            GeneratedReportPaths outputPaths = BuildOutputPaths(outputFolder, jobData[1], jobData[2], fileNameSuffix);
 
             workbook.Sheets(SheetAssessment).Activate();
             TryDeleteFile(outputPaths.ExcelPath);
@@ -2060,9 +2064,38 @@ public sealed class ElevateReportService : IElevateReportService
             : normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
-    internal static GeneratedReportPaths BuildOutputPaths(string outputFolder, string projectName, string buildingName)
+    internal static ReportOutputTarget ResolveReportOutputTarget(string reportRoot)
     {
-        string sanitizedBaseName = SanitizeFileName($"{projectName} {buildingName}");
+        string normalizedReportRoot = NormalizePath(reportRoot);
+        string folderName = Path.GetFileName(normalizedReportRoot);
+
+        if (IsOfficeScenarioFolder(folderName) &&
+            Directory.GetParent(normalizedReportRoot) is { } projectRoot)
+        {
+            return new ReportOutputTarget(
+                projectRoot.FullName,
+                folderName.ToLowerInvariant());
+        }
+
+        return new ReportOutputTarget(normalizedReportRoot, null);
+    }
+
+    private static bool IsOfficeScenarioFolder(string folderName)
+    {
+        return folderName.Equals("morning", StringComparison.OrdinalIgnoreCase) ||
+            folderName.Equals("lunch", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static GeneratedReportPaths BuildOutputPaths(
+        string outputFolder,
+        string projectName,
+        string buildingName,
+        string? fileNameSuffix = null)
+    {
+        string baseName = string.IsNullOrWhiteSpace(fileNameSuffix)
+            ? $"{projectName} {buildingName}"
+            : $"{projectName} {buildingName} {fileNameSuffix}";
+        string sanitizedBaseName = SanitizeFileName(baseName);
         return new GeneratedReportPaths(
             Path.Combine(outputFolder, $"{sanitizedBaseName}.xlsx"),
             Path.Combine(outputFolder, $"{sanitizedBaseName}.pdf"));
@@ -3005,6 +3038,8 @@ public sealed class ElevateReportService : IElevateReportService
             ? sourceStem
             : $"{sourceStem}{step.ToString(CultureInfo.InvariantCulture)}";
     }
+
+    internal readonly record struct ReportOutputTarget(string OutputFolder, string? FileNameSuffix);
 
     internal readonly record struct GeneratedReportPaths(string ExcelPath, string PdfPath);
 
