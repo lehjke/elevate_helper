@@ -172,6 +172,20 @@ public sealed class ElevateReportServiceTests
         Assert.Null(outputTarget.FileNameSuffix);
     }
 
+    [Fact]
+    public void ResolveReportOutputTarget_UsesExplicitOutputFolder()
+    {
+        using ReportTestWorkspace workspace = new();
+        string scenarioPath = workspace.CreateDirectory(Path.Combine("project", "morning"));
+        string outputFolder = workspace.CreateDirectory("reports");
+
+        ElevateReportService.ReportOutputTarget outputTarget =
+            ElevateReportService.ResolveReportOutputTarget(scenarioPath, outputFolder);
+
+        Assert.Equal(outputFolder, outputTarget.OutputFolder);
+        Assert.Equal("morning", outputTarget.FileNameSuffix);
+    }
+
     [Theory]
     [InlineData("$B$2:$H$49", 53, "$B$2:$H$53")]
     [InlineData("$2:$15", 19, "$2:$19")]

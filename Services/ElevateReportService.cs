@@ -32,14 +32,24 @@ public sealed class ElevateReportService : IElevateReportService
         BuildingType buildingType,
         CancellationToken cancellationToken = default)
     {
+        return await PrintReportAsync(path, buildingType, outputFolder: null, cancellationToken);
+    }
+
+    public async Task<ProcessingResult> PrintReportAsync(
+        string path,
+        BuildingType buildingType,
+        string? outputFolder,
+        CancellationToken cancellationToken = default)
+    {
         return await Task.Run(
-            () => PrintReportInternal(path, buildingType, cancellationToken),
+            () => PrintReportInternal(path, buildingType, outputFolder, cancellationToken),
             cancellationToken);
     }
 
     private static ProcessingResult PrintReportInternal(
         string path,
         BuildingType buildingType,
+        string? outputFolder,
         CancellationToken cancellationToken)
     {
         try
@@ -113,7 +123,7 @@ public sealed class ElevateReportService : IElevateReportService
                 ParseStepCsv(mainData.FileName, mainData.SourceFileName, path, mainData.Folder, projectData.Building, projectData.Elevator, step, ais, alw);
             }
 
-            ReportOutputTarget outputTarget = ResolveReportOutputTarget(path);
+            ReportOutputTarget outputTarget = ResolveReportOutputTarget(path, outputFolder);
 
             GeneratedReportPaths outputPaths = BuildReportWorkbook(
                 templatePath,
@@ -2064,20 +2074,28 @@ public sealed class ElevateReportService : IElevateReportService
             : normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
-    internal static ReportOutputTarget ResolveReportOutputTarget(string reportRoot)
+    internal static ReportOutputTarget ResolveReportOutputTarget(string reportRoot, string? outputFolder = null)
     {
         string normalizedReportRoot = NormalizePath(reportRoot);
         string folderName = Path.GetFileName(normalizedReportRoot);
+        string? normalizedOutputFolder = string.IsNullOrWhiteSpace(outputFolder)
+            ? null
+            : NormalizePath(outputFolder);
 
-        if (IsOfficeScenarioFolder(folderName) &&
-            Directory.GetParent(normalizedReportRoot) is { } projectRoot)
+        if (IsOfficeScenarioFolder(folderName))
         {
+            string? scenarioOutputFolder = normalizedOutputFolder ?? Directory.GetParent(normalizedReportRoot)?.FullName;
+            if (string.IsNullOrWhiteSpace(scenarioOutputFolder))
+            {
+                return new ReportOutputTarget(normalizedReportRoot, folderName.ToLowerInvariant());
+            }
+
             return new ReportOutputTarget(
-                projectRoot.FullName,
+                scenarioOutputFolder,
                 folderName.ToLowerInvariant());
         }
 
-        return new ReportOutputTarget(normalizedReportRoot, null);
+        return new ReportOutputTarget(normalizedOutputFolder ?? normalizedReportRoot, null);
     }
 
     private static bool IsOfficeScenarioFolder(string folderName)

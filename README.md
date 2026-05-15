@@ -27,8 +27,8 @@ Desktop-приложение для автоматизации работы с P
   - `.elevate-helper-run.json` — последний запуск;
   - `.elevate-helper-runs/*.json` — история запусков;
   - внутри сохраняются шаги workflow, статус, ошибка и найденные артефакты.
-- Поддерживает service-level retry последнего failed-run. UI-кнопка для retry пока не вынесена на экран.
-- Показывает карточку встроенного редактора только после включения галочки `BETA`.
+- Поддерживает retry упавших задач из карточки задания.
+- Показывает BETA-функции только после включения галочки `BETA`: встроенный редактор и пакетный запуск проекта.
 
 ## Архитектура
 
@@ -91,6 +91,36 @@ dotnet test .\tests\ElevateHelper.Tests\ElevateHelper.Tests.csproj --configurati
 
 Для Office полный запуск создает папки `morning` и, при включенном lunch-сценарии, `lunch`. Для Residence/Hotel расчет идет в выбранной папке.
 
+## BETA-режим проекта
+
+BETA-режим проекта запускает несколько групп из корневой папки проекта без ручного выбора типа здания. Ожидаемая структура:
+
+```text
+Project/
+├─ Office/
+│  ├─ G1/
+│  │  └─ *.elvx
+│  └─ G2/
+│     └─ *.elvx
+├─ Res/
+│  └─ G1/
+│     └─ *.elvx
+└─ Hotel/
+   └─ G1/
+      └─ *.elvx
+```
+
+Правила:
+
+- в каждой папке группы должен быть один исходный `.elvx`;
+- `Office` запускается с утренним и обеденным пиком;
+- `Res` запускается как `Residence`;
+- `Hotel` запускается как `Hotel`;
+- количество параллельных расчетов задается перед запуском, также доступен режим без ограничения;
+- Excel/PDF-отчеты формируются автоматически после завершения расчета и сохраняются в корень проекта;
+- генерация отчетов выполняется последовательно, чтобы не запускать несколько Excel COM export одновременно;
+- если `.elvx` найден вне `Office` / `Res` / `Hotel`, приложение открывает диалог выбора типа здания.
+
 ## BETA-редактор
 
 Встроенный редактор `.elvx` скрыт по умолчанию. Чтобы открыть карточку редактора, включи галочку `BETA` в верхней части окна.
@@ -151,13 +181,13 @@ Manifest помогает понять, на каком шаге упал рас
 Portable zip:
 
 ```powershell
-.\scripts\build-release.ps1 -Tag v2.0.2-preview.6 -Runtime win-x64 -Configuration Release
+.\scripts\build-release.ps1 -Tag v2.0.2-preview.7 -Runtime win-x64 -Configuration Release
 ```
 
 Installer:
 
 ```powershell
-.\scripts\build-installer.ps1 -Tag v2.0.2-preview.6 -Runtime win-x64 -Configuration Release
+.\scripts\build-installer.ps1 -Tag v2.0.2-preview.7 -Runtime win-x64 -Configuration Release
 ```
 
 GitHub Actions release workflow собирает:
@@ -165,7 +195,7 @@ GitHub Actions release workflow собирает:
 - `ElevateHelper-win-x64-<tag>.zip`;
 - `ElevateHelper-win-x64-<tag>-setup.exe`.
 
-Теги с дефисом, например `v2.0.2-preview.6`, публикуются как GitHub prerelease.
+Теги с дефисом, например `v2.0.2-preview.7`, публикуются как GitHub prerelease.
 
 ## CI
 

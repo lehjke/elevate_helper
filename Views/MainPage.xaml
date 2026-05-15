@@ -142,6 +142,71 @@
                     </StackPanel>
                 </Border>
 
+                <Border
+                    x:Name="ProjectBatchCard"
+                    Style="{StaticResource SectionCardStyle}"
+                    Visibility="Collapsed">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                <SymbolIcon Symbol="Folder" />
+                            </Border>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ProjectBatchTitle, Mode=OneTime}" />
+                        </StackPanel>
+
+                        <TextBlock
+                            Style="{StaticResource SectionHintStyle}"
+                            Text="{x:Bind Text.ProjectBatchHint, Mode=OneTime}" />
+
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox
+                                x:Name="ProjectBatchPathTextBox"
+                                Grid.Column="0"
+                                Header="{x:Bind Text.ProjectBatchPathHeader, Mode=OneTime}"
+                                PlaceholderText="{x:Bind Text.ProjectBatchPathPlaceholder, Mode=OneTime}" />
+
+                            <Button
+                                Grid.Column="1"
+                                Margin="0,30,0,0"
+                                Click="OnBrowseProjectBatchFolderButtonClick"
+                                Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
+                                Style="{StaticResource ActionButtonStyle}" />
+                        </Grid>
+
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <NumberBox
+                                x:Name="ProjectBatchParallelRunsNumberBox"
+                                Grid.Column="0"
+                                Header="{x:Bind Text.ProjectBatchParallelRunsHeader, Mode=OneTime}"
+                                Minimum="1"
+                                SmallChange="1"
+                                SpinButtonPlacementMode="Compact"
+                                Value="4" />
+
+                            <CheckBox
+                                x:Name="ProjectBatchUnlimitedRunsCheckBox"
+                                Grid.Column="1"
+                                Margin="0,30,0,0"
+                                Content="{x:Bind Text.ProjectBatchUnlimitedRuns, Mode=OneTime}" />
+                        </Grid>
+
+                        <Button
+                            Click="OnRunProjectBatchButtonClick"
+                            Content="{x:Bind Text.ProjectBatchRunButton, Mode=OneTime}"
+                            Style="{StaticResource PrimaryActionButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
                 <Border Style="{StaticResource SectionCardStyle}" Visibility="Collapsed">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="10">
@@ -639,13 +704,22 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
 
-                                            <Button
-                                                Click="OnJobReportButtonClick"
-                                                Content="{Binding ReportButtonText}"
-                                                IsEnabled="{Binding CanPrintReport}"
-                                                Style="{StaticResource ActionButtonStyle}"
-                                                Tag="{Binding}"
-                                                Visibility="{Binding PrintReportVisibility}" />
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Button
+                                                    Click="OnJobReportButtonClick"
+                                                    Content="{Binding ReportButtonText}"
+                                                    IsEnabled="{Binding CanPrintReport}"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Tag="{Binding}"
+                                                    Visibility="{Binding PrintReportVisibility}" />
+                                                <Button
+                                                    Click="OnRetryJobButtonClick"
+                                                    Content="{Binding RetryButtonText}"
+                                                    IsEnabled="{Binding CanRetry}"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Tag="{Binding}"
+                                                    Visibility="{Binding RetryButtonVisibility}" />
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
@@ -665,5 +739,3 @@
         </ScrollViewer>
     </Grid>
 </Page>
-
-
