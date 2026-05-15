@@ -7,735 +7,513 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
-            <StackPanel
-                MaxWidth="860"
-                HorizontalAlignment="Center"
-                Spacing="16"
-                Margin="20,18,20,24">
-                <Border Style="{StaticResource HeroCardStyle}">
-                    <Grid ColumnSpacing="18">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="180" />
-                        </Grid.ColumnDefinitions>
+    <Grid
+        Padding="18"
+        Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Border
+            MaxWidth="1180"
+            HorizontalAlignment="Center"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="14">
+            <Grid RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-                        <TextBlock
-                            Grid.Column="0"
-                            VerticalAlignment="Center"
-                            Style="{StaticResource HeroTitleTextStyle}"
-                            Text="{x:Bind Text.AppTitle, Mode=OneTime}" />
+                <Grid Grid.Row="0" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="190" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="1" Spacing="6">
-                            <TextBlock
-                                Style="{StaticResource SectionHintStyle}"
-                                Text="{x:Bind Text.LanguageLabel, Mode=OneTime}" />
-                            <ComboBox
-                                x:Name="LanguageComboBox"
-                                DisplayMemberPath="DisplayName"
-                                HorizontalAlignment="Stretch"
-                                ItemsSource="{x:Bind LanguageOptions, Mode=OneTime}"
-                                SelectionChanged="OnLanguageComboBoxSelectionChanged" />
-                            <CheckBox
-                                x:Name="BetaFeaturesCheckBox"
-                                Checked="OnBetaFeaturesCheckBoxChanged"
-                                Content="BETA"
-                                FontWeight="SemiBold"
-                                Unchecked="OnBetaFeaturesCheckBoxChanged" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
+                    <Image
+                        Grid.Column="0"
+                        Width="32"
+                        Height="32"
+                        VerticalAlignment="Center"
+                        Source="ms-appx:///Assets/AppIcon.png" />
 
-                <Border Style="{StaticResource SectionCardStyle}">
-                    <StackPanel Spacing="10">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                <SymbolIcon Symbol="Folder" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        FontSize="18"
+                        FontWeight="SemiBold"
+                        Text="{x:Bind Text.AppTitle, Mode=OneTime}" />
+
+                    <ComboBox
+                        x:Name="LanguageComboBox"
+                        Grid.Column="2"
+                        DisplayMemberPath="DisplayName"
+                        Header="{x:Bind Text.LanguageLabel, Mode=OneTime}"
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{x:Bind LanguageOptions, Mode=OneTime}"
+                        SelectionChanged="OnLanguageComboBoxSelectionChanged" />
+
+                    <CheckBox
+                        x:Name="BetaFeaturesCheckBox"
+                        Grid.Column="3"
+                        Margin="0,27,0,0"
+                        Checked="OnBetaFeaturesCheckBoxChanged"
+                        Content="BETA"
+                        FontWeight="SemiBold"
+                        Unchecked="OnBetaFeaturesCheckBoxChanged" />
+                </Grid>
+
+                <Grid Grid.Row="1" ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="392" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <ScrollViewer
+                        Grid.Column="0"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="10">
+                            <Border Style="{StaticResource SectionCardStyle}">
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                            <SymbolIcon Symbol="Folder" />
+                                        </Border>
+                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.FolderTitle, Mode=OneTime}" />
+                                    </StackPanel>
+
+                                    <TextBlock
+                                        Style="{StaticResource SectionHintStyle}"
+                                        Text="{x:Bind Text.FolderHint, Mode=OneTime}" />
+
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBox
+                                            x:Name="PathTextBox"
+                                            Grid.Column="0"
+                                            Header="{x:Bind Text.WorkingFolderHeader, Mode=OneTime}"
+                                            PlaceholderText="{x:Bind Text.WorkingFolderPlaceholder, Mode=OneTime}"
+                                            TextChanged="OnEditorPathTextChanged" />
+
+                                        <Button
+                                            Grid.Column="1"
+                                            Margin="0,29,0,0"
+                                            Click="OnBrowseFolderButtonClick"
+                                            Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
+                                            Style="{StaticResource ActionButtonStyle}" />
+                                    </Grid>
+                                </StackPanel>
                             </Border>
-                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.FolderTitle, Mode=OneTime}" />
-                        </StackPanel>
 
-                        <TextBlock
-                            Style="{StaticResource SectionHintStyle}"
-                            Text="{x:Bind Text.FolderHint, Mode=OneTime}" />
+                            <Border Style="{StaticResource SectionCardStyle}">
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                            <SymbolIcon Symbol="Home" />
+                                        </Border>
+                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.BuildingTypeTitle, Mode=OneTime}" />
+                                    </StackPanel>
 
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Style="{StaticResource SectionHintStyle}"
+                                        Text="{x:Bind Text.BuildingTypeHint, Mode=OneTime}" />
 
-                            <TextBox
-                                x:Name="PathTextBox"
-                                Grid.Column="0"
-                                Header="{x:Bind Text.WorkingFolderHeader, Mode=OneTime}"
-                                PlaceholderText="{x:Bind Text.WorkingFolderPlaceholder, Mode=OneTime}"
-                                TextChanged="OnEditorPathTextChanged" />
-
-                            <Button
-                                Grid.Column="1"
-                                Margin="0,30,0,0"
-                                Click="OnBrowseFolderButtonClick"
-                                Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
-                                Style="{StaticResource ActionButtonStyle}" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource SectionCardStyle}">
-                    <StackPanel Spacing="10">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                <SymbolIcon Symbol="Home" />
+                                    <StackPanel Spacing="2">
+                                        <RadioButton
+                                            x:Name="OfficeRadioButton"
+                                            Checked="OnBuildingTypeRadioButtonChecked"
+                                            Content="{x:Bind Text.BuildingTypeOffice, Mode=OneTime}"
+                                            FontWeight="SemiBold"
+                                            GroupName="BuildingTypeGroup" />
+                                        <RadioButton
+                                            x:Name="ResidenceRadioButton"
+                                            Checked="OnBuildingTypeRadioButtonChecked"
+                                            Content="{x:Bind Text.BuildingTypeResidence, Mode=OneTime}"
+                                            FontWeight="SemiBold"
+                                            GroupName="BuildingTypeGroup" />
+                                        <RadioButton
+                                            x:Name="HotelRadioButton"
+                                            Checked="OnBuildingTypeRadioButtonChecked"
+                                            Content="{x:Bind Text.BuildingTypeHotel, Mode=OneTime}"
+                                            FontWeight="SemiBold"
+                                            GroupName="BuildingTypeGroup" />
+                                    </StackPanel>
+                                </StackPanel>
                             </Border>
-                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.BuildingTypeTitle, Mode=OneTime}" />
-                        </StackPanel>
 
-                        <TextBlock
-                            Style="{StaticResource SectionHintStyle}"
-                            Text="{x:Bind Text.BuildingTypeHint, Mode=OneTime}" />
+                            <Border Style="{StaticResource SectionCardStyle}">
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                            <SymbolIcon Symbol="Play" />
+                                        </Border>
+                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ActionsTitle, Mode=OneTime}" />
+                                    </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" Spacing="20">
-                            <RadioButton
-                                x:Name="OfficeRadioButton"
-                                Checked="OnBuildingTypeRadioButtonChecked"
-                                Content="{x:Bind Text.BuildingTypeOffice, Mode=OneTime}"
-                                FontWeight="SemiBold"
-                                GroupName="BuildingTypeGroup" />
-                            <RadioButton
-                                x:Name="ResidenceRadioButton"
-                                Checked="OnBuildingTypeRadioButtonChecked"
-                                Content="{x:Bind Text.BuildingTypeResidence, Mode=OneTime}"
-                                FontWeight="SemiBold"
-                                GroupName="BuildingTypeGroup" />
-                            <RadioButton
-                                x:Name="HotelRadioButton"
-                                Checked="OnBuildingTypeRadioButtonChecked"
-                                Content="{x:Bind Text.BuildingTypeHotel, Mode=OneTime}"
-                                FontWeight="SemiBold"
-                                GroupName="BuildingTypeGroup" />
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
+                                    <TextBlock
+                                        Style="{StaticResource SectionHintStyle}"
+                                        Text="{x:Bind Text.ActionsHint, Mode=OneTime}" />
 
-                <Border
-                    x:Name="EditorWindowCard"
-                    Style="{StaticResource SectionCardStyle}"
-                    Visibility="Collapsed">
-                    <StackPanel Spacing="12">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                <SymbolIcon Symbol="Edit" />
+                                    <Grid ColumnSpacing="8" RowSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <Button
+                                            x:Name="RunButton"
+                                            Grid.Row="0"
+                                            Grid.Column="0"
+                                            Click="OnRunButtonClick"
+                                            Content="{x:Bind Text.RunButton, Mode=OneTime}"
+                                            Style="{StaticResource PrimaryActionButtonStyle}" />
+                                        <Button
+                                            x:Name="RunMorningOnlyButton"
+                                            Grid.Row="0"
+                                            Grid.Column="1"
+                                            Click="OnRunMorningOnlyButtonClick"
+                                            Content="{x:Bind Text.RunMorningButton, Mode=OneTime}"
+                                            Style="{StaticResource ActionButtonStyle}"
+                                            Visibility="Collapsed" />
+                                        <Button
+                                            x:Name="ReportButton"
+                                            Grid.Row="1"
+                                            Grid.Column="0"
+                                            Grid.ColumnSpan="2"
+                                            Click="OnReportButtonClick"
+                                            Content="{x:Bind Text.ReportButton, Mode=OneTime}"
+                                            Style="{StaticResource ActionButtonStyle}" />
+                                        <Button
+                                            x:Name="MorningReportButton"
+                                            Grid.Row="1"
+                                            Grid.Column="0"
+                                            Click="OnMorningReportButtonClick"
+                                            Content="{x:Bind Text.MorningReportButton, Mode=OneTime}"
+                                            Style="{StaticResource ActionButtonStyle}"
+                                            Visibility="Collapsed" />
+                                        <Button
+                                            x:Name="LunchReportButton"
+                                            Grid.Row="1"
+                                            Grid.Column="1"
+                                            Click="OnLunchReportButtonClick"
+                                            Content="{x:Bind Text.LunchReportButton, Mode=OneTime}"
+                                            Style="{StaticResource ActionButtonStyle}"
+                                            Visibility="Collapsed" />
+                                        <Button
+                                            x:Name="ExitButton"
+                                            Grid.Row="2"
+                                            Grid.Column="0"
+                                            Grid.ColumnSpan="2"
+                                            Click="OnExitButtonClick"
+                                            Content="{x:Bind Text.ExitButton, Mode=OneTime}"
+                                            Style="{StaticResource ActionButtonStyle}" />
+                                    </Grid>
+                                </StackPanel>
                             </Border>
-                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.EditorTitle, Mode=OneTime}" />
-                        </StackPanel>
 
-                        <TextBlock
-                            Style="{StaticResource SectionHintStyle}"
-                            Text="{x:Bind Text.EditorWindowHint, Mode=OneTime}" />
-
-                        <Button
-                            Click="OnOpenEditorWindowClick"
-                            Content="{x:Bind Text.OpenEditorWindowButton, Mode=OneTime}"
-                            Style="{StaticResource PrimaryActionButtonStyle}" />
-                    </StackPanel>
-                </Border>
-
-                <Border
-                    x:Name="ProjectBatchCard"
-                    Style="{StaticResource SectionCardStyle}"
-                    Visibility="Collapsed">
-                    <StackPanel Spacing="12">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                <SymbolIcon Symbol="Folder" />
-                            </Border>
-                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ProjectBatchTitle, Mode=OneTime}" />
-                        </StackPanel>
-
-                        <TextBlock
-                            Style="{StaticResource SectionHintStyle}"
-                            Text="{x:Bind Text.ProjectBatchHint, Mode=OneTime}" />
-
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBox
-                                x:Name="ProjectBatchPathTextBox"
-                                Grid.Column="0"
-                                Header="{x:Bind Text.ProjectBatchPathHeader, Mode=OneTime}"
-                                PlaceholderText="{x:Bind Text.ProjectBatchPathPlaceholder, Mode=OneTime}" />
-
-                            <Button
-                                Grid.Column="1"
-                                Margin="0,30,0,0"
-                                Click="OnBrowseProjectBatchFolderButtonClick"
-                                Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
-                                Style="{StaticResource ActionButtonStyle}" />
-                        </Grid>
-
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="180" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <NumberBox
-                                x:Name="ProjectBatchParallelRunsNumberBox"
-                                Grid.Column="0"
-                                Header="{x:Bind Text.ProjectBatchParallelRunsHeader, Mode=OneTime}"
-                                Minimum="1"
-                                SmallChange="1"
-                                SpinButtonPlacementMode="Compact"
-                                Value="4" />
-
-                            <CheckBox
-                                x:Name="ProjectBatchUnlimitedRunsCheckBox"
-                                Grid.Column="1"
-                                Margin="0,30,0,0"
-                                Content="{x:Bind Text.ProjectBatchUnlimitedRuns, Mode=OneTime}" />
-                        </Grid>
-
-                        <Button
-                            Click="OnRunProjectBatchButtonClick"
-                            Content="{x:Bind Text.ProjectBatchRunButton, Mode=OneTime}"
-                            Style="{StaticResource PrimaryActionButtonStyle}" />
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource SectionCardStyle}" Visibility="Collapsed">
-                    <StackPanel Spacing="12">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                <SymbolIcon Symbol="Edit" />
-                            </Border>
-                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.EditorTitle, Mode=OneTime}" />
-                        </StackPanel>
-
-                        <TextBlock
-                            Style="{StaticResource SectionHintStyle}"
-                            Text="{x:Bind Text.EditorHint, Mode=OneTime}" />
-
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <Button
-                                x:Name="LoadEditorButton"
-                                Grid.Column="0"
-                                Click="OnLoadEditorButtonClick"
-                                Content="{x:Bind Text.LoadEditorButton, Mode=OneTime}"
-                                Style="{StaticResource ActionButtonStyle}" />
-
-                            <Button
-                                x:Name="LoadEditorTemplateButton"
-                                Grid.Column="1"
-                                Click="OnLoadEditorTemplateButtonClick"
-                                Content="{x:Bind Text.LoadEditorTemplateButton, Mode=OneTime}"
-                                Style="{StaticResource ActionButtonStyle}" />
-
-                            <Button
-                                x:Name="SaveEditorButton"
-                                Grid.Column="2"
-                                Click="OnSaveEditorButtonClick"
-                                Content="{x:Bind Text.SaveEditorButton, Mode=OneTime}"
-                                IsEnabled="False"
-                                Style="{StaticResource PrimaryActionButtonStyle}" />
-                        </Grid>
-
-                        <StackPanel Spacing="6">
-                            <TextBlock Style="{StaticResource SectionHintStyle}" Text="{x:Bind Text.EditorSourceLabel, Mode=OneTime}" />
-                            <TextBlock x:Name="EditorSourceTextBlock" TextWrapping="Wrap" />
-                            <TextBlock Style="{StaticResource SectionHintStyle}" Text="{x:Bind Text.EditorOutputLabel, Mode=OneTime}" />
-                            <TextBlock x:Name="EditorOutputTextBlock" TextWrapping="Wrap" />
-                        </StackPanel>
-
-                        <Expander IsExpanded="True">
-                            <Expander.Header>
-                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Text.EditorProjectSectionTitle, Mode=OneTime}" />
-                            </Expander.Header>
-
-                            <StackPanel Margin="0,12,0,0" Spacing="10">
-                                <TextBox x:Name="EditorJobTitleTextBox" Header="{x:Bind Text.EditorJobTitleHeader, Mode=OneTime}" TextChanged="OnEditorOutputFieldsChanged" />
-                                <TextBox x:Name="EditorJobNoTextBox" Header="{x:Bind Text.EditorJobNoHeader, Mode=OneTime}" TextChanged="OnEditorOutputFieldsChanged" />
-                                <TextBox x:Name="EditorCalculationTitleTextBox" Header="{x:Bind Text.EditorCalculationTitleHeader, Mode=OneTime}" />
-                                <TextBox x:Name="EditorMadeByTextBox" Header="{x:Bind Text.EditorMadeByHeader, Mode=OneTime}" />
-                                <TextBox x:Name="EditorCheckedByTextBox" Header="{x:Bind Text.EditorCheckedByHeader, Mode=OneTime}" />
-                                <TextBox x:Name="EditorCompanyTextBox" Header="{x:Bind Text.EditorCompanyHeader, Mode=OneTime}" />
-                            </StackPanel>
-                        </Expander>
-
-                        <Expander>
-                            <Expander.Header>
-                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Text.EditorAnalysisSectionTitle, Mode=OneTime}" />
-                            </Expander.Header>
-
-                            <StackPanel Margin="0,12,0,0" Spacing="10">
-                                <TextBox x:Name="EditorDispatcherTextBox" Header="{x:Bind Text.EditorDispatcherHeader, Mode=OneTime}" />
-                                <TextBox x:Name="EditorTrafficModeTextBox" Header="{x:Bind Text.EditorTrafficModeHeader, Mode=OneTime}" />
-
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <TextBox
-                                        x:Name="EditorSimulationsTextBox"
-                                        Grid.Column="0"
-                                        Header="{x:Bind Text.EditorSimulationsHeader, Mode=OneTime}" />
-                                    <TextBox
-                                        x:Name="EditorLearningRunsTextBox"
-                                        Grid.Column="1"
-                                        Header="{x:Bind Text.EditorLearningRunsHeader, Mode=OneTime}" />
-                                    <TextBox
-                                        x:Name="EditorRandomSeedTextBox"
-                                        Grid.Column="2"
-                                        Header="{x:Bind Text.EditorRandomSeedHeader, Mode=OneTime}" />
-                                </Grid>
-                            </StackPanel>
-                        </Expander>
-
-                        <Expander>
-                            <Expander.Header>
-                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Text.EditorBuildingSectionTitle, Mode=OneTime}" />
-                            </Expander.Header>
-
-                            <StackPanel Margin="0,12,0,0" Spacing="10">
-                                <TextBox x:Name="EditorAbsenteeismTextBox" Header="{x:Bind Text.EditorAbsenteeismHeader, Mode=OneTime}" />
-                                <TextBlock
-                                    Style="{StaticResource SectionHintStyle}"
-                                    Text="{x:Bind Text.EditorFloorsHint, Mode=OneTime}" />
-
-                                <ItemsControl
-                                    x:Name="EditorFloorsItemsControl"
-                                    ItemsSource="{x:Bind EditorFloors, Mode=OneTime}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Spacing="10" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border
-                                                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="14"
-                                                Padding="12">
-                                                <StackPanel Spacing="10">
-                                                    <TextBlock
-                                                        FontSize="14"
-                                                        FontWeight="SemiBold"
-                                                        Text="{Binding FloorName}" />
-
-                                                    <Grid ColumnSpacing="10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
-
-                                                        <TextBox
-                                                            Grid.Column="0"
-                                                            Header="{Binding LevelLabel}"
-                                                            Text="{Binding FloorLevelText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                                                        <TextBox
-                                                            Grid.Column="1"
-                                                            Header="{Binding PopulationLabel}"
-                                                            Text="{Binding PopulationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </Grid>
-
-                                                    <CheckBox
-                                                        Content="{Binding EntranceLabel}"
-                                                        IsChecked="{Binding EntranceFloor}"
-                                                        IsEnabled="False" />
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Expander>
-
-                        <Expander>
-                            <Expander.Header>
-                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Text.EditorTrafficSectionTitle, Mode=OneTime}" />
-                            </Expander.Header>
-
-                            <StackPanel Margin="0,12,0,0" Spacing="10">
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <TextBox
-                                        x:Name="EditorIncomingTextBox"
-                                        Grid.Column="0"
-                                        Header="{x:Bind Text.EditorIncomingHeader, Mode=OneTime}" />
-                                    <TextBox
-                                        x:Name="EditorOutgoingTextBox"
-                                        Grid.Column="1"
-                                        Header="{x:Bind Text.EditorOutgoingHeader, Mode=OneTime}" />
-                                    <TextBox
-                                        x:Name="EditorInterfloorTextBox"
-                                        Grid.Column="2"
-                                        Header="{x:Bind Text.EditorInterfloorHeader, Mode=OneTime}" />
-                                </Grid>
-
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <TextBox
-                                        x:Name="EditorHandlingCapacityTextBox"
-                                        Grid.Column="0"
-                                        Header="{x:Bind Text.EditorHandlingCapacityHeader, Mode=OneTime}" />
-                                    <TextBox
-                                        x:Name="EditorLoadingTimeTextBox"
-                                        Grid.Column="1"
-                                        Header="{x:Bind Text.EditorLoadingTimeHeader, Mode=OneTime}" />
-                                    <TextBox
-                                        x:Name="EditorUnloadingTimeTextBox"
-                                        Grid.Column="2"
-                                        Header="{x:Bind Text.EditorUnloadingTimeHeader, Mode=OneTime}" />
-                                </Grid>
-                            </StackPanel>
-                        </Expander>
-
-                        <Expander>
-                            <Expander.Header>
-                                <TextBlock FontWeight="SemiBold" Text="{x:Bind Text.EditorLiftGroupSectionTitle, Mode=OneTime}" />
-                            </Expander.Header>
-
-                            <StackPanel Margin="0,12,0,0" Spacing="10">
-                                <TextBlock
-                                    Style="{StaticResource SectionHintStyle}"
-                                    Text="{x:Bind Text.EditorCarsHint, Mode=OneTime}" />
-
-                                <ItemsControl
-                                    x:Name="EditorCarsItemsControl"
-                                    ItemsSource="{x:Bind EditorCars, Mode=OneTime}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Spacing="10" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border
-                                                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="14"
-                                                Padding="12">
-                                                <StackPanel Spacing="10">
-                                                    <TextBlock
-                                                        FontSize="14"
-                                                        FontWeight="SemiBold"
-                                                        Text="{Binding Title}" />
-
-                                                    <Grid ColumnSpacing="10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
-
-                                                        <TextBox
-                                                            Grid.Column="0"
-                                                            Header="{Binding CapacityLabel}"
-                                                            Text="{Binding CapacityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox
-                                                            Grid.Column="1"
-                                                            Header="{Binding AreaLabel}"
-                                                            Text="{Binding AreaText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox
-                                                            Grid.Column="2"
-                                                            Header="{Binding HomeFloorLabel}"
-                                                            Text="{Binding HomeFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </Grid>
-
-                                                    <Grid ColumnSpacing="10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
-
-                                                        <TextBox
-                                                            Grid.Column="0"
-                                                            Header="{Binding SpeedLabel}"
-                                                            Text="{Binding SpeedText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox
-                                                            Grid.Column="1"
-                                                            Header="{Binding AccelerationLabel}"
-                                                            Text="{Binding AccelerationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox
-                                                            Grid.Column="2"
-                                                            Header="{Binding JerkLabel}"
-                                                            Text="{Binding JerkText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </Grid>
-
-                                                    <Grid ColumnSpacing="10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
-
-                                                        <TextBox
-                                                            Grid.Column="0"
-                                                            Header="{Binding PreOpeningLabel}"
-                                                            Text="{Binding PreOpeningText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox
-                                                            Grid.Column="1"
-                                                            Header="{Binding OpenTimeLabel}"
-                                                            Text="{Binding OpenTimeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox
-                                                            Grid.Column="2"
-                                                            Header="{Binding CloseTimeLabel}"
-                                                            Text="{Binding CloseTimeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </Grid>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource SectionCardStyle}">
-                    <StackPanel Spacing="12">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                <SymbolIcon Symbol="Play" />
-                            </Border>
-                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ActionsTitle, Mode=OneTime}" />
-                        </StackPanel>
-
-                        <CommandBar DefaultLabelPosition="Right" IsDynamicOverflowEnabled="True">
-                            <AppBarButton x:Name="RunButton" Click="OnRunButtonClick" Label="{x:Bind Text.RunButton, Mode=OneTime}">
-                                <AppBarButton.Icon>
-                                    <SymbolIcon Symbol="Play" />
-                                </AppBarButton.Icon>
-                            </AppBarButton>
-
-                            <AppBarButton
-                                x:Name="RunMorningOnlyButton"
-                                Click="OnRunMorningOnlyButtonClick"
-                                Label="{x:Bind Text.RunMorningButton, Mode=OneTime}"
+                            <Border
+                                x:Name="ProjectBatchCard"
+                                Style="{StaticResource SectionCardStyle}"
                                 Visibility="Collapsed">
-                                <AppBarButton.Icon>
-                                    <SymbolIcon Symbol="Forward" />
-                                </AppBarButton.Icon>
-                            </AppBarButton>
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                            <SymbolIcon Symbol="Folder" />
+                                        </Border>
+                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ProjectBatchTitle, Mode=OneTime}" />
+                                    </StackPanel>
 
-                            <AppBarSeparator />
+                                    <TextBlock
+                                        Style="{StaticResource SectionHintStyle}"
+                                        Text="{x:Bind Text.ProjectBatchHint, Mode=OneTime}" />
 
-                            <AppBarButton x:Name="ExitButton" Click="OnExitButtonClick" Label="{x:Bind Text.ExitButton, Mode=OneTime}">
-                                <AppBarButton.Icon>
-                                    <SymbolIcon Symbol="Cancel" />
-                                </AppBarButton.Icon>
-                            </AppBarButton>
-                        </CommandBar>
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
 
-                        <TextBlock
-                            Style="{StaticResource SectionHintStyle}"
-                            Text="{x:Bind Text.ActionsHint, Mode=OneTime}" />
+                                        <TextBox
+                                            x:Name="ProjectBatchPathTextBox"
+                                            Grid.Column="0"
+                                            Header="{x:Bind Text.ProjectBatchPathHeader, Mode=OneTime}"
+                                            PlaceholderText="{x:Bind Text.ProjectBatchPathPlaceholder, Mode=OneTime}" />
 
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button
-                                x:Name="ReportButton"
-                                Click="OnReportButtonClick"
-                                Content="{x:Bind Text.ReportButton, Mode=OneTime}"
-                                Style="{StaticResource PrimaryActionButtonStyle}" />
-                            <Button
-                                x:Name="MorningReportButton"
-                                Click="OnMorningReportButtonClick"
-                                Content="{x:Bind Text.MorningReportButton, Mode=OneTime}"
-                                Style="{StaticResource ActionButtonStyle}"
-                                Visibility="Collapsed" />
-                            <Button
-                                x:Name="LunchReportButton"
-                                Click="OnLunchReportButtonClick"
-                                Content="{x:Bind Text.LunchReportButton, Mode=OneTime}"
-                                Style="{StaticResource ActionButtonStyle}"
-                                Visibility="Collapsed" />
+                                        <Button
+                                            Grid.Column="1"
+                                            Margin="0,29,0,0"
+                                            Click="OnBrowseProjectBatchFolderButtonClick"
+                                            Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
+                                            Style="{StaticResource ActionButtonStyle}" />
+                                    </Grid>
+
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <NumberBox
+                                            x:Name="ProjectBatchParallelRunsNumberBox"
+                                            Grid.Column="0"
+                                            Header="{x:Bind Text.ProjectBatchParallelRunsHeader, Mode=OneTime}"
+                                            Minimum="1"
+                                            SmallChange="1"
+                                            SpinButtonPlacementMode="Compact"
+                                            Value="4" />
+
+                                        <CheckBox
+                                            x:Name="ProjectBatchUnlimitedRunsCheckBox"
+                                            Grid.Column="1"
+                                            Margin="0,29,0,0"
+                                            Content="{x:Bind Text.ProjectBatchUnlimitedRuns, Mode=OneTime}" />
+                                    </Grid>
+
+                                    <Button
+                                        Click="OnRunProjectBatchButtonClick"
+                                        Content="{x:Bind Text.ProjectBatchRunButton, Mode=OneTime}"
+                                        Style="{StaticResource PrimaryActionButtonStyle}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                x:Name="EditorWindowCard"
+                                Style="{StaticResource SectionCardStyle}"
+                                Visibility="Collapsed">
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                            <SymbolIcon Symbol="Edit" />
+                                        </Border>
+                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.EditorTitle, Mode=OneTime}" />
+                                    </StackPanel>
+
+                                    <TextBlock
+                                        Style="{StaticResource SectionHintStyle}"
+                                        Text="{x:Bind Text.EditorWindowHint, Mode=OneTime}" />
+
+                                    <Button
+                                        Click="OnOpenEditorWindowClick"
+                                        Content="{x:Bind Text.OpenEditorWindowButton, Mode=OneTime}"
+                                        Style="{StaticResource PrimaryActionButtonStyle}" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
-                    </StackPanel>
-                </Border>
+                    </ScrollViewer>
 
-                <Border Style="{StaticResource SectionCardStyle}">
-                    <StackPanel Spacing="12">
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                    <Border
+                        Grid.Column="1"
+                        Style="{StaticResource SectionCardStyle}">
+                        <Grid RowSpacing="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                            <ProgressRing
-                                x:Name="BusyRing"
-                                Width="18"
-                                Height="18"
-                                IsActive="False"
-                                VerticalAlignment="Center" />
+                            <Grid Grid.Row="0" ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="1" Spacing="2">
-                                <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.QueueTitle, Mode=OneTime}" />
-                                <TextBlock
-                                    x:Name="BusyTextBlock"
-                                    Style="{StaticResource SectionHintStyle}"
-                                    Text="{x:Bind Text.Ready, Mode=OneTime}" />
-                            </StackPanel>
-                        </Grid>
+                                <ProgressRing
+                                    x:Name="BusyRing"
+                                    Width="18"
+                                    Height="18"
+                                    IsActive="False"
+                                    VerticalAlignment="Center" />
 
-                        <Border
-                            x:Name="EmptyQueueBorder"
-                            Background="{ThemeResource LayerFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="16"
-                            Padding="16">
-                            <StackPanel Spacing="4">
-                                <TextBlock
-                                    FontSize="14"
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind Text.NoActiveJobsTitle, Mode=OneTime}" />
-                                <TextBlock
-                                    Style="{StaticResource SectionHintStyle}"
-                                    Text="{x:Bind Text.NoActiveJobsHint, Mode=OneTime}" />
-                            </StackPanel>
-                        </Border>
+                                <StackPanel Grid.Column="1" Spacing="1">
+                                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.QueueTitle, Mode=OneTime}" />
+                                    <TextBlock
+                                        x:Name="BusyTextBlock"
+                                        Style="{StaticResource SectionHintStyle}"
+                                        Text="{x:Bind Text.Ready, Mode=OneTime}" />
+                                </StackPanel>
+                            </Grid>
 
-                        <ItemsControl
-                            x:Name="JobsItemsControl"
-                            ItemsSource="{x:Bind Jobs, Mode=OneTime}"
-                            Visibility="Collapsed">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Spacing="12" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border
-                                        Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="16"
-                                        Padding="14">
-                                        <StackPanel Spacing="10">
-                                            <Grid ColumnSpacing="12">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
+                            <Grid Grid.Row="1">
+                                <Border
+                                    x:Name="EmptyQueueBorder"
+                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="14">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock
+                                            FontSize="14"
+                                            FontWeight="SemiBold"
+                                            Text="{x:Bind Text.NoActiveJobsTitle, Mode=OneTime}" />
+                                        <TextBlock
+                                            Style="{StaticResource SectionHintStyle}"
+                                            Text="{x:Bind Text.NoActiveJobsHint, Mode=OneTime}" />
+                                    </StackPanel>
+                                </Border>
 
-                                                <StackPanel Grid.Column="0" Spacing="2">
-                                                    <TextBlock
-                                                        FontSize="16"
-                                                        FontWeight="SemiBold"
-                                                        Text="{Binding Title}"
-                                                        TextWrapping="Wrap" />
-                                                    <TextBlock
-                                                        Opacity="0.72"
-                                                        Text="{Binding Details}"
-                                                        TextWrapping="Wrap" />
-                                                </StackPanel>
+                                <ScrollViewer
+                                    HorizontalScrollMode="Disabled"
+                                    VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl
+                                        x:Name="JobsItemsControl"
+                                        ItemsSource="{x:Bind Jobs, Mode=OneTime}"
+                                        Visibility="Collapsed">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Spacing="10" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8"
+                                                    Padding="12">
+                                                    <StackPanel Spacing="8">
+                                                        <Grid ColumnSpacing="12">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
 
-                                                <TextBlock
-                                                    Grid.Column="1"
-                                                    HorizontalAlignment="Right"
-                                                    Opacity="0.8"
-                                                    Text="{Binding StatusText}"
-                                                    TextWrapping="Wrap" />
-                                            </Grid>
-
-                                            <ItemsControl ItemsSource="{Binding Scenarios}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <StackPanel Spacing="10" />
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Spacing="4">
-                                                            <Grid ColumnSpacing="12">
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-
+                                                            <StackPanel Grid.Column="0" Spacing="1">
                                                                 <TextBlock
-                                                                    Grid.Column="0"
-                                                                    FontWeight="Medium"
-                                                                    Text="{Binding Label}" />
-
+                                                                    FontSize="15"
+                                                                    FontWeight="SemiBold"
+                                                                    Text="{Binding Title}"
+                                                                    TextWrapping="Wrap" />
                                                                 <TextBlock
-                                                                    Grid.Column="1"
-                                                                    HorizontalAlignment="Right"
-                                                                    Opacity="0.7"
-                                                                    Text="{Binding ProgressText}" />
-                                                            </Grid>
+                                                                    Opacity="0.72"
+                                                                    Text="{Binding Details}"
+                                                                    TextWrapping="Wrap" />
+                                                            </StackPanel>
 
-                                                            <ProgressBar
-                                                                Height="6"
-                                                                IsIndeterminate="{Binding IsIndeterminate}"
-                                                                Maximum="{Binding Maximum}"
-                                                                Value="{Binding Value}" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                HorizontalAlignment="Right"
+                                                                Opacity="0.8"
+                                                                Text="{Binding StatusText}"
+                                                                TextWrapping="Wrap" />
+                                                        </Grid>
+
+                                                        <ItemsControl ItemsSource="{Binding Scenarios}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <StackPanel Spacing="8" />
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <StackPanel Spacing="4">
+                                                                        <Grid ColumnSpacing="12">
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*" />
+                                                                                <ColumnDefinition Width="Auto" />
+                                                                            </Grid.ColumnDefinitions>
+
+                                                                            <TextBlock
+                                                                                Grid.Column="0"
+                                                                                FontWeight="Medium"
+                                                                                Text="{Binding Label}" />
+
+                                                                            <TextBlock
+                                                                                Grid.Column="1"
+                                                                                HorizontalAlignment="Right"
+                                                                                Opacity="0.7"
+                                                                                Text="{Binding ProgressText}" />
+                                                                        </Grid>
+
+                                                                        <ProgressBar
+                                                                            Height="5"
+                                                                            IsIndeterminate="{Binding IsIndeterminate}"
+                                                                            Maximum="{Binding Maximum}"
+                                                                            Value="{Binding Value}" />
+                                                                    </StackPanel>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <Button
+                                                                Click="OnJobReportButtonClick"
+                                                                Content="{Binding ReportButtonText}"
+                                                                IsEnabled="{Binding CanPrintReport}"
+                                                                Style="{StaticResource ActionButtonStyle}"
+                                                                Tag="{Binding}"
+                                                                Visibility="{Binding PrintReportVisibility}" />
+                                                            <Button
+                                                                Click="OnRetryJobButtonClick"
+                                                                Content="{Binding RetryButtonText}"
+                                                                IsEnabled="{Binding CanRetry}"
+                                                                Style="{StaticResource ActionButtonStyle}"
+                                                                Tag="{Binding}"
+                                                                Visibility="{Binding RetryButtonVisibility}" />
                                                         </StackPanel>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
 
-                                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                                <Button
-                                                    Click="OnJobReportButtonClick"
-                                                    Content="{Binding ReportButtonText}"
-                                                    IsEnabled="{Binding CanPrintReport}"
-                                                    Style="{StaticResource ActionButtonStyle}"
-                                                    Tag="{Binding}"
-                                                    Visibility="{Binding PrintReportVisibility}" />
-                                                <Button
-                                                    Click="OnRetryJobButtonClick"
-                                                    Content="{Binding RetryButtonText}"
-                                                    IsEnabled="{Binding CanRetry}"
-                                                    Style="{StaticResource ActionButtonStyle}"
-                                                    Tag="{Binding}"
-                                                    Visibility="{Binding RetryButtonVisibility}" />
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
+                            <InfoBar
+                                x:Name="StatusInfoBar"
+                                Grid.Row="2"
+                                IsOpen="False"
+                                IsClosable="False"
+                                Message="{x:Bind Text.Ready, Mode=OneTime}"
+                                Severity="Success"
+                                Title="{x:Bind Text.StatusTitle, Mode=OneTime}" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
 
-                <InfoBar
-                    x:Name="StatusInfoBar"
-                    IsOpen="False"
-                    IsClosable="False"
-                    Title="{x:Bind Text.StatusTitle, Mode=OneTime}"
-                    Message="{x:Bind Text.Ready, Mode=OneTime}"
-                    Severity="Success" />
+        <Grid Visibility="Collapsed">
+            <StackPanel>
+                <Button x:Name="LoadEditorButton" Click="OnLoadEditorButtonClick" Content="{x:Bind Text.LoadEditorButton, Mode=OneTime}" />
+                <Button x:Name="LoadEditorTemplateButton" Click="OnLoadEditorTemplateButtonClick" Content="{x:Bind Text.LoadEditorTemplateButton, Mode=OneTime}" />
+                <Button x:Name="SaveEditorButton" Click="OnSaveEditorButtonClick" Content="{x:Bind Text.SaveEditorButton, Mode=OneTime}" IsEnabled="False" />
+                <TextBlock x:Name="EditorSourceTextBlock" />
+                <TextBlock x:Name="EditorOutputTextBlock" />
+                <TextBox x:Name="EditorJobTitleTextBox" TextChanged="OnEditorOutputFieldsChanged" />
+                <TextBox x:Name="EditorJobNoTextBox" TextChanged="OnEditorOutputFieldsChanged" />
+                <TextBox x:Name="EditorCalculationTitleTextBox" />
+                <TextBox x:Name="EditorMadeByTextBox" />
+                <TextBox x:Name="EditorCheckedByTextBox" />
+                <TextBox x:Name="EditorCompanyTextBox" />
+                <TextBox x:Name="EditorDispatcherTextBox" />
+                <TextBox x:Name="EditorTrafficModeTextBox" />
+                <TextBox x:Name="EditorSimulationsTextBox" />
+                <TextBox x:Name="EditorLearningRunsTextBox" />
+                <TextBox x:Name="EditorRandomSeedTextBox" />
+                <TextBox x:Name="EditorAbsenteeismTextBox" />
+                <TextBox x:Name="EditorIncomingTextBox" />
+                <TextBox x:Name="EditorOutgoingTextBox" />
+                <TextBox x:Name="EditorInterfloorTextBox" />
+                <TextBox x:Name="EditorHandlingCapacityTextBox" />
+                <TextBox x:Name="EditorLoadingTimeTextBox" />
+                <TextBox x:Name="EditorUnloadingTimeTextBox" />
+                <ItemsControl x:Name="EditorFloorsItemsControl" ItemsSource="{x:Bind EditorFloors, Mode=OneTime}" />
+                <ItemsControl x:Name="EditorCarsItemsControl" ItemsSource="{x:Bind EditorCars, Mode=OneTime}" />
             </StackPanel>
-        </ScrollViewer>
+        </Grid>
     </Grid>
 </Page>

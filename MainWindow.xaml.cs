@@ -6,7 +6,7 @@ namespace ElevateHelperWinUI;
 
 public sealed partial class MainWindow : Window
 {
-    private const int DefaultWidth = 475;
+    private const int DefaultWidth = 1120;
     private const int DefaultHeight = 760;
 
     public MainWindow()
