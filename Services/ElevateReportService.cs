@@ -23,6 +23,9 @@ public sealed class ElevateReportService : IElevateReportService
     private const int XlWhole = 1;
     private const int XlPart = 2;
     private const int XlValue = 2;
+    private const int XlContinuous = 1;
+    private const int XlThin = 2;
+    private const int MeteorBlue = 10 + (39 * 256) + (81 * 65536);
 
     public async Task<ProcessingResult> PrintReportAsync(
         string path,
@@ -180,7 +183,7 @@ public sealed class ElevateReportService : IElevateReportService
             FillTitleSheet(workbook, jobData);
             FillBuildingSheet(workbook, buildingData, isServed);
             FillFlowSheet(workbook, buildingData, passengerData, isServed);
-            FillGroupSheet(workbook, xmlFolder, buildingData, elevatorData);
+            FillGroupSheet(workbook, xmlFolder, buildingData, elevatorData, isServed);
             FillAssessmentAndCriteriaSheets(workbook, awt, attd, ais, alw, buildingData, elevatorData, passengerData, servedFloors, isServed);
             RemovePrintLayoutNames(workbook);
             ApplyPrintLayout(workbook, buildingType);
@@ -495,30 +498,15 @@ public sealed class ElevateReportService : IElevateReportService
             }
         }
 
-        if (passengerData.Incoming != 0)
-        {
-            dynamic incomingRange = sheet.Range(sheet.Cells(5, 5), sheet.Cells(5 + buildingData.NoFloors - 1, 5));
-            incomingRange.BorderAround();
-        }
-
-        if (passengerData.Outgoing != 0)
-        {
-            dynamic outgoingRange = sheet.Range(sheet.Cells(5, 10), sheet.Cells(5 + buildingData.NoFloors - 1, 10));
-            outgoingRange.BorderAround();
-        }
-
-        if (passengerData.Interfloor != 0)
-        {
-            dynamic interfloorRange = sheet.Range(sheet.Cells(5, 15), sheet.Cells(5 + buildingData.NoFloors - 1, 15));
-            interfloorRange.BorderAround();
-        }
+        ApplyFlowTrafficBorders(sheet, buildingData, passengerData);
     }
 
     private static void FillGroupSheet(
         dynamic workbook,
         string xmlFolder,
         BuildingDataModel buildingData,
-        ElevatorDataModel elevatorData)
+        ElevatorDataModel elevatorData,
+        bool[] isServed)
     {
         dynamic sheet = workbook.Sheets(SheetGroup);
         string dispatcher = elevatorData.Dispatcher.Contains("ACA", StringComparison.OrdinalIgnoreCase) ||
@@ -557,7 +545,7 @@ public sealed class ElevateReportService : IElevateReportService
 
             for (int j = 1; j <= elevatorData.NoElevators; j++)
             {
-                if (IsYes(elevatorData.FloorsServed[j, i]))
+                if (ShouldPrintGroupServedMark(isServed[i], elevatorData.FloorsServed[j, i]))
                 {
                     sheet.Cells(17, 2 + j).Value = sheet.Cells(2, 13).Value;
                 }
@@ -737,6 +725,7 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         ApplyServiceFloorsAndExpressZones(workbook, buildingData, isServed);
+        ApplyFlowTrafficBorders(workbook.Sheets(SheetFlow), buildingData, passengerData);
         ApplyDoubleDispatcherAdjustments(workbook, buildingData, elevatorData, passengerData);
 
         EvaluateRating(assessmentSheet, criteriaSheet, awt, attd, ais, alw, buildingData, passengerData, gLimit);
@@ -869,6 +858,50 @@ public sealed class ElevateReportService : IElevateReportService
                     groupSheet.Rows($"{hiddenStart}:{hiddenEnd}").EntireRow.Hidden = true;
                 }
             }
+        }
+    }
+
+    internal static bool ShouldPrintGroupServedMark(bool isReportServedFloor, string? elevatorServesFloor)
+    {
+        return isReportServedFloor && IsYes(elevatorServesFloor);
+    }
+
+    private static void ApplyFlowTrafficBorders(
+        dynamic sheet,
+        BuildingDataModel buildingData,
+        PassengerDataModel passengerData)
+    {
+        if (passengerData.Incoming != 0)
+        {
+            ApplyFlowTrafficBorder(sheet, buildingData.NoFloors, 5);
+        }
+
+        if (passengerData.Outgoing != 0)
+        {
+            ApplyFlowTrafficBorder(sheet, buildingData.NoFloors, 10);
+        }
+
+        if (passengerData.Interfloor != 0)
+        {
+            ApplyFlowTrafficBorder(sheet, buildingData.NoFloors, 15);
+        }
+    }
+
+    private static void ApplyFlowTrafficBorder(dynamic sheet, int noFloors, int column)
+    {
+        if (noFloors < 1)
+        {
+            return;
+        }
+
+        dynamic range = sheet.Range(sheet.Cells(5, column), sheet.Cells(5 + noFloors - 1, column));
+        try
+        {
+            range.BorderAround(XlContinuous, XlThin, Type.Missing, MeteorBlue);
+        }
+        catch
+        {
+            range.BorderAround();
         }
     }
 

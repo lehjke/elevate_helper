@@ -382,6 +382,24 @@ public sealed class ElevateReportServiceTests
     }
 
     [Theory]
+    [InlineData(true, "Yes", true)]
+    [InlineData(true, "True", true)]
+    [InlineData(true, "1", true)]
+    [InlineData(true, "No", false)]
+    [InlineData(false, "Yes", false)]
+    public void ShouldPrintGroupServedMark_UsesReportServedFloorsForExpressZones(
+        bool isReportServedFloor,
+        string elevatorServesFloor,
+        bool expected)
+    {
+        bool actual = ElevateReportService.ShouldPrintGroupServedMark(
+            isReportServedFloor,
+            elevatorServesFloor);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("3.360000", 0.0, 3.36)]
     [InlineData("", 2.31, 2.31)]
     [InlineData(null, 2.50, 2.50)]

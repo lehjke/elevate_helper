@@ -146,13 +146,13 @@ Manifest помогает понять, на каком шаге упал рас
 Portable zip:
 
 ```powershell
-.\scripts\build-release.ps1 -Tag v2.0.2-preview.4 -Runtime win-x64 -Configuration Release
+.\scripts\build-release.ps1 -Tag v2.0.2-preview.5 -Runtime win-x64 -Configuration Release
 ```
 
 Installer:
 
 ```powershell
-.\scripts\build-installer.ps1 -Tag v2.0.2-preview.4 -Runtime win-x64 -Configuration Release
+.\scripts\build-installer.ps1 -Tag v2.0.2-preview.5 -Runtime win-x64 -Configuration Release
 ```
 
 GitHub Actions release workflow собирает:
@@ -160,7 +160,7 @@ GitHub Actions release workflow собирает:
 - `ElevateHelper-win-x64-<tag>.zip`;
 - `ElevateHelper-win-x64-<tag>-setup.exe`.
 
-Теги с дефисом, например `v2.0.2-preview.4`, публикуются как GitHub prerelease.
+Теги с дефисом, например `v2.0.2-preview.5`, публикуются как GitHub prerelease.
 
 ## CI
 
