@@ -16,6 +16,7 @@ public sealed partial class MainPage : Page
     private readonly IElevateIntegrationService integrationService = new ElevateIntegrationService();
     private readonly IElevateProcessingService processingService = new ElevateProcessingService();
     private readonly IElevateReportService reportService = new ElevateReportService();
+    private readonly ElevateProjectBatchDiscoveryService projectBatchDiscoveryService = new();
     private readonly SemaphoreSlim reportExecutionLock = new(1, 1);
     private readonly object activeProcessingFoldersSync = new();
     private readonly HashSet<string> activeProcessingFolders = new(StringComparer.OrdinalIgnoreCase);
@@ -96,11 +97,79 @@ public sealed partial class MainPage : Page
         StartProcessingJob(path, buildingType, includeLunchPeak: false);
     }
 
+    private async void OnRunProjectBatchButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetProjectBatchInputs(out string projectRoot, out int parallelRuns))
+        {
+            return;
+        }
+
+        if (!TryEnsureIntegrationForLaunch())
+        {
+            return;
+        }
+
+        ProjectBatchDiscoveryResult discoveryResult;
+        try
+        {
+            discoveryResult = projectBatchDiscoveryService.Discover(projectRoot);
+        }
+        catch (Exception ex)
+        {
+            SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+            return;
+        }
+
+        IReadOnlyList<ProjectBatchJob>? manualJobs = await ResolveUnknownProjectBatchJobsAsync(
+            projectRoot,
+            discoveryResult.UnknownElvxFiles);
+        if (manualJobs is null)
+        {
+            return;
+        }
+
+        List<ProjectBatchJob> batchJobs = discoveryResult.Jobs
+            .Concat(manualJobs)
+            .OrderBy(job => job.BuildingTypeFolderName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(job => job.GroupName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (batchJobs.Count == 0)
+        {
+            SetStatus(Text.ProjectBatchNoJobsMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        StartProjectBatchJobs(batchJobs, parallelRuns, discoveryResult.Warnings.Count);
+    }
+
     private async void OnBrowseFolderButtonClick(object sender, RoutedEventArgs e)
+    {
+        string? folderPath = await PickFolderPathAsync();
+        if (folderPath is null)
+        {
+            return;
+        }
+
+        PathTextBox.Text = folderPath;
+        loadedEditorDocument = null;
+        ResetEditorStatus();
+    }
+
+    private async void OnBrowseProjectBatchFolderButtonClick(object sender, RoutedEventArgs e)
+    {
+        string? folderPath = await PickFolderPathAsync();
+        if (folderPath is not null)
+        {
+            ProjectBatchPathTextBox.Text = folderPath;
+        }
+    }
+
+    private static async Task<string?> PickFolderPathAsync()
     {
         if (App.MainWindow is null)
         {
-            return;
+            return null;
         }
 
         FolderPicker picker = new();
@@ -110,14 +179,7 @@ public sealed partial class MainPage : Page
         InitializeWithWindow.Initialize(picker, windowHandle);
 
         Windows.Storage.StorageFolder? folder = await picker.PickSingleFolderAsync();
-        if (folder is null)
-        {
-            return;
-        }
-
-        PathTextBox.Text = folder.Path;
-        loadedEditorDocument = null;
-        ResetEditorStatus();
+        return folder?.Path;
     }
 
     private async void OnLoadEditorButtonClick(object sender, RoutedEventArgs e)
@@ -300,6 +362,40 @@ public sealed partial class MainPage : Page
             });
     }
 
+    private void OnRetryJobButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: JobProgressViewModel job })
+        {
+            return;
+        }
+
+        if (!TryEnsureIntegrationForLaunch())
+        {
+            return;
+        }
+
+        string normalizedPath = NormalizeProcessingFolder(job.JobPath);
+        if (!TryRegisterProcessingFolder(normalizedPath))
+        {
+            SetStatus(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.RunFolderBusyMessage,
+                    normalizedPath),
+                InfoBarSeverity.Warning);
+            return;
+        }
+
+        _ = RunProcessingJobAsync(
+            job,
+            normalizedPath,
+            job.BuildingType,
+            job.IncludeLunchPeak,
+            normalizedPath,
+            job.AutoGenerateReport,
+            job.ReportOutputRoot);
+    }
+
     private void OnExitButtonClick(object sender, RoutedEventArgs e)
     {
         Application.Current.Exit();
@@ -392,6 +488,117 @@ public sealed partial class MainPage : Page
 
         buildingType = selectedType.Value;
         return true;
+    }
+
+    private bool TryGetProjectBatchInputs(out string projectRoot, out int parallelRuns)
+    {
+        projectRoot = ProjectBatchPathTextBox.Text?.Trim() ?? string.Empty;
+        parallelRuns = 4;
+
+        if (string.IsNullOrWhiteSpace(projectRoot))
+        {
+            SetStatus(Text.PathRequiredMessage, InfoBarSeverity.Warning);
+            return false;
+        }
+
+        if (!Directory.Exists(projectRoot))
+        {
+            SetStatus(Text.FolderMissingMessage, InfoBarSeverity.Error);
+            return false;
+        }
+
+        if (ProjectBatchUnlimitedRunsCheckBox.IsChecked == true)
+        {
+            parallelRuns = int.MaxValue;
+            return true;
+        }
+
+        double rawParallelRuns = ProjectBatchParallelRunsNumberBox.Value;
+        if (double.IsNaN(rawParallelRuns) || rawParallelRuns < 1)
+        {
+            SetStatus($"{Text.ProjectBatchParallelRunsHeader}: 1+", InfoBarSeverity.Warning);
+            return false;
+        }
+
+        parallelRuns = Math.Max(1, (int)Math.Round(rawParallelRuns));
+        return true;
+    }
+
+    private async Task<IReadOnlyList<ProjectBatchJob>?> ResolveUnknownProjectBatchJobsAsync(
+        string projectRoot,
+        IReadOnlyList<string> unknownElvxFiles)
+    {
+        if (unknownElvxFiles.Count == 0)
+        {
+            return [];
+        }
+
+        StackPanel rowsPanel = new() { Spacing = 12 };
+        rowsPanel.Children.Add(new TextBlock
+        {
+            Text = Text.ProjectBatchUnknownHint,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        List<(string FilePath, ComboBox ComboBox)> selections = [];
+        foreach (string filePath in unknownElvxFiles)
+        {
+            ComboBox comboBox = new()
+            {
+                MinWidth = 180,
+                SelectedIndex = 0,
+            };
+            comboBox.Items.Add(new ComboBoxItem { Content = Text.BuildingTypeOffice, Tag = BuildingType.Office });
+            comboBox.Items.Add(new ComboBoxItem { Content = Text.BuildingTypeResidence, Tag = BuildingType.Residence });
+            comboBox.Items.Add(new ComboBoxItem { Content = Text.BuildingTypeHotel, Tag = BuildingType.Hotel });
+
+            StackPanel row = new() { Spacing = 6 };
+            row.Children.Add(new TextBlock
+            {
+                Text = filePath,
+                TextWrapping = TextWrapping.Wrap,
+                Opacity = 0.78,
+            });
+            row.Children.Add(comboBox);
+            rowsPanel.Children.Add(row);
+            selections.Add((filePath, comboBox));
+        }
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = Text.ProjectBatchUnknownTitle,
+            Content = new ScrollViewer
+            {
+                MaxHeight = 460,
+                Content = rowsPanel,
+            },
+            PrimaryButtonText = Text.ProjectBatchUnknownPrimaryButton,
+            SecondaryButtonText = Text.ProjectBatchUnknownSecondaryButton,
+            CloseButtonText = Text.ProjectBatchUnknownCloseButton,
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.None)
+        {
+            return null;
+        }
+
+        if (result == ContentDialogResult.Secondary)
+        {
+            return [];
+        }
+
+        return selections
+            .Select(selection =>
+            {
+                BuildingType buildingType = selection.ComboBox.SelectedItem is ComboBoxItem { Tag: BuildingType selectedType }
+                    ? selectedType
+                    : BuildingType.Office;
+                return ElevateProjectBatchDiscoveryService.CreateManualJob(projectRoot, selection.FilePath, buildingType);
+            })
+            .ToList();
     }
 
     private void ResetEditorStatus()
@@ -794,12 +1001,100 @@ public sealed partial class MainPage : Page
         _ = RunProcessingJobAsync(job, normalizedPath, buildingType, includeLunchPeak, normalizedPath);
     }
 
+    private void StartProjectBatchJobs(IReadOnlyList<ProjectBatchJob> batchJobs, int parallelRuns, int warningCount)
+    {
+        int effectiveParallelRuns = parallelRuns == int.MaxValue
+            ? Math.Max(1, batchJobs.Count)
+            : Math.Max(1, Math.Min(parallelRuns, batchJobs.Count));
+        SemaphoreSlim parallelism = new(effectiveParallelRuns, effectiveParallelRuns);
+
+        int startedJobs = 0;
+        foreach (ProjectBatchJob batchJob in batchJobs)
+        {
+            string normalizedPath = NormalizeProcessingFolder(batchJob.WorkingFolder);
+            if (!TryRegisterProcessingFolder(normalizedPath))
+            {
+                SetStatus(
+                    string.Format(
+                        System.Globalization.CultureInfo.CurrentCulture,
+                        Text.RunFolderBusyMessage,
+                        normalizedPath),
+                    InfoBarSeverity.Warning);
+                continue;
+            }
+
+            bool includeLunchPeak = batchJob.BuildingType == BuildingType.Office;
+            string title = $"{batchJob.BuildingTypeFolderName} / {batchJob.GroupName}";
+            JobProgressViewModel job = CreateJob(
+                normalizedPath,
+                batchJob.BuildingType,
+                includeLunchPeak,
+                title,
+                batchJob.ProjectRoot);
+
+            startedJobs++;
+            _ = RunProjectBatchJobAsync(job, batchJob, includeLunchPeak, normalizedPath, parallelism);
+        }
+
+        if (startedJobs == 0)
+        {
+            SetStatus(Text.ProjectBatchNoJobsMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        string startedMessage = string.Format(
+            System.Globalization.CultureInfo.CurrentCulture,
+            Text.ProjectBatchStartedFormat,
+            startedJobs);
+        if (warningCount > 0)
+        {
+            startedMessage += " " + string.Format(
+                System.Globalization.CultureInfo.CurrentCulture,
+                Text.ProjectBatchWarningsFormat,
+                warningCount);
+        }
+
+        SetStatus(startedMessage, warningCount > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Informational);
+    }
+
+    private async Task RunProjectBatchJobAsync(
+        JobProgressViewModel job,
+        ProjectBatchJob batchJob,
+        bool includeLunchPeak,
+        string activeProcessingFolder,
+        SemaphoreSlim parallelism)
+    {
+        bool acquired = false;
+        try
+        {
+            await parallelism.WaitAsync();
+            acquired = true;
+            await RunProcessingJobAsync(
+                job,
+                batchJob.WorkingFolder,
+                batchJob.BuildingType,
+                includeLunchPeak,
+                activeProcessingFolder,
+                autoGenerateReport: true,
+                reportOutputRoot: batchJob.ProjectRoot);
+        }
+        finally
+        {
+            if (acquired)
+            {
+                _ = parallelism.Release();
+            }
+        }
+    }
+
     private async Task RunProcessingJobAsync(
         JobProgressViewModel job,
         string path,
         BuildingType buildingType,
         bool includeLunchPeak,
-        string activeProcessingFolder)
+        string activeProcessingFolder,
+        bool autoGenerateReport = false,
+        string? reportOutputRoot = null)
     {
         job.MarkRunning(localizationService);
         RefreshJobsSummary();
@@ -808,14 +1103,24 @@ public sealed partial class MainPage : Page
         try
         {
             ProcessingResult result = await InvokeProcessingAsync(job, path, buildingType, includeLunchPeak);
-            ApplyProcessingResult(job, result);
+            if (!result.Success)
+            {
+                ApplyProcessingResult(job, result);
+            }
+            else if (autoGenerateReport)
+            {
+                await GenerateReportForCompletedJobAsync(job, reportOutputRoot);
+            }
+            else
+            {
+                ApplyProcessingResult(job, result);
+            }
         }
         catch (Exception ex)
         {
             string message = BuildExceptionMessage(ex);
             job.MarkFailed(message);
             SetStatus(message, InfoBarSeverity.Error);
-            ScheduleFinishedJobRemoval(job);
         }
         finally
         {
@@ -882,6 +1187,37 @@ public sealed partial class MainPage : Page
         }
     }
 
+    private async Task GenerateReportForCompletedJobAsync(JobProgressViewModel job, string? outputFolder)
+    {
+        SetStatus(Text.ProjectBatchGeneratingReports, InfoBarSeverity.Informational);
+        ProcessingResult reportResult = await PrintReportsForJobWithLockAsync(job, outputFolder);
+        if (reportResult.Success)
+        {
+            job.MarkCompleted(localizationService);
+            SetStatus(localizationService.FormatRunCompleted(job.Title), InfoBarSeverity.Success);
+            return;
+        }
+
+        string message = FormatResultMessage(reportResult);
+        job.MarkFailed(message);
+        SetStatus(message, InfoBarSeverity.Error);
+    }
+
+    private async Task<ProcessingResult> PrintReportsForJobWithLockAsync(JobProgressViewModel job, string? outputFolder)
+    {
+        await reportExecutionLock.WaitAsync();
+        SetReportButtonsEnabled(isEnabled: false);
+        try
+        {
+            return await PrintReportsForJobAsync(job, outputFolder);
+        }
+        finally
+        {
+            SetReportButtonsEnabled(isEnabled: true);
+            _ = reportExecutionLock.Release();
+        }
+    }
+
     private void HandleReportResult(ProcessingResult result, string successMessage)
     {
         if (result.Success)
@@ -905,7 +1241,6 @@ public sealed partial class MainPage : Page
         string message = FormatResultMessage(result);
         job.MarkFailed(message);
         SetStatus(message, InfoBarSeverity.Error);
-        ScheduleFinishedJobRemoval(job);
     }
 
     private async Task<ProcessingResult> InvokeProcessingAsync(
@@ -1013,51 +1348,25 @@ public sealed partial class MainPage : Page
 
     private async Task<ProcessingResult> PrintReportsForJobAsync(JobProgressViewModel job)
     {
+        return await PrintReportsForJobAsync(job, outputFolder: null);
+    }
+
+    private async Task<ProcessingResult> PrintReportsForJobAsync(JobProgressViewModel job, string? outputFolder)
+    {
         if (job.BuildingType != BuildingType.Office)
         {
-            return await reportService.PrintReportAsync(job.JobPath, job.BuildingType);
+            return await reportService.PrintReportAsync(job.JobPath, job.BuildingType, outputFolder);
         }
 
         string morningPath = Path.Combine(job.JobPath, "morning");
-        ProcessingResult morningResult = await reportService.PrintReportAsync(morningPath, job.BuildingType);
+        ProcessingResult morningResult = await reportService.PrintReportAsync(morningPath, job.BuildingType, outputFolder);
         if (!morningResult.Success || !job.IncludeLunchPeak)
         {
             return morningResult;
         }
 
         string lunchPath = Path.Combine(job.JobPath, "lunch");
-        return await reportService.PrintReportAsync(lunchPath, job.BuildingType);
-    }
-
-    private void ScheduleFinishedJobRemoval(JobProgressViewModel job)
-    {
-        _ = RemoveFinishedJobAsync(job);
-    }
-
-    private async Task RemoveFinishedJobAsync(JobProgressViewModel job)
-    {
-        await Task.Delay(TimeSpan.FromSeconds(3));
-
-        if (!DispatcherQueue.HasThreadAccess)
-        {
-            _ = DispatcherQueue.TryEnqueue(() => RemoveFinishedJob(job));
-            return;
-        }
-
-        RemoveFinishedJob(job);
-    }
-
-    private void RemoveFinishedJob(JobProgressViewModel job)
-    {
-        if (!job.IsFinished || job.IsRunning)
-        {
-            return;
-        }
-
-        if (Jobs.Remove(job))
-        {
-            RefreshJobsSummary();
-        }
+        return await reportService.PrintReportAsync(lunchPath, job.BuildingType, outputFolder);
     }
 
     private void UpdateModeButtons(BuildingType buildingType)
@@ -1072,7 +1381,11 @@ public sealed partial class MainPage : Page
 
     private void UpdateBetaFeatureVisibility()
     {
-        EditorWindowCard.Visibility = BetaFeaturesCheckBox.IsChecked == true
+        bool isVisible = BetaFeaturesCheckBox.IsChecked == true;
+        EditorWindowCard.Visibility = isVisible
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ProjectBatchCard.Visibility = isVisible
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -1139,10 +1452,30 @@ public sealed partial class MainPage : Page
         SetStatus(Text.IntegrationMissingCheck, InfoBarSeverity.Warning);
     }
 
-    private JobProgressViewModel CreateJob(string path, BuildingType buildingType, bool includeLunchPeak)
+    private JobProgressViewModel CreateJob(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        string? title = null,
+        string? reportOutputRoot = null)
     {
-        JobProgressViewModel job = new(nextJobId++, path, buildingType, includeLunchPeak, localizationService);
-        Jobs.Insert(0, job);
+        JobProgressViewModel job = new(
+            nextJobId++,
+            path,
+            buildingType,
+            includeLunchPeak,
+            localizationService,
+            title,
+            reportOutputRoot);
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            Jobs.Insert(0, job);
+        }
+        else
+        {
+            Jobs.Add(job);
+        }
+
         RefreshJobsSummary();
         return job;
     }
@@ -1216,6 +1549,8 @@ public sealed partial class MainPage : Page
         private readonly string path;
         private readonly BuildingType buildingType;
         private readonly bool includeLunchPeak;
+        private readonly string? customTitle;
+        private readonly string? reportOutputRoot;
         private readonly ScenarioProgressViewModel? primaryScenario;
         private readonly ScenarioProgressViewModel? morningScenario;
         private readonly ScenarioProgressViewModel? lunchScenario;
@@ -1235,12 +1570,16 @@ public sealed partial class MainPage : Page
             string path,
             BuildingType buildingType,
             bool includeLunchPeak,
-            AppLocalizationService localizationService)
+            AppLocalizationService localizationService,
+            string? customTitle = null,
+            string? reportOutputRoot = null)
         {
             this.jobId = jobId;
             this.path = path;
             this.buildingType = buildingType;
             this.includeLunchPeak = includeLunchPeak;
+            this.customTitle = customTitle;
+            this.reportOutputRoot = reportOutputRoot;
 
             title = string.Empty;
             details = string.Empty;
@@ -1333,6 +1672,10 @@ public sealed partial class MainPage : Page
 
         public bool IncludeLunchPeak => includeLunchPeak;
 
+        public bool AutoGenerateReport => !string.IsNullOrWhiteSpace(reportOutputRoot);
+
+        public string? ReportOutputRoot => reportOutputRoot;
+
         public bool PrintsMultipleReports => buildingType == BuildingType.Office && includeLunchPeak;
 
         public string ReportButtonText
@@ -1371,7 +1714,15 @@ public sealed partial class MainPage : Page
 
         public bool CanPrintReport => stateKind == JobStateKind.Completed && reportActionEnabled;
 
+        public bool CanRetry => isFinished && !isRunning && !string.IsNullOrWhiteSpace(failureMessage);
+
+        public string RetryButtonText { get; private set; } = string.Empty;
+
         public Visibility PrintReportVisibility => stateKind == JobStateKind.Completed
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        public Visibility RetryButtonVisibility => CanRetry
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -1429,11 +1780,15 @@ public sealed partial class MainPage : Page
 
         public void ApplyLocalization(AppLocalizationService localizationService)
         {
-            Title = localizationService.FormatJobTitle(jobId, buildingType);
+            Title = string.IsNullOrWhiteSpace(customTitle)
+                ? localizationService.FormatJobTitle(jobId, buildingType)
+                : customTitle;
             Details = localizationService.FormatJobDetails(path, buildingType, includeLunchPeak);
             ReportButtonText = PrintsMultipleReports
                 ? localizationService.CurrentText.PrintReportsButton
                 : localizationService.CurrentText.ReportButton;
+            RetryButtonText = localizationService.CurrentText.ProjectBatchRetryButton;
+            OnPropertyChanged(nameof(RetryButtonText));
 
             foreach (ScenarioProgressViewModel scenario in Scenarios)
             {
@@ -1527,6 +1882,8 @@ public sealed partial class MainPage : Page
             OnPropertyChanged(nameof(IsFinished));
             OnPropertyChanged(nameof(CanPrintReport));
             OnPropertyChanged(nameof(PrintReportVisibility));
+            OnPropertyChanged(nameof(CanRetry));
+            OnPropertyChanged(nameof(RetryButtonVisibility));
         }
 
         private void OnPropertyChanged(string propertyName)

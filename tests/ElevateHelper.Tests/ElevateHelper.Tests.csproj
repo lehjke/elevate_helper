@@ -44,6 +44,7 @@
     <Compile Include="../../Services/ElevateRunManifestService.cs" Link="Source/Services/ElevateRunManifestService.cs" />
     <Compile Include="../../Services/ElevateWorkflowRunner.cs" Link="Source/Services/ElevateWorkflowRunner.cs" />
     <Compile Include="../../Services/ElevateProcessingService.cs" Link="Source/Services/ElevateProcessingService.cs" />
+    <Compile Include="../../Services/ElevateProjectBatchDiscoveryService.cs" Link="Source/Services/ElevateProjectBatchDiscoveryService.cs" />
   </ItemGroup>
 
 </Project>
