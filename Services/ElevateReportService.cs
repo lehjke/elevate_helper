@@ -175,7 +175,7 @@ public sealed class ElevateReportService : IElevateReportService
 
             workbook = excelApp.Workbooks.Open(templatePath);
 
-            bool[] isServed = CalculateServedFloors(elevatorData, buildingData.NoFloors, out int servedFloors);
+            bool[] isServed = CalculateServedFloors(elevatorData, buildingData, out int servedFloors);
 
             FillTitleSheet(workbook, jobData);
             FillBuildingSheet(workbook, buildingData, isServed);
@@ -1202,13 +1202,17 @@ public sealed class ElevateReportService : IElevateReportService
         data = resized;
     }
 
-    private static bool[] CalculateServedFloors(ElevatorDataModel elevatorData, int noFloors, out int servedFloors)
+    private static bool[] CalculateServedFloors(
+        ElevatorDataModel elevatorData,
+        BuildingDataModel buildingData,
+        out int servedFloors)
     {
-        bool[] isServed = new bool[noFloors + 1];
+        bool[] isServed = new bool[buildingData.NoFloors + 1];
         servedFloors = 0;
 
-        for (int floor = 1; floor <= noFloors; floor++)
+        for (int floor = 1; floor <= buildingData.NoFloors; floor++)
         {
+            bool isServedByElevator = false;
             for (int elevator = 1; elevator <= elevatorData.NoElevators; elevator++)
             {
                 if (!IsYes(elevatorData.FloorsServed[elevator, floor]))
@@ -1216,13 +1220,32 @@ public sealed class ElevateReportService : IElevateReportService
                     continue;
                 }
 
-                isServed[floor] = true;
-                servedFloors++;
+                isServedByElevator = true;
                 break;
             }
+
+            if (!IsReportServedFloor(
+                    isServedByElevator,
+                    buildingData.EntranceFloor[floor],
+                    buildingData.NoPeople[floor]))
+            {
+                continue;
+            }
+
+            isServed[floor] = true;
+            servedFloors++;
         }
 
         return isServed;
+    }
+
+    internal static bool IsReportServedFloor(
+        bool isServedByElevator,
+        string? entranceFloor,
+        double noPeople)
+    {
+        return isServedByElevator &&
+               (IsYes(entranceFloor) || !NearlyEquals(noPeople, 0d));
     }
 
     private static void ParseStepCsv(

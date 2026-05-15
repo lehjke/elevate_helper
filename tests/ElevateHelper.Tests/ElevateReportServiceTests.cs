@@ -365,6 +365,23 @@ public sealed class ElevateReportServiceTests
     }
 
     [Theory]
+    [InlineData(true, "False", 0, false)]
+    [InlineData(true, "No", 0, false)]
+    [InlineData(true, "False", 125, true)]
+    [InlineData(true, "True", 0, true)]
+    [InlineData(false, "True", 125, false)]
+    public void IsReportServedFloor_ExcludesEmptyNonEntranceFloorsForExpressZones(
+        bool isServedByElevator,
+        string entranceFloor,
+        double noPeople,
+        bool expected)
+    {
+        bool actual = ElevateReportService.IsReportServedFloor(isServedByElevator, entranceFloor, noPeople);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("3.360000", 0.0, 3.36)]
     [InlineData("", 2.31, 2.31)]
     [InlineData(null, 2.50, 2.50)]
