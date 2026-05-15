@@ -8,34 +8,33 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Grid
-        Padding="18"
+        Padding="20"
         Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-        <Border
+        <Grid
             MaxWidth="1180"
             HorizontalAlignment="Center"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            CornerRadius="8"
-            Padding="14">
-            <Grid RowSpacing="12">
+            RowSpacing="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0" ColumnSpacing="12">
+                <Grid
+                    Grid.Row="0"
+                    MinHeight="44"
+                    ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="190" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="170" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <Image
                         Grid.Column="0"
-                        Width="32"
-                        Height="32"
+                        Width="28"
+                        Height="28"
                         VerticalAlignment="Center"
                         Source="ms-appx:///Assets/AppIcon.png" />
 
@@ -46,19 +45,24 @@
                         FontWeight="SemiBold"
                         Text="{x:Bind Text.AppTitle, Mode=OneTime}" />
 
+                    <TextBlock
+                        Grid.Column="2"
+                        Style="{StaticResource ToolbarLabelStyle}"
+                        Text="{x:Bind Text.LanguageLabel, Mode=OneTime}" />
+
                     <ComboBox
                         x:Name="LanguageComboBox"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         DisplayMemberPath="DisplayName"
-                        Header="{x:Bind Text.LanguageLabel, Mode=OneTime}"
                         HorizontalAlignment="Stretch"
                         ItemsSource="{x:Bind LanguageOptions, Mode=OneTime}"
                         SelectionChanged="OnLanguageComboBoxSelectionChanged" />
 
                     <CheckBox
                         x:Name="BetaFeaturesCheckBox"
-                        Grid.Column="3"
-                        Margin="0,27,0,0"
+                        Grid.Column="4"
+                        Margin="4,0,0,0"
+                        VerticalAlignment="Center"
                         Checked="OnBetaFeaturesCheckBoxChanged"
                         Content="BETA"
                         FontWeight="SemiBold"
@@ -80,7 +84,7 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Symbol="Folder" />
+                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Folder" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.FolderTitle, Mode=OneTime}" />
                                     </StackPanel>
@@ -116,7 +120,7 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Symbol="Home" />
+                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Home" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.BuildingTypeTitle, Mode=OneTime}" />
                                     </StackPanel>
@@ -152,7 +156,7 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Symbol="Play" />
+                                            <SymbolIcon Style="{StaticResource AccentSectionIconStyle}" Symbol="Play" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ActionsTitle, Mode=OneTime}" />
                                     </StackPanel>
@@ -170,26 +174,29 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
 
                                         <Button
                                             x:Name="RunButton"
                                             Grid.Row="0"
                                             Grid.Column="0"
+                                            Grid.ColumnSpan="2"
                                             Click="OnRunButtonClick"
                                             Content="{x:Bind Text.RunButton, Mode=OneTime}"
                                             Style="{StaticResource PrimaryActionButtonStyle}" />
                                         <Button
                                             x:Name="RunMorningOnlyButton"
-                                            Grid.Row="0"
-                                            Grid.Column="1"
+                                            Grid.Row="1"
+                                            Grid.Column="0"
+                                            Grid.ColumnSpan="2"
                                             Click="OnRunMorningOnlyButtonClick"
                                             Content="{x:Bind Text.RunMorningButton, Mode=OneTime}"
                                             Style="{StaticResource ActionButtonStyle}"
                                             Visibility="Collapsed" />
                                         <Button
                                             x:Name="ReportButton"
-                                            Grid.Row="1"
+                                            Grid.Row="2"
                                             Grid.Column="0"
                                             Grid.ColumnSpan="2"
                                             Click="OnReportButtonClick"
@@ -197,7 +204,7 @@
                                             Style="{StaticResource ActionButtonStyle}" />
                                         <Button
                                             x:Name="MorningReportButton"
-                                            Grid.Row="1"
+                                            Grid.Row="2"
                                             Grid.Column="0"
                                             Click="OnMorningReportButtonClick"
                                             Content="{x:Bind Text.MorningReportButton, Mode=OneTime}"
@@ -205,7 +212,7 @@
                                             Visibility="Collapsed" />
                                         <Button
                                             x:Name="LunchReportButton"
-                                            Grid.Row="1"
+                                            Grid.Row="2"
                                             Grid.Column="1"
                                             Click="OnLunchReportButtonClick"
                                             Content="{x:Bind Text.LunchReportButton, Mode=OneTime}"
@@ -213,12 +220,12 @@
                                             Visibility="Collapsed" />
                                         <Button
                                             x:Name="ExitButton"
-                                            Grid.Row="2"
+                                            Grid.Row="3"
                                             Grid.Column="0"
                                             Grid.ColumnSpan="2"
                                             Click="OnExitButtonClick"
                                             Content="{x:Bind Text.ExitButton, Mode=OneTime}"
-                                            Style="{StaticResource ActionButtonStyle}" />
+                                            Style="{StaticResource SubtleActionButtonStyle}" />
                                     </Grid>
                                 </StackPanel>
                             </Border>
@@ -230,9 +237,15 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Symbol="Folder" />
+                                            <SymbolIcon Style="{StaticResource AccentSectionIconStyle}" Symbol="Folder" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ProjectBatchTitle, Mode=OneTime}" />
+                                        <Border Style="{StaticResource BetaBadgeStyle}">
+                                            <TextBlock
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                Text="BETA" />
+                                        </Border>
                                     </StackPanel>
 
                                     <TextBlock
@@ -295,9 +308,15 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Symbol="Edit" />
+                                            <SymbolIcon Style="{StaticResource AccentSectionIconStyle}" Symbol="Edit" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.EditorTitle, Mode=OneTime}" />
+                                        <Border Style="{StaticResource BetaBadgeStyle}">
+                                            <TextBlock
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                Text="BETA" />
+                                        </Border>
                                     </StackPanel>
 
                                     <TextBlock
@@ -348,6 +367,8 @@
                             <Grid Grid.Row="1">
                                 <Border
                                     x:Name="EmptyQueueBorder"
+                                    MinHeight="104"
+                                    VerticalAlignment="Top"
                                     Background="{ThemeResource LayerFillColorDefaultBrush}"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                     BorderThickness="1"
@@ -483,8 +504,7 @@
                         </Grid>
                     </Border>
                 </Grid>
-            </Grid>
-        </Border>
+        </Grid>
 
         <Grid Visibility="Collapsed">
             <StackPanel>

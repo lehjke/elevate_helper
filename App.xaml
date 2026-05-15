@@ -21,9 +21,10 @@
             </Style>
 
             <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="15" />
+                <Setter Property="FontSize" Value="18" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Margin" Value="0,0,0,2" />
+                <Setter Property="LineHeight" Value="22" />
+                <Setter Property="Margin" Value="0,0,0,4" />
             </Style>
 
             <Style x:Key="SectionHintStyle" TargetType="TextBlock">
@@ -59,6 +60,10 @@
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
             </Style>
 
+            <Style x:Key="SubtleActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+
             <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
                 <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
@@ -66,9 +71,45 @@
             </Style>
 
             <Style x:Key="SectionIconBadgeStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource AccentFillColorTertiaryBrush}" />
+                <Setter Property="Width" Value="30" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="Padding" Value="6" />
+                <Setter Property="Padding" Value="0" />
+            </Style>
+
+            <Style x:Key="SectionIconStyle" TargetType="SymbolIcon">
+                <Setter Property="Width" Value="18" />
+                <Setter Property="Height" Value="18" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+
+            <Style
+                x:Key="AccentSectionIconStyle"
+                BasedOn="{StaticResource SectionIconStyle}"
+                TargetType="SymbolIcon">
+                <Setter Property="Foreground" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+            </Style>
+
+            <Style x:Key="ToolbarLabelStyle" TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+
+            <Style x:Key="BetaBadgeStyle" TargetType="Border">
+                <Setter Property="Height" Value="22" />
+                <Setter Property="MinWidth" Value="40" />
+                <Setter Property="Padding" Value="8,2" />
+                <Setter Property="CornerRadius" Value="11" />
+                <Setter Property="Background" Value="{ThemeResource AccentFillColorTertiaryBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+                <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>
