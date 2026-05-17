@@ -445,17 +445,17 @@ public sealed partial class MainPage : Page
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
     {
-        if (sender == OfficeRadioButton)
+        if (ReferenceEquals(sender, OfficeRadioButton))
         {
             ResidenceRadioButton.IsChecked = false;
             HotelRadioButton.IsChecked = false;
         }
-        else if (sender == ResidenceRadioButton)
+        else if (ReferenceEquals(sender, ResidenceRadioButton))
         {
             OfficeRadioButton.IsChecked = false;
             HotelRadioButton.IsChecked = false;
         }
-        else if (sender == HotelRadioButton)
+        else if (ReferenceEquals(sender, HotelRadioButton))
         {
             OfficeRadioButton.IsChecked = false;
             ResidenceRadioButton.IsChecked = false;
@@ -487,15 +487,15 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        if (sender == OfficeRadioButton)
+        if (ReferenceEquals(sender, OfficeRadioButton))
         {
             OfficeRadioButton.IsChecked = true;
         }
-        else if (sender == ResidenceRadioButton)
+        else if (ReferenceEquals(sender, ResidenceRadioButton))
         {
             ResidenceRadioButton.IsChecked = true;
         }
-        else if (sender == HotelRadioButton)
+        else if (ReferenceEquals(sender, HotelRadioButton))
         {
             HotelRadioButton.IsChecked = true;
         }
