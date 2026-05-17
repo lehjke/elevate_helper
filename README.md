@@ -181,13 +181,13 @@ Manifest помогает понять, на каком шаге упал рас
 Portable zip:
 
 ```powershell
-.\scripts\build-release.ps1 -Tag v2.0.2-preview.11 -Runtime win-x64 -Configuration Release
+.\scripts\build-release.ps1 -Tag v2.0.3 -Runtime win-x64 -Configuration Release
 ```
 
 Installer:
 
 ```powershell
-.\scripts\build-installer.ps1 -Tag v2.0.2-preview.11 -Runtime win-x64 -Configuration Release
+.\scripts\build-installer.ps1 -Tag v2.0.3 -Runtime win-x64 -Configuration Release
 ```
 
 GitHub Actions release workflow собирает:

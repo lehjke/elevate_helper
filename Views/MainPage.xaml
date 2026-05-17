@@ -11,7 +11,7 @@
         Padding="20"
         Background="{ThemeResource IosPageBackgroundBrush}">
         <Grid
-            MaxWidth="1180"
+            MaxWidth="1040"
             HorizontalAlignment="Center"
             RowSpacing="14">
                 <Grid.RowDefinitions>
@@ -22,7 +22,9 @@
                 <Border
                     Grid.Row="0"
                     Style="{StaticResource ToolbarCardStyle}">
-                    <Grid ColumnSpacing="12">
+                    <Grid
+                        MinHeight="38"
+                        ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -50,13 +52,92 @@
                             Style="{StaticResource ToolbarLabelStyle}"
                             Text="{x:Bind Text.LanguageLabel, Mode=OneTime}" />
 
-                        <ComboBox
-                            x:Name="LanguageComboBox"
+                        <Button
+                            x:Name="LanguageFlyoutButton"
                             Grid.Column="3"
-                            DisplayMemberPath="DisplayName"
-                            HorizontalAlignment="Stretch"
-                            ItemsSource="{x:Bind LanguageOptions, Mode=OneTime}"
-                            SelectionChanged="OnLanguageComboBoxSelectionChanged" />
+                            Style="{StaticResource ToolbarLanguageButtonStyle}">
+                            <Button.Flyout>
+                                <Flyout
+                                    x:Name="LanguageFlyout"
+                                    FlyoutPresenterStyle="{StaticResource LanguageFlyoutPresenterStyle}"
+                                    Placement="BottomEdgeAlignedLeft">
+                                    <StackPanel MinWidth="158" Spacing="2">
+                                        <Button
+                                            x:Name="EnglishLanguageButton"
+                                            Click="OnLanguageFlyoutOptionClick"
+                                            Style="{StaticResource LanguageFlyoutItemButtonStyle}">
+                                            <Grid MinHeight="36">
+                                                <Border
+                                                    x:Name="EnglishLanguageSelectionBackground"
+                                                    Background="{ThemeResource IosAccentSoftBrush}"
+                                                    CornerRadius="8"
+                                                    Opacity="0" />
+                                                <Rectangle
+                                                    x:Name="EnglishLanguageSelectionPill"
+                                                    Width="3"
+                                                    Height="18"
+                                                    Margin="0,0,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Center"
+                                                    Fill="{ThemeResource IosAccentBrush}"
+                                                    Opacity="0"
+                                                    RadiusX="1.5"
+                                                    RadiusY="1.5" />
+                                                <TextBlock
+                                                    Margin="14,0,10,0"
+                                                    VerticalAlignment="Center"
+                                                    Text="English" />
+                                            </Grid>
+                                        </Button>
+
+                                        <Button
+                                            x:Name="RussianLanguageButton"
+                                            Click="OnLanguageFlyoutOptionClick"
+                                            Style="{StaticResource LanguageFlyoutItemButtonStyle}">
+                                            <Grid MinHeight="36">
+                                                <Border
+                                                    x:Name="RussianLanguageSelectionBackground"
+                                                    Background="{ThemeResource IosAccentSoftBrush}"
+                                                    CornerRadius="8"
+                                                    Opacity="0" />
+                                                <Rectangle
+                                                    x:Name="RussianLanguageSelectionPill"
+                                                    Width="3"
+                                                    Height="18"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Center"
+                                                    Fill="{ThemeResource IosAccentBrush}"
+                                                    Opacity="0"
+                                                    RadiusX="1.5"
+                                                    RadiusY="1.5" />
+                                                <TextBlock
+                                                    Margin="14,0,10,0"
+                                                    VerticalAlignment="Center"
+                                                    Text="Русский" />
+                                            </Grid>
+                                        </Button>
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock
+                                    x:Name="LanguageButtonText"
+                                    VerticalAlignment="Center"
+                                    Text="Русский" />
+                                <FontIcon
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    FontFamily="Segoe MDL2 Assets"
+                                    FontSize="10"
+                                    Glyph="&#xE70D;" />
+                            </Grid>
+                        </Button>
 
                         <StackPanel
                             Grid.Column="4"
@@ -76,52 +157,59 @@
                     </Grid>
                 </Border>
 
-                <Grid Grid.Row="1" ColumnSpacing="14">
+                <Grid
+                    Grid.Row="1"
+                    HorizontalAlignment="Center"
+                    ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="392" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="456" />
+                        <ColumnDefinition Width="456" />
                     </Grid.ColumnDefinitions>
 
-                    <ScrollViewer
+                    <Border
+                        x:Name="LeftColumnClipBorder"
                         Grid.Column="0"
-                        HorizontalScrollMode="Disabled"
-                        VerticalScrollBarVisibility="Auto">
-                        <StackPanel Spacing="10">
-                            <Border Style="{StaticResource SectionCardStyle}">
-                                <StackPanel Spacing="8">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Folder" />
-                                        </Border>
-                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.FolderTitle, Mode=OneTime}" />
+                        Style="{StaticResource ColumnClipStyle}">
+                        <ScrollViewer
+                            HorizontalScrollMode="Disabled"
+                            VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="10">
+                                <Border Style="{StaticResource SectionCardStyle}">
+                                    <StackPanel Spacing="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                                <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Folder" />
+                                            </Border>
+                                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.FolderTitle, Mode=OneTime}" />
+                                        </StackPanel>
+
+                                        <TextBlock
+                                            Style="{StaticResource SectionHintStyle}"
+                                            Text="{x:Bind Text.FolderHint, Mode=OneTime}" />
+
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBox
+                                                x:Name="PathTextBox"
+                                                Grid.Column="0"
+                                                Header="{x:Bind Text.WorkingFolderHeader, Mode=OneTime}"
+                                                PlaceholderText="{x:Bind Text.WorkingFolderPlaceholder, Mode=OneTime}"
+                                                Style="{StaticResource InputTextBoxStyle}"
+                                                TextChanged="OnEditorPathTextChanged" />
+
+                                            <Button
+                                                Grid.Column="1"
+                                                Margin="0,29,0,0"
+                                                Click="OnBrowseFolderButtonClick"
+                                                Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
+                                                Style="{StaticResource ActionButtonStyle}" />
+                                        </Grid>
                                     </StackPanel>
-
-                                    <TextBlock
-                                        Style="{StaticResource SectionHintStyle}"
-                                        Text="{x:Bind Text.FolderHint, Mode=OneTime}" />
-
-                                    <Grid ColumnSpacing="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <TextBox
-                                            x:Name="PathTextBox"
-                                            Grid.Column="0"
-                                            Header="{x:Bind Text.WorkingFolderHeader, Mode=OneTime}"
-                                            PlaceholderText="{x:Bind Text.WorkingFolderPlaceholder, Mode=OneTime}"
-                                            TextChanged="OnEditorPathTextChanged" />
-
-                                        <Button
-                                            Grid.Column="1"
-                                            Margin="0,29,0,0"
-                                            Click="OnBrowseFolderButtonClick"
-                                            Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
-                                            Style="{StaticResource ActionButtonStyle}" />
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
+                                </Border>
 
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel Spacing="8">
@@ -174,7 +262,7 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource AccentSectionIconStyle}" Symbol="Play" />
+                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Play" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ActionsTitle, Mode=OneTime}" />
                                     </StackPanel>
@@ -255,7 +343,7 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource AccentSectionIconStyle}" Symbol="Folder" />
+                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Folder" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ProjectBatchTitle, Mode=OneTime}" />
                                         <Border Style="{StaticResource BetaBadgeStyle}">
@@ -280,7 +368,8 @@
                                             x:Name="ProjectBatchPathTextBox"
                                             Grid.Column="0"
                                             Header="{x:Bind Text.ProjectBatchPathHeader, Mode=OneTime}"
-                                            PlaceholderText="{x:Bind Text.ProjectBatchPathPlaceholder, Mode=OneTime}" />
+                                            PlaceholderText="{x:Bind Text.ProjectBatchPathPlaceholder, Mode=OneTime}"
+                                            Style="{StaticResource InputTextBoxStyle}" />
 
                                         <Button
                                             Grid.Column="1"
@@ -290,27 +379,71 @@
                                             Style="{StaticResource ActionButtonStyle}" />
                                     </Grid>
 
-                                    <Grid ColumnSpacing="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="150" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock
+                                            FontWeight="SemiBold"
+                                            Text="{x:Bind Text.ProjectBatchParallelRunsHeader, Mode=OneTime}" />
 
-                                        <NumberBox
-                                            x:Name="ProjectBatchParallelRunsNumberBox"
-                                            Grid.Column="0"
-                                            Header="{x:Bind Text.ProjectBatchParallelRunsHeader, Mode=OneTime}"
-                                            Minimum="1"
-                                            SmallChange="1"
-                                            SpinButtonPlacementMode="Compact"
-                                            Value="4" />
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="150" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
 
-                                        <CheckBox
-                                            x:Name="ProjectBatchUnlimitedRunsCheckBox"
-                                            Grid.Column="1"
-                                            Margin="0,29,0,0"
-                                            Content="{x:Bind Text.ProjectBatchUnlimitedRuns, Mode=OneTime}" />
-                                    </Grid>
+                                            <NumberBox
+                                                x:Name="ProjectBatchParallelRunsNumberBox"
+                                                Grid.Column="0"
+                                                Minimum="1"
+                                                SmallChange="1"
+                                                SpinButtonPlacementMode="Compact"
+                                                Style="{StaticResource InputNumberBoxStyle}"
+                                                Value="4" />
+
+                                            <Grid
+                                                Grid.Column="1"
+                                                MinHeight="38"
+                                                VerticalAlignment="Center"
+                                                ColumnSpacing="8"
+                                                Tapped="OnProjectBatchUnlimitedRunsOptionTapped">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <CheckBox
+                                                    x:Name="ProjectBatchUnlimitedRunsCheckBox"
+                                                    Width="22"
+                                                    Height="22"
+                                                    MinWidth="22"
+                                                    MinHeight="22"
+                                                    Padding="0"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Center"
+                                                    AutomationProperties.Name="{x:Bind Text.ProjectBatchUnlimitedRuns, Mode=OneTime}"
+                                                    CornerRadius="11">
+                                                    <CheckBox.Resources>
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminate" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePointerOver" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePressed" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminate" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePointerOver" Color="#FF0A84FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePressed" Color="#FF0A84FF" />
+                                                    </CheckBox.Resources>
+                                                </CheckBox>
+
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    Text="{x:Bind Text.ProjectBatchUnlimitedRuns, Mode=OneTime}" />
+                                            </Grid>
+                                        </Grid>
+                                    </StackPanel>
 
                                     <Button
                                         Click="OnRunProjectBatchButtonClick"
@@ -326,7 +459,7 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource AccentSectionIconStyle}" Symbol="Edit" />
+                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Edit" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.EditorTitle, Mode=OneTime}" />
                                         <Border Style="{StaticResource BetaBadgeStyle}">
@@ -347,8 +480,9 @@
                                         Style="{StaticResource PrimaryActionButtonStyle}" />
                                 </StackPanel>
                             </Border>
-                        </StackPanel>
-                    </ScrollViewer>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
 
                     <Border
                         Grid.Column="1"
@@ -390,7 +524,7 @@
                                     Background="{ThemeResource IosSecondaryGroupedBrush}"
                                     BorderBrush="Transparent"
                                     BorderThickness="0"
-                                    CornerRadius="16"
+                                    CornerRadius="24"
                                     Padding="16">
                                     <StackPanel Spacing="4">
                                         <TextBlock
@@ -421,7 +555,7 @@
                                                     Background="{ThemeResource IosSecondaryGroupedBrush}"
                                                     BorderBrush="Transparent"
                                                     BorderThickness="1"
-                                                    CornerRadius="16"
+                                                    CornerRadius="22"
                                                     Padding="14">
                                                     <StackPanel Spacing="8">
                                                         <Grid ColumnSpacing="12">
