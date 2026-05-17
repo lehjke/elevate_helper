@@ -445,6 +445,22 @@ public sealed partial class MainPage : Page
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
     {
+        if (sender == OfficeRadioButton)
+        {
+            ResidenceRadioButton.IsChecked = false;
+            HotelRadioButton.IsChecked = false;
+        }
+        else if (sender == ResidenceRadioButton)
+        {
+            OfficeRadioButton.IsChecked = false;
+            HotelRadioButton.IsChecked = false;
+        }
+        else if (sender == HotelRadioButton)
+        {
+            OfficeRadioButton.IsChecked = false;
+            ResidenceRadioButton.IsChecked = false;
+        }
+
         BuildingType? selectedType = GetSelectedBuildingType();
         if (!selectedType.HasValue)
         {
@@ -460,6 +476,29 @@ public sealed partial class MainPage : Page
         }
 
         SetStatus(localizationService.FormatSelectedBuildingType(selectedType.Value), InfoBarSeverity.Informational);
+    }
+
+    private void OnBuildingTypeRadioButtonUnchecked(object sender, RoutedEventArgs e)
+    {
+        if (OfficeRadioButton.IsChecked == true
+            || ResidenceRadioButton.IsChecked == true
+            || HotelRadioButton.IsChecked == true)
+        {
+            return;
+        }
+
+        if (sender == OfficeRadioButton)
+        {
+            OfficeRadioButton.IsChecked = true;
+        }
+        else if (sender == ResidenceRadioButton)
+        {
+            ResidenceRadioButton.IsChecked = true;
+        }
+        else if (sender == HotelRadioButton)
+        {
+            HotelRadioButton.IsChecked = true;
+        }
     }
 
     private bool TryGetInputs(out string path, out BuildingType buildingType)
@@ -1381,7 +1420,7 @@ public sealed partial class MainPage : Page
 
     private void UpdateBetaFeatureVisibility()
     {
-        bool isVisible = BetaFeaturesCheckBox.IsChecked == true;
+        bool isVisible = BetaFeaturesCheckBox.IsOn;
         EditorWindowCard.Visibility = isVisible
             ? Visibility.Visible
             : Visibility.Collapsed;

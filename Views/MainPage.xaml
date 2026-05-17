@@ -9,7 +9,7 @@
     mc:Ignorable="d">
     <Grid
         Padding="20"
-        Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        Background="{ThemeResource IosPageBackgroundBrush}">
         <Grid
             MaxWidth="1180"
             HorizontalAlignment="Center"
@@ -19,55 +19,62 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Grid
+                <Border
                     Grid.Row="0"
-                    MinHeight="44"
-                    ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="170" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                    Style="{StaticResource ToolbarCardStyle}">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                    <Image
-                        Grid.Column="0"
-                        Width="28"
-                        Height="28"
-                        VerticalAlignment="Center"
-                        Source="ms-appx:///Assets/AppIcon.png" />
+                        <Image
+                            Grid.Column="0"
+                            Width="28"
+                            Height="28"
+                            VerticalAlignment="Center"
+                            Source="ms-appx:///Assets/AppIcon.png" />
 
-                    <TextBlock
-                        Grid.Column="1"
-                        VerticalAlignment="Center"
-                        FontSize="18"
-                        FontWeight="SemiBold"
-                        Text="{x:Bind Text.AppTitle, Mode=OneTime}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontSize="19"
+                            FontWeight="SemiBold"
+                            Text="{x:Bind Text.AppTitle, Mode=OneTime}" />
 
-                    <TextBlock
-                        Grid.Column="2"
-                        Style="{StaticResource ToolbarLabelStyle}"
-                        Text="{x:Bind Text.LanguageLabel, Mode=OneTime}" />
+                        <TextBlock
+                            Grid.Column="2"
+                            Style="{StaticResource ToolbarLabelStyle}"
+                            Text="{x:Bind Text.LanguageLabel, Mode=OneTime}" />
 
-                    <ComboBox
-                        x:Name="LanguageComboBox"
-                        Grid.Column="3"
-                        DisplayMemberPath="DisplayName"
-                        HorizontalAlignment="Stretch"
-                        ItemsSource="{x:Bind LanguageOptions, Mode=OneTime}"
-                        SelectionChanged="OnLanguageComboBoxSelectionChanged" />
+                        <ComboBox
+                            x:Name="LanguageComboBox"
+                            Grid.Column="3"
+                            DisplayMemberPath="DisplayName"
+                            HorizontalAlignment="Stretch"
+                            ItemsSource="{x:Bind LanguageOptions, Mode=OneTime}"
+                            SelectionChanged="OnLanguageComboBoxSelectionChanged" />
 
-                    <CheckBox
-                        x:Name="BetaFeaturesCheckBox"
-                        Grid.Column="4"
-                        Margin="4,0,0,0"
-                        VerticalAlignment="Center"
-                        Checked="OnBetaFeaturesCheckBoxChanged"
-                        Content="BETA"
-                        FontWeight="SemiBold"
-                        Unchecked="OnBetaFeaturesCheckBoxChanged" />
-                </Grid>
+                        <StackPanel
+                            Grid.Column="4"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Center">
+                            <TextBlock
+                                Style="{StaticResource ToolbarLabelStyle}"
+                                Text="BETA" />
+                            <ToggleSwitch
+                                x:Name="BetaFeaturesCheckBox"
+                                MinWidth="52"
+                                OffContent=""
+                                OnContent=""
+                                Toggled="OnBetaFeaturesCheckBoxChanged" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
                 <Grid Grid.Row="1" ColumnSpacing="14">
                     <Grid.ColumnDefinitions>
@@ -129,26 +136,37 @@
                                         Style="{StaticResource SectionHintStyle}"
                                         Text="{x:Bind Text.BuildingTypeHint, Mode=OneTime}" />
 
-                                    <StackPanel Spacing="2">
-                                        <RadioButton
-                                            x:Name="OfficeRadioButton"
-                                            Checked="OnBuildingTypeRadioButtonChecked"
-                                            Content="{x:Bind Text.BuildingTypeOffice, Mode=OneTime}"
-                                            FontWeight="SemiBold"
-                                            GroupName="BuildingTypeGroup" />
-                                        <RadioButton
-                                            x:Name="ResidenceRadioButton"
-                                            Checked="OnBuildingTypeRadioButtonChecked"
-                                            Content="{x:Bind Text.BuildingTypeResidence, Mode=OneTime}"
-                                            FontWeight="SemiBold"
-                                            GroupName="BuildingTypeGroup" />
-                                        <RadioButton
-                                            x:Name="HotelRadioButton"
-                                            Checked="OnBuildingTypeRadioButtonChecked"
-                                            Content="{x:Bind Text.BuildingTypeHotel, Mode=OneTime}"
-                                            FontWeight="SemiBold"
-                                            GroupName="BuildingTypeGroup" />
-                                    </StackPanel>
+                                    <Border Style="{StaticResource SegmentedContainerStyle}">
+                                        <Grid ColumnSpacing="3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <ToggleButton
+                                                x:Name="OfficeRadioButton"
+                                                Grid.Column="0"
+                                                Checked="OnBuildingTypeRadioButtonChecked"
+                                                Content="{x:Bind Text.BuildingTypeOffice, Mode=OneTime}"
+                                                Style="{StaticResource SegmentedButtonStyle}"
+                                                Unchecked="OnBuildingTypeRadioButtonUnchecked" />
+                                            <ToggleButton
+                                                x:Name="ResidenceRadioButton"
+                                                Grid.Column="1"
+                                                Checked="OnBuildingTypeRadioButtonChecked"
+                                                Content="{x:Bind Text.BuildingTypeResidence, Mode=OneTime}"
+                                                Style="{StaticResource SegmentedButtonStyle}"
+                                                Unchecked="OnBuildingTypeRadioButtonUnchecked" />
+                                            <ToggleButton
+                                                x:Name="HotelRadioButton"
+                                                Grid.Column="2"
+                                                Checked="OnBuildingTypeRadioButtonChecked"
+                                                Content="{x:Bind Text.BuildingTypeHotel, Mode=OneTime}"
+                                                Style="{StaticResource SegmentedButtonStyle}"
+                                                Unchecked="OnBuildingTypeRadioButtonUnchecked" />
+                                        </Grid>
+                                    </Border>
                                 </StackPanel>
                             </Border>
 
@@ -369,11 +387,11 @@
                                     x:Name="EmptyQueueBorder"
                                     MinHeight="104"
                                     VerticalAlignment="Top"
-                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="14">
+                                    Background="{ThemeResource IosSecondaryGroupedBrush}"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="16"
+                                    Padding="16">
                                     <StackPanel Spacing="4">
                                         <TextBlock
                                             FontSize="14"
@@ -400,11 +418,11 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <Border
-                                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    Background="{ThemeResource IosSecondaryGroupedBrush}"
+                                                    BorderBrush="Transparent"
                                                     BorderThickness="1"
-                                                    CornerRadius="8"
-                                                    Padding="12">
+                                                    CornerRadius="16"
+                                                    Padding="14">
                                                     <StackPanel Spacing="8">
                                                         <Grid ColumnSpacing="12">
                                                             <Grid.ColumnDefinitions>

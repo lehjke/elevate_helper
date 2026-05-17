@@ -12,6 +12,27 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="IosPageBackgroundBrush" Color="#F2F2F7" />
+                    <SolidColorBrush x:Key="IosGroupedCardBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="IosGroupedCardStrokeBrush" Color="#1F000000" />
+                    <SolidColorBrush x:Key="IosSecondaryGroupedBrush" Color="#E9E9EF" />
+                    <SolidColorBrush x:Key="IosAccentBrush" Color="#FF007AFF" />
+                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="#1F007AFF" />
+                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="#FF6B7280" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="IosPageBackgroundBrush" Color="#FF1C1C1E" />
+                    <SolidColorBrush x:Key="IosGroupedCardBrush" Color="#FF2C2C2E" />
+                    <SolidColorBrush x:Key="IosGroupedCardStrokeBrush" Color="#2EFFFFFF" />
+                    <SolidColorBrush x:Key="IosSecondaryGroupedBrush" Color="#FF3A3A3C" />
+                    <SolidColorBrush x:Key="IosAccentBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="#330A84FF" />
+                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="#FFAEAEB2" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
             <Style x:Key="HeroTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe UI Variable Display" />
                 <Setter Property="FontSize" Value="22" />
@@ -21,53 +42,57 @@
             </Style>
 
             <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="18" />
+                <Setter Property="FontSize" Value="17" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="LineHeight" Value="22" />
-                <Setter Property="Margin" Value="0,0,0,4" />
+                <Setter Property="Margin" Value="0,0,0,2" />
             </Style>
 
             <Style x:Key="SectionHintStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="13" />
                 <Setter Property="LineHeight" Value="18" />
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
             </Style>
 
             <Style x:Key="SectionCardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosGroupedCardBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="8" />
-                <Setter Property="Padding" Value="12" />
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="Padding" Value="18" />
             </Style>
 
             <Style x:Key="HeroCardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosGroupedCardBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="8" />
-                <Setter Property="Padding" Value="14" />
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="Padding" Value="18" />
             </Style>
 
             <Style x:Key="ActionButtonStyle" TargetType="Button">
-                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="MinHeight" Value="42" />
                 <Setter Property="MinWidth" Value="0" />
-                <Setter Property="Padding" Value="12,7" />
-                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Padding" Value="16,9" />
+                <Setter Property="CornerRadius" Value="21" />
+                <Setter Property="Background" Value="{ThemeResource IosSecondaryGroupedBrush}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Foreground" Value="{ThemeResource IosAccentBrush}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
             </Style>
 
             <Style x:Key="SubtleActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
             </Style>
 
             <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
-                <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosAccentBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosAccentBrush}" />
+                <Setter Property="Foreground" Value="White" />
             </Style>
 
             <Style x:Key="SectionIconBadgeStyle" TargetType="Border">
@@ -85,21 +110,29 @@
                 <Setter Property="Height" Value="18" />
                 <Setter Property="HorizontalAlignment" Value="Center" />
                 <Setter Property="VerticalAlignment" Value="Center" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
             </Style>
 
             <Style
                 x:Key="AccentSectionIconStyle"
                 BasedOn="{StaticResource SectionIconStyle}"
                 TargetType="SymbolIcon">
-                <Setter Property="Foreground" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource IosAccentBrush}" />
             </Style>
 
             <Style x:Key="ToolbarLabelStyle" TargetType="TextBlock">
                 <Setter Property="VerticalAlignment" Value="Center" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+
+            <Style x:Key="ToolbarCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource IosGroupedCardBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="Padding" Value="14,10" />
             </Style>
 
             <Style x:Key="BetaBadgeStyle" TargetType="Border">
@@ -107,9 +140,27 @@
                 <Setter Property="MinWidth" Value="40" />
                 <Setter Property="Padding" Value="8,2" />
                 <Setter Property="CornerRadius" Value="11" />
-                <Setter Property="Background" Value="{ThemeResource AccentFillColorTertiaryBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosAccentSoftBrush}" />
                 <Setter Property="HorizontalAlignment" Value="Left" />
                 <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="SegmentedContainerStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource IosSecondaryGroupedBrush}" />
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="Padding" Value="3" />
+            </Style>
+
+            <Style x:Key="SegmentedButtonStyle" TargetType="ToggleButton">
+                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="12,6" />
+                <Setter Property="CornerRadius" Value="15" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>
