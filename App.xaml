@@ -12,63 +12,476 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="IosPageBackgroundBrush" Color="#FFF5F5F7" />
+                    <SolidColorBrush x:Key="IosGroupedCardBrush" Color="#FAFFFFFF" />
+                    <SolidColorBrush x:Key="IosGroupedCardStrokeBrush" Color="#18000000" />
+                    <SolidColorBrush x:Key="IosSecondaryGroupedBrush" Color="#FFE9E9EB" />
+                    <SolidColorBrush x:Key="IosAccentBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="#FF6E6E73" />
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E60A84FF" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#CC0A84FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#E60A84FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#CC0A84FF" />
+                    <SolidColorBrush x:Key="MacSelectedControlBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FAFFFFFF" />
+                    <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#18000000" />
+                    <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedUnfocused" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="Transparent" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="IosPageBackgroundBrush" Color="#FF1E1E1F" />
+                    <SolidColorBrush x:Key="IosGroupedCardBrush" Color="#F52B2B2D" />
+                    <SolidColorBrush x:Key="IosGroupedCardStrokeBrush" Color="#24FFFFFF" />
+                    <SolidColorBrush x:Key="IosSecondaryGroupedBrush" Color="#FF3A3A3C" />
+                    <SolidColorBrush x:Key="IosAccentBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="#FFAEAEB2" />
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E60A84FF" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#CC0A84FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#E60A84FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#CC0A84FF" />
+                    <SolidColorBrush x:Key="MacSelectedControlBrush" Color="#FF5A5A5E" />
+                    <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FF2B2B2D" />
+                    <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#24FFFFFF" />
+                    <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedUnfocused" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#FF5A5A5E" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FF626266" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#FF505054" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="Transparent" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="#FF0A84FF" />
+            <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
+            <CornerRadius x:Key="OverlayCornerRadius">12</CornerRadius>
+            <CornerRadius x:Key="ComboBoxItemCornerRadius">8</CornerRadius>
+            <Thickness x:Key="ComboBoxDropdownContentMargin">6</Thickness>
+
             <Style x:Key="HeroTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe UI Variable Display" />
-                <Setter Property="FontSize" Value="34" />
+                <Setter Property="FontSize" Value="22" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="LineHeight" Value="38" />
+                <Setter Property="LineHeight" Value="26" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
             <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="18" />
+                <Setter Property="FontSize" Value="17" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Margin" Value="0,0,0,6" />
+                <Setter Property="LineHeight" Value="22" />
+                <Setter Property="Margin" Value="0,0,0,2" />
             </Style>
 
             <Style x:Key="SectionHintStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="13" />
                 <Setter Property="LineHeight" Value="18" />
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
             </Style>
 
             <Style x:Key="SectionCardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosGroupedCardBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="20" />
-                <Setter Property="Padding" Value="18" />
+                <Setter Property="CornerRadius" Value="24" />
+                <Setter Property="Padding" Value="16" />
+            </Style>
+
+            <Style x:Key="ColumnClipStyle" TargetType="Border">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="24" />
+                <Setter Property="Padding" Value="0" />
             </Style>
 
             <Style x:Key="HeroCardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosGroupedCardBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="24" />
-                <Setter Property="Padding" Value="20" />
+                <Setter Property="Padding" Value="16" />
             </Style>
 
             <Style x:Key="ActionButtonStyle" TargetType="Button">
-                <Setter Property="MinHeight" Value="40" />
+                <Setter Property="MinHeight" Value="38" />
                 <Setter Property="MinWidth" Value="0" />
-                <Setter Property="Padding" Value="14,10" />
-                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="14,8" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Background" Value="{ThemeResource IosSecondaryGroupedBrush}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Foreground" Value="{ThemeResource IosAccentBrush}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
             </Style>
 
+            <Style x:Key="SubtleActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
+            </Style>
+
             <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
-                <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosAccentBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosAccentBrush}" />
+                <Setter Property="Foreground" Value="White" />
             </Style>
 
             <Style x:Key="SectionIconBadgeStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource AccentFillColorTertiaryBrush}" />
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="SectionIconStyle" TargetType="SymbolIcon">
+                <Setter Property="Width" Value="20" />
+                <Setter Property="Height" Value="20" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
+            </Style>
+
+            <Style
+                x:Key="AccentSectionIconStyle"
+                BasedOn="{StaticResource SectionIconStyle}"
+                TargetType="SymbolIcon">
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
+            </Style>
+
+            <Style x:Key="ToolbarLabelStyle" TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+
+            <Style x:Key="ToolbarCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource IosGroupedCardBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="20" />
+                <Setter Property="Padding" Value="12" />
+            </Style>
+
+            <Style x:Key="BetaBadgeStyle" TargetType="Border">
+                <Setter Property="Height" Value="22" />
+                <Setter Property="MinWidth" Value="40" />
+                <Setter Property="Padding" Value="8,2" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Background" Value="{ThemeResource IosAccentSoftBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="SegmentedContainerStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource IosSecondaryGroupedBrush}" />
+                <Setter Property="CornerRadius" Value="11" />
+                <Setter Property="Padding" Value="3" />
+            </Style>
+
+            <Style x:Key="SegmentedButtonStyle" TargetType="ToggleButton">
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="12,6" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border
+                                x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorTertiaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Checked">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource MacSelectedControlBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedPointerOver">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource MacSelectedControlBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedPressed">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource MacSelectedControlBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedDisabled">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource MacSelectedControlBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <ContentPresenter
+                                    x:Name="ContentPresenter"
+                                    Padding="{TemplateBinding Padding}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    ContentTransitions="{TemplateBinding ContentTransitions}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style
+                x:Key="LanguageComboBoxItemStyle"
+                BasedOn="{StaticResource DefaultComboBoxItemStyle}"
+                TargetType="ComboBoxItem">
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="Padding" Value="11,7,11,7" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="ToolbarComboBoxStyle" TargetType="ComboBox">
+                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+            </Style>
+
+            <Style x:Key="ToolbarLanguageButtonStyle" TargetType="Button">
+                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="MinWidth" Value="170" />
+                <Setter Property="Padding" Value="14,0,10,0" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Background" Value="{ThemeResource ControlFillColorTertiaryBrush}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border
+                                x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorTertiaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <ContentPresenter
+                                    x:Name="ContentPresenter"
+                                    Padding="{TemplateBinding Padding}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    ContentTransitions="{TemplateBinding ContentTransitions}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="LanguageFlyoutPresenterStyle" TargetType="FlyoutPresenter">
+                <Setter Property="MinWidth" Value="170" />
+                <Setter Property="Padding" Value="6" />
                 <Setter Property="CornerRadius" Value="12" />
-                <Setter Property="Padding" Value="8" />
+                <Setter Property="Background" Value="{ThemeResource ComboBoxDropDownBackground}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ComboBoxDropDownBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+            </Style>
+
+            <Style x:Key="LanguageFlyoutItemButtonStyle" TargetType="Button">
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border
+                                x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorTertiaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <ContentPresenter
+                                    Padding="{TemplateBinding Padding}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    ContentTransitions="{TemplateBinding ContentTransitions}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="InputTextBoxStyle" TargetType="TextBox">
+                <Setter Property="MinHeight" Value="38" />
+                <Setter Property="CornerRadius" Value="8" />
+            </Style>
+
+            <Style x:Key="InputNumberBoxStyle" TargetType="NumberBox">
+                <Setter Property="MinHeight" Value="38" />
+                <Setter Property="CornerRadius" Value="8" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>

@@ -1,9 +1,13 @@
 ﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Numerics;
 using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -11,6 +15,7 @@ namespace ElevateHelperWinUI.Views;
 
 public sealed partial class MainPage : Page
 {
+    private const float LeftColumnClipRadius = 24f;
     private readonly AppLocalizationService localizationService = AppLocalizationService.Instance;
     private readonly IElevateProjectEditorService projectEditorService = new ElevateProjectEditorService();
     private readonly IElevateIntegrationService integrationService = new ElevateIntegrationService();
@@ -33,7 +38,7 @@ public sealed partial class MainPage : Page
         this.InitializeComponent();
         localizationService.LanguageChanged += OnLanguageChanged;
 
-        LanguageComboBox.SelectedItem = LanguageOptions.First(option => option.Language == localizationService.CurrentLanguage);
+        UpdateLanguageSelector();
         OfficeRadioButton.IsChecked = true;
 
         if (App.MainWindow is not null)
@@ -45,6 +50,9 @@ public sealed partial class MainPage : Page
         UpdateModeButtons(BuildingType.Office);
         RefreshIntegrationStatus(showStatusMessage: true);
         RefreshJobsSummary();
+
+        LeftColumnClipBorder.SizeChanged += OnLeftColumnClipBorderSizeChanged;
+        ApplyLeftColumnClip();
     }
 
     public ObservableCollection<JobProgressViewModel> Jobs => jobs;
@@ -60,6 +68,35 @@ public sealed partial class MainPage : Page
     ];
 
     public AppLocalizationService.AppTextCatalog Text => localizationService.CurrentText;
+
+    private void OnLeftColumnClipBorderSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyLeftColumnClip(e.NewSize.Width, e.NewSize.Height);
+    }
+
+    private void ApplyLeftColumnClip()
+    {
+        ApplyLeftColumnClip(LeftColumnClipBorder.ActualWidth, LeftColumnClipBorder.ActualHeight);
+    }
+
+    private void ApplyLeftColumnClip(double width, double height)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(LeftColumnClipBorder);
+        if (width <= 0 || height <= 0)
+        {
+            visual.Clip = null;
+            return;
+        }
+
+        float radiusValue = Math.Min(LeftColumnClipRadius, (float)Math.Min(width, height) / 2f);
+        Vector2 radius = new(radiusValue, radiusValue);
+        Vector2 size = new((float)width, (float)height);
+        var geometry = visual.Compositor.CreateRoundedRectangleGeometry();
+
+        geometry.Size = size;
+        geometry.CornerRadius = radius;
+        visual.Clip = visual.Compositor.CreateGeometricClip(geometry);
+    }
 
     private void OnRunButtonClick(object sender, RoutedEventArgs e)
     {
@@ -163,6 +200,30 @@ public sealed partial class MainPage : Page
         {
             ProjectBatchPathTextBox.Text = folderPath;
         }
+    }
+
+    private void OnProjectBatchUnlimitedRunsOptionTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source &&
+            IsDescendantOf(source, ProjectBatchUnlimitedRunsCheckBox))
+        {
+            return;
+        }
+
+        ProjectBatchUnlimitedRunsCheckBox.IsChecked = ProjectBatchUnlimitedRunsCheckBox.IsChecked != true;
+    }
+
+    private static bool IsDescendantOf(DependencyObject source, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static async Task<string?> PickFolderPathAsync()
@@ -428,14 +489,30 @@ public sealed partial class MainPage : Page
         }
     }
 
-    private void OnLanguageComboBoxSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnLanguageFlyoutOptionClick(object sender, RoutedEventArgs e)
     {
-        if (LanguageComboBox.SelectedItem is not LanguageOption option)
+        AppLanguage language = ReferenceEquals(sender, EnglishLanguageButton)
+            ? AppLanguage.English
+            : AppLanguage.Russian;
+
+        if (localizationService.CurrentLanguage != language)
         {
-            return;
+            localizationService.SetLanguage(language);
         }
 
-        localizationService.SetLanguage(option.Language);
+        LanguageFlyout.Hide();
+    }
+
+    private void UpdateLanguageSelector()
+    {
+        LanguageOption selectedOption = LanguageOptions.First(option => option.Language == localizationService.CurrentLanguage);
+        LanguageButtonText.Text = selectedOption.DisplayName;
+
+        bool isEnglish = selectedOption.Language == AppLanguage.English;
+        EnglishLanguageSelectionBackground.Opacity = isEnglish ? 1 : 0;
+        EnglishLanguageSelectionPill.Opacity = isEnglish ? 1 : 0;
+        RussianLanguageSelectionBackground.Opacity = isEnglish ? 0 : 1;
+        RussianLanguageSelectionPill.Opacity = isEnglish ? 0 : 1;
     }
 
     private void OnBetaFeaturesCheckBoxChanged(object sender, RoutedEventArgs e)
@@ -445,6 +522,22 @@ public sealed partial class MainPage : Page
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
     {
+        if (ReferenceEquals(sender, OfficeRadioButton))
+        {
+            ResidenceRadioButton.IsChecked = false;
+            HotelRadioButton.IsChecked = false;
+        }
+        else if (ReferenceEquals(sender, ResidenceRadioButton))
+        {
+            OfficeRadioButton.IsChecked = false;
+            HotelRadioButton.IsChecked = false;
+        }
+        else if (ReferenceEquals(sender, HotelRadioButton))
+        {
+            OfficeRadioButton.IsChecked = false;
+            ResidenceRadioButton.IsChecked = false;
+        }
+
         BuildingType? selectedType = GetSelectedBuildingType();
         if (!selectedType.HasValue)
         {
@@ -460,6 +553,29 @@ public sealed partial class MainPage : Page
         }
 
         SetStatus(localizationService.FormatSelectedBuildingType(selectedType.Value), InfoBarSeverity.Informational);
+    }
+
+    private void OnBuildingTypeRadioButtonUnchecked(object sender, RoutedEventArgs e)
+    {
+        if (OfficeRadioButton.IsChecked == true
+            || ResidenceRadioButton.IsChecked == true
+            || HotelRadioButton.IsChecked == true)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(sender, OfficeRadioButton))
+        {
+            OfficeRadioButton.IsChecked = true;
+        }
+        else if (ReferenceEquals(sender, ResidenceRadioButton))
+        {
+            ResidenceRadioButton.IsChecked = true;
+        }
+        else if (ReferenceEquals(sender, HotelRadioButton))
+        {
+            HotelRadioButton.IsChecked = true;
+        }
     }
 
     private bool TryGetInputs(out string path, out BuildingType buildingType)
@@ -1381,7 +1497,7 @@ public sealed partial class MainPage : Page
 
     private void UpdateBetaFeatureVisibility()
     {
-        bool isVisible = BetaFeaturesCheckBox.IsChecked == true;
+        bool isVisible = BetaFeaturesCheckBox.IsOn;
         EditorWindowCard.Visibility = isVisible
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1532,7 +1648,7 @@ public sealed partial class MainPage : Page
             row.ApplyLocalization(localizationService);
         }
 
-        LanguageComboBox.SelectedItem = LanguageOptions.First(option => option.Language == localizationService.CurrentLanguage);
+        UpdateLanguageSelector();
 
         if (App.MainWindow is not null)
         {

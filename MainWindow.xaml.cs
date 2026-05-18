@@ -6,8 +6,9 @@ namespace ElevateHelperWinUI;
 
 public sealed partial class MainWindow : Window
 {
-    private const int DefaultWidth = 475;
-    private const int DefaultHeight = 760;
+    private const int PreferredWidth = 1080;
+    private const int PreferredHeight = 900;
+    private const int WorkAreaMargin = 80;
 
     public MainWindow()
     {
@@ -35,15 +36,18 @@ public sealed partial class MainWindow : Window
 
     private void ConfigureWindowSize()
     {
-        AppWindow.Resize(new SizeInt32(DefaultWidth, DefaultHeight));
-
         DisplayArea displayArea = DisplayArea.GetFromWindowId(
             AppWindow.Id,
             DisplayAreaFallback.Primary);
         RectInt32 workArea = displayArea.WorkArea;
 
-        int x = workArea.X + Math.Max(0, (workArea.Width - DefaultWidth) / 2);
-        int y = workArea.Y + Math.Max(0, (workArea.Height - DefaultHeight) / 2);
+        int width = Math.Min(PreferredWidth, Math.Max(1, workArea.Width - WorkAreaMargin));
+        int height = Math.Min(PreferredHeight, Math.Max(1, workArea.Height - WorkAreaMargin));
+
+        AppWindow.Resize(new SizeInt32(width, height));
+
+        int x = workArea.X + Math.Max(0, (workArea.Width - width) / 2);
+        int y = workArea.Y + Math.Max(0, (workArea.Height - height) / 2);
         AppWindow.Move(new PointInt32(x, y));
     }
 }
