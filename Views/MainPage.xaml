@@ -612,9 +612,9 @@
                                                                         </Grid>
 
                                                                         <ProgressBar
-                                                                            Height="5"
                                                                             IsIndeterminate="{Binding IsIndeterminate}"
                                                                             Maximum="{Binding Maximum}"
+                                                                            Style="{StaticResource ScenarioProgressBarStyle}"
                                                                             Value="{Binding Value}" />
                                                                     </StackPanel>
                                                                 </DataTemplate>
