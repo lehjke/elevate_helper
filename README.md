@@ -8,6 +8,10 @@ Desktop-приложение для автоматизации работы с P
 - генерация Excel/PDF-отчетов по шаблонам из `.example`;
 - базовое редактирование `.elvx` проектов в BETA-редакторе.
 
+## Инструкция пользователя
+
+Подробная инструкция по работе с приложением находится в [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+
 ## Что умеет
 
 - Автоматически создает расчетные копии `.elvx` и меняет XML-параметры:
@@ -28,6 +32,8 @@ Desktop-приложение для автоматизации работы с P
   - `.elevate-helper-runs/*.json` — история запусков;
   - внутри сохраняются шаги workflow, статус, ошибка и найденные артефакты.
 - Поддерживает retry упавших задач из карточки задания.
+- Поддерживает досрочную остановку активной задачи без перевода ее в ошибку.
+- Позволяет убрать из очереди завершенные, остановленные и ошибочные карточки.
 - Показывает BETA-функции только после включения галочки `BETA`: встроенный редактор и пакетный запуск проекта.
 
 ## Архитектура
@@ -181,13 +187,13 @@ Manifest помогает понять, на каком шаге упал рас
 Portable zip:
 
 ```powershell
-.\scripts\build-release.ps1 -Tag v2.0.3 -Runtime win-x64 -Configuration Release
+.\scripts\build-release.ps1 -Tag v2.0.4 -Runtime win-x64 -Configuration Release
 ```
 
 Installer:
 
 ```powershell
-.\scripts\build-installer.ps1 -Tag v2.0.3 -Runtime win-x64 -Configuration Release
+.\scripts\build-installer.ps1 -Tag v2.0.4 -Runtime win-x64 -Configuration Release
 ```
 
 GitHub Actions release workflow собирает:
