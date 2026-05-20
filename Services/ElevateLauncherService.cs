@@ -21,6 +21,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static readonly TimeSpan DialogCloseTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan BatchStartTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CompletedOutputsSettleDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ProcessStopGracePeriod = TimeSpan.FromSeconds(8);
 
     private readonly IElevateIntegrationService integrationService;
 
@@ -111,46 +112,53 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         Process? process = null;
         ResultFileBaseline? resultBaseline = null;
         bool submissionLockAcquired = false;
+        CancellationTokenRegistration stopRegistration = default;
+        ProcessStopRequest? stopRequest = null;
 
         try
         {
-            await BatchSubmissionLock.WaitAsync(cancellationToken);
-            submissionLockAcquired = true;
-
-            process = Process.Start(new ProcessStartInfo
-            {
-                FileName = integrationInfo.ExecutablePath,
-                UseShellExecute = true,
-            });
-
-            if (process is null)
-            {
-                throw new InvalidOperationException("Unable to start Elevate.exe.");
-            }
-
             try
             {
-                _ = process.WaitForInputIdle(5000);
+                await BatchSubmissionLock.WaitAsync(cancellationToken);
+                submissionLockAcquired = true;
+
+                process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = integrationInfo.ExecutablePath,
+                    UseShellExecute = true,
+                });
+
+                if (process is null)
+                {
+                    throw new InvalidOperationException("Unable to start Elevate.exe.");
+                }
+
+                stopRequest = new ProcessStopRequest(process);
+                stopRegistration = cancellationToken.Register(
+                    static state => ((ProcessStopRequest)state!).Start(),
+                    stopRequest);
+
+                try
+                {
+                    _ = process.WaitForInputIdle(5000);
+                }
+                catch
+                {
+                    // Some startup modes do not support WaitForInputIdle.
+                }
+
+                await Task.Delay(StartupDelay, cancellationToken);
+                resultBaseline = CaptureResultFileBaseline(path);
+                await SubmitBatchFolderAsync(process, path, progressContext, resultBaseline, cancellationToken);
             }
-            catch
+            finally
             {
-                // Some startup modes do not support WaitForInputIdle.
+                if (submissionLockAcquired)
+                {
+                    _ = BatchSubmissionLock.Release();
+                }
             }
 
-            await Task.Delay(StartupDelay, cancellationToken);
-            resultBaseline = CaptureResultFileBaseline(path);
-            await SubmitBatchFolderAsync(process, path, progressContext, resultBaseline, cancellationToken);
-        }
-        finally
-        {
-            if (submissionLockAcquired)
-            {
-                _ = BatchSubmissionLock.Release();
-            }
-        }
-
-        try
-        {
             await MonitorProgressAsync(
                 process,
                 path,
@@ -161,7 +169,82 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
         finally
         {
-            process.Dispose();
+            stopRegistration.Dispose();
+            if (stopRequest?.PendingTask is { } pendingStopTask)
+            {
+                await pendingStopTask;
+            }
+
+            process?.Dispose();
+        }
+    }
+
+    private static void RequestProcessStop(Process? process)
+    {
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            process.Refresh();
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            bool closeRequested = process.CloseMainWindow();
+            if (closeRequested && process.WaitForExit(ProcessStopGracePeriod))
+            {
+                return;
+            }
+
+            process.Refresh();
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+        catch (NotSupportedException)
+        {
+        }
+    }
+
+    private sealed class ProcessStopRequest
+    {
+        private readonly object syncRoot = new();
+        private readonly Process process;
+        private Task? stopTask;
+
+        public ProcessStopRequest(Process process)
+        {
+            this.process = process;
+        }
+
+        public Task? PendingTask
+        {
+            get
+            {
+                lock (syncRoot)
+                {
+                    return stopTask;
+                }
+            }
+        }
+
+        public void Start()
+        {
+            lock (syncRoot)
+            {
+                stopTask ??= Task.Run(() => RequestProcessStop(process));
+            }
         }
     }
 

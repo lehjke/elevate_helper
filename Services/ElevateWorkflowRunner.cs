@@ -31,6 +31,10 @@ internal sealed class ElevateWorkflowRunner
             {
                 stepResult = await workflowStep.ExecuteAsync(cancellationToken);
             }
+            catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+            {
+                return StopRun(manifest, manifestStep, "Run was stopped early.", ex);
+            }
             catch (Exception ex)
             {
                 string message = workflowStep.FormatException(ex);
@@ -62,6 +66,17 @@ internal sealed class ElevateWorkflowRunner
     {
         manifestService.FailStep(manifest, failedStep, message);
         manifestService.Fail(manifest, message);
+        return ProcessingResult.Fail(message, exception);
+    }
+
+    private ProcessingResult StopRun(
+        ElevateRunManifest manifest,
+        ElevateRunManifestStep stoppedStep,
+        string message,
+        Exception? exception = null)
+    {
+        manifestService.StopStep(manifest, stoppedStep, message);
+        manifestService.Stop(manifest, message);
         return ProcessingResult.Fail(message, exception);
     }
 }

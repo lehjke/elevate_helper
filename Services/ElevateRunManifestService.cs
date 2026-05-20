@@ -63,6 +63,14 @@ internal sealed class ElevateRunManifestService
         Save(manifest);
     }
 
+    public void StopStep(ElevateRunManifest manifest, ElevateRunManifestStep step, string message)
+    {
+        step.Status = ElevateRunManifestStatus.Stopped;
+        step.CompletedAtUtc = DateTimeOffset.UtcNow;
+        step.ErrorMessage = message;
+        Save(manifest);
+    }
+
     public void SetArtifacts(ElevateRunManifest manifest, IEnumerable<ElevateRunManifestArtifact> artifacts)
     {
         manifest.Artifacts = artifacts
@@ -83,6 +91,14 @@ internal sealed class ElevateRunManifestService
     public void Fail(ElevateRunManifest manifest, string message)
     {
         manifest.Status = ElevateRunManifestStatus.Failed;
+        manifest.CompletedAtUtc = DateTimeOffset.UtcNow;
+        manifest.ErrorMessage = message;
+        Save(manifest);
+    }
+
+    public void Stop(ElevateRunManifest manifest, string message)
+    {
+        manifest.Status = ElevateRunManifestStatus.Stopped;
         manifest.CompletedAtUtc = DateTimeOffset.UtcNow;
         manifest.ErrorMessage = message;
         Save(manifest);

@@ -457,6 +457,18 @@ public sealed partial class MainPage : Page
             job.ReportOutputRoot);
     }
 
+    private void OnStopJobButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: JobProgressViewModel job } || !job.CanStop)
+        {
+            return;
+        }
+
+        job.RequestStop(localizationService);
+        RefreshJobsSummary();
+        SetStatus($"{job.Title}: {Text.StoppingStatus}", InfoBarSeverity.Informational);
+    }
+
     private void OnExitButtonClick(object sender, RoutedEventArgs e)
     {
         Application.Current.Exit();
@@ -1212,13 +1224,26 @@ public sealed partial class MainPage : Page
         bool autoGenerateReport = false,
         string? reportOutputRoot = null)
     {
+        using CancellationTokenSource stopSource = new();
+        job.AttachStopSource(stopSource);
         job.MarkRunning(localizationService);
         RefreshJobsSummary();
         SetStatus(localizationService.FormatRunStarted(job.Title), InfoBarSeverity.Informational);
 
         try
         {
-            ProcessingResult result = await InvokeProcessingAsync(job, path, buildingType, includeLunchPeak);
+            ProcessingResult result = await InvokeProcessingAsync(
+                job,
+                path,
+                buildingType,
+                includeLunchPeak,
+                stopSource.Token);
+            if (job.StopRequested)
+            {
+                await CompleteStoppedJobAsync(job, autoGenerateReport, reportOutputRoot);
+                return;
+            }
+
             if (!result.Success)
             {
                 ApplyProcessingResult(job, result);
@@ -1232,6 +1257,10 @@ public sealed partial class MainPage : Page
                 ApplyProcessingResult(job, result);
             }
         }
+        catch (OperationCanceledException) when (job.StopRequested)
+        {
+            await CompleteStoppedJobAsync(job, autoGenerateReport, reportOutputRoot);
+        }
         catch (Exception ex)
         {
             string message = BuildExceptionMessage(ex);
@@ -1240,6 +1269,7 @@ public sealed partial class MainPage : Page
         }
         finally
         {
+            job.DetachStopSource();
             UnregisterProcessingFolder(activeProcessingFolder);
             RefreshJobsSummary();
         }
@@ -1305,18 +1335,48 @@ public sealed partial class MainPage : Page
 
     private async Task GenerateReportForCompletedJobAsync(JobProgressViewModel job, string? outputFolder)
     {
+        await GenerateReportForCompletedJobAsync(job, outputFolder, preserveStoppedStatus: false);
+    }
+
+    private async Task GenerateReportForCompletedJobAsync(
+        JobProgressViewModel job,
+        string? outputFolder,
+        bool preserveStoppedStatus)
+    {
         SetStatus(Text.ProjectBatchGeneratingReports, InfoBarSeverity.Informational);
         ProcessingResult reportResult = await PrintReportsForJobWithLockAsync(job, outputFolder);
         if (reportResult.Success)
         {
-            job.MarkCompleted(localizationService);
+            if (!preserveStoppedStatus)
+            {
+                job.MarkCompleted(localizationService);
+            }
+
             SetStatus(localizationService.FormatRunCompleted(job.Title), InfoBarSeverity.Success);
             return;
         }
 
         string message = FormatResultMessage(reportResult);
-        job.MarkFailed(message);
+        if (!preserveStoppedStatus)
+        {
+            job.MarkFailed(message);
+        }
+
         SetStatus(message, InfoBarSeverity.Error);
+    }
+
+    private async Task CompleteStoppedJobAsync(
+        JobProgressViewModel job,
+        bool autoGenerateReport,
+        string? reportOutputRoot)
+    {
+        job.MarkStopped(localizationService);
+        SetStatus(localizationService.FormatRunStopped(job.Title), InfoBarSeverity.Informational);
+
+        if (autoGenerateReport)
+        {
+            await GenerateReportForCompletedJobAsync(job, reportOutputRoot, preserveStoppedStatus: true);
+        }
     }
 
     private async Task<ProcessingResult> PrintReportsForJobWithLockAsync(JobProgressViewModel job, string? outputFolder)
@@ -1363,7 +1423,8 @@ public sealed partial class MainPage : Page
         JobProgressViewModel job,
         string path,
         BuildingType buildingType,
-        bool includeLunchPeak)
+        bool includeLunchPeak,
+        CancellationToken cancellationToken)
     {
         Progress<ElevateProgressInfo> morningProgress = new(update => HandleProgressUpdate(job, update));
         Progress<ElevateProgressInfo>? lunchProgress = buildingType == BuildingType.Office && includeLunchPeak
@@ -1376,7 +1437,7 @@ public sealed partial class MainPage : Page
             includeLunchPeak,
             morningProgress,
             lunchProgress,
-            CancellationToken.None);
+            cancellationToken);
     }
 
     private void HandleProgressUpdate(JobProgressViewModel job, ElevateProgressInfo update)
@@ -1474,6 +1535,11 @@ public sealed partial class MainPage : Page
             return await reportService.PrintReportAsync(job.JobPath, job.BuildingType, outputFolder);
         }
 
+        if (job.WasStoppedEarly)
+        {
+            return await PrintAvailableOfficeReportsForStoppedJobAsync(job, outputFolder);
+        }
+
         string morningPath = Path.Combine(job.JobPath, "morning");
         ProcessingResult morningResult = await reportService.PrintReportAsync(morningPath, job.BuildingType, outputFolder);
         if (!morningResult.Success || !job.IncludeLunchPeak)
@@ -1483,6 +1549,46 @@ public sealed partial class MainPage : Page
 
         string lunchPath = Path.Combine(job.JobPath, "lunch");
         return await reportService.PrintReportAsync(lunchPath, job.BuildingType, outputFolder);
+    }
+
+    private async Task<ProcessingResult> PrintAvailableOfficeReportsForStoppedJobAsync(
+        JobProgressViewModel job,
+        string? outputFolder)
+    {
+        List<string> scenarioPaths = new();
+        string morningPath = Path.Combine(job.JobPath, "morning");
+        if (HasReportInput(morningPath))
+        {
+            scenarioPaths.Add(morningPath);
+        }
+
+        string lunchPath = Path.Combine(job.JobPath, "lunch");
+        if (job.IncludeLunchPeak && HasReportInput(lunchPath))
+        {
+            scenarioPaths.Add(lunchPath);
+        }
+
+        if (scenarioPaths.Count == 0)
+        {
+            return ProcessingResult.Fail(Text.StoppedRunNoResultsMessage);
+        }
+
+        ProcessingResult result = ProcessingResult.Ok();
+        foreach (string scenarioPath in scenarioPaths)
+        {
+            result = await reportService.PrintReportAsync(scenarioPath, job.BuildingType, outputFolder);
+            if (!result.Success)
+            {
+                return result;
+            }
+        }
+
+        return result;
+    }
+
+    private static bool HasReportInput(string path)
+    {
+        return File.Exists(Path.Combine(path, "batch_results.csv"));
     }
 
     private void UpdateModeButtons(BuildingType buildingType)
@@ -1677,9 +1783,12 @@ public sealed partial class MainPage : Page
         private string details;
         private string statusText;
         private string reportButtonText;
+        private string stopButtonText;
         private bool isRunning;
         private bool isFinished;
         private bool reportActionEnabled = true;
+        private bool stopRequested;
+        private CancellationTokenSource? stopSource;
 
         public JobProgressViewModel(
             int jobId,
@@ -1701,6 +1810,7 @@ public sealed partial class MainPage : Page
             details = string.Empty;
             statusText = string.Empty;
             reportButtonText = string.Empty;
+            stopButtonText = string.Empty;
             stateKind = JobStateKind.Queued;
 
             bool isOffice = buildingType == BuildingType.Office;
@@ -1828,13 +1938,39 @@ public sealed partial class MainPage : Page
 
         public bool IsFinished => isFinished;
 
-        public bool CanPrintReport => stateKind == JobStateKind.Completed && reportActionEnabled;
+        public bool CanPrintReport => (stateKind is JobStateKind.Completed or JobStateKind.Stopped) &&
+                                      reportActionEnabled;
 
         public bool CanRetry => isFinished && !isRunning && !string.IsNullOrWhiteSpace(failureMessage);
 
         public string RetryButtonText { get; private set; } = string.Empty;
 
-        public Visibility PrintReportVisibility => stateKind == JobStateKind.Completed
+        public string StopButtonText
+        {
+            get => stopButtonText;
+            private set
+            {
+                if (stopButtonText == value)
+                {
+                    return;
+                }
+
+                stopButtonText = value;
+                OnPropertyChanged(nameof(StopButtonText));
+            }
+        }
+
+        public bool StopRequested => stopRequested;
+
+        public bool WasStoppedEarly => stateKind == JobStateKind.Stopped || stopRequested;
+
+        public bool CanStop => stateKind == JobStateKind.Running &&
+                               isRunning &&
+                               !isFinished &&
+                               !stopRequested &&
+                               stopSource is not null;
+
+        public Visibility PrintReportVisibility => stateKind is JobStateKind.Completed or JobStateKind.Stopped
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -1842,10 +1978,41 @@ public sealed partial class MainPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
 
+        public Visibility StopButtonVisibility => CanStop
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        public void AttachStopSource(CancellationTokenSource cancellationTokenSource)
+        {
+            stopSource = cancellationTokenSource;
+            NotifyStopActionStateChanged();
+        }
+
+        public void DetachStopSource()
+        {
+            stopSource = null;
+            NotifyStopActionStateChanged();
+        }
+
+        public void RequestStop(AppLocalizationService localizationService)
+        {
+            if (!CanStop)
+            {
+                return;
+            }
+
+            stopRequested = true;
+            stateKind = JobStateKind.Stopping;
+            StatusText = localizationService.GetJobStateLabel(JobStateKind.Stopping);
+            NotifyStopActionStateChanged();
+            stopSource?.Cancel();
+        }
+
         public void MarkRunning(AppLocalizationService localizationService)
         {
             isFinished = false;
             failureMessage = null;
+            stopRequested = false;
             stateKind = JobStateKind.Running;
             IsRunning = true;
             StatusText = localizationService.GetJobStateLabel(JobStateKind.Running);
@@ -1856,9 +2023,21 @@ public sealed partial class MainPage : Page
         {
             isFinished = true;
             failureMessage = null;
+            stopRequested = false;
             stateKind = JobStateKind.Completed;
             IsRunning = false;
             StatusText = localizationService.GetJobStateLabel(JobStateKind.Completed);
+            NotifyReportActionStateChanged();
+        }
+
+        public void MarkStopped(AppLocalizationService localizationService)
+        {
+            isFinished = true;
+            failureMessage = null;
+            stopRequested = false;
+            stateKind = JobStateKind.Stopped;
+            IsRunning = false;
+            StatusText = localizationService.GetJobStateLabel(JobStateKind.Stopped);
             NotifyReportActionStateChanged();
         }
 
@@ -1866,6 +2045,7 @@ public sealed partial class MainPage : Page
         {
             isFinished = true;
             failureMessage = message;
+            stopRequested = false;
             IsRunning = false;
             StatusText = message;
             NotifyReportActionStateChanged();
@@ -1881,6 +2061,13 @@ public sealed partial class MainPage : Page
             ScenarioProgressViewModel target = ResolveScenario(scenario);
             activeScenarioKind = target.ScenarioKind;
             target.Update(completed, total);
+            if (stopRequested)
+            {
+                stateKind = JobStateKind.Stopping;
+                StatusText = localizationService.GetJobStateLabel(JobStateKind.Stopping);
+                return;
+            }
+
             StatusText = string.IsNullOrWhiteSpace(target.Label)
                 ? $"{completed}/{total}"
                 : $"{target.Label}: {completed}/{total}";
@@ -1904,6 +2091,7 @@ public sealed partial class MainPage : Page
                 ? localizationService.CurrentText.PrintReportsButton
                 : localizationService.CurrentText.ReportButton;
             RetryButtonText = localizationService.CurrentText.ProjectBatchRetryButton;
+            StopButtonText = localizationService.CurrentText.StopJobButton;
             OnPropertyChanged(nameof(RetryButtonText));
 
             foreach (ScenarioProgressViewModel scenario in Scenarios)
@@ -1921,6 +2109,12 @@ public sealed partial class MainPage : Page
             {
                 case JobStateKind.Completed:
                     StatusText = localizationService.GetJobStateLabel(JobStateKind.Completed);
+                    break;
+                case JobStateKind.Stopped:
+                    StatusText = localizationService.GetJobStateLabel(JobStateKind.Stopped);
+                    break;
+                case JobStateKind.Stopping:
+                    StatusText = localizationService.GetJobStateLabel(JobStateKind.Stopping);
                     break;
                 case JobStateKind.Running:
                 {
@@ -2000,6 +2194,16 @@ public sealed partial class MainPage : Page
             OnPropertyChanged(nameof(PrintReportVisibility));
             OnPropertyChanged(nameof(CanRetry));
             OnPropertyChanged(nameof(RetryButtonVisibility));
+            OnPropertyChanged(nameof(WasStoppedEarly));
+            NotifyStopActionStateChanged();
+        }
+
+        private void NotifyStopActionStateChanged()
+        {
+            OnPropertyChanged(nameof(StopRequested));
+            OnPropertyChanged(nameof(WasStoppedEarly));
+            OnPropertyChanged(nameof(CanStop));
+            OnPropertyChanged(nameof(StopButtonVisibility));
         }
 
         private void OnPropertyChanged(string propertyName)

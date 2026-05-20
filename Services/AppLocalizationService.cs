@@ -41,6 +41,7 @@ public sealed class AppLocalizationService
         ProjectBatchUnknownSecondaryButton: "Skip",
         ProjectBatchUnknownCloseButton: "Cancel",
         ProjectBatchRetryButton: "Retry",
+        StopJobButton: "Stop",
         ProjectBatchGeneratingReports: "Generating job reports...",
         EditorTitle: "ELVX Editor",
         EditorHint: "Load an existing .elvx from the working folder or start from the built-in template. This editor keeps Elevate topology intact and lets you tune project, analysis, traffic, and existing lift parameters before the batch run.",
@@ -143,7 +144,9 @@ public sealed class AppLocalizationService
         StatusTitle: "Checkup",
         QueuedStatus: "Queued",
         RunningStatus: "Running",
+        StoppingStatus: "Stopping...",
         CompletedStatus: "Completed",
+        StoppedStatus: "Stopped early",
         ProgressScenario: "Progress",
         MorningScenario: "Morning",
         LunchScenario: "Lunch",
@@ -154,6 +157,7 @@ public sealed class AppLocalizationService
         SelectedBuildingTypeFormat: "Selected building type: {0}.",
         RunStartedFormat: "{0} started.",
         RunCompletedFormat: "{0} completed successfully.",
+        RunStoppedFormat: "{0} stopped early. You can print a report from completed Elevate results.",
         GeneratingReport: "Generating report...",
         GeneratingReports: "Generating reports...",
         GeneratingMorningReport: "Generating morning report...",
@@ -164,6 +168,7 @@ public sealed class AppLocalizationService
         LunchReportGenerated: "Lunch report generated successfully.",
         OperationFailedMessage: "Operation failed.",
         ReportBusyMessage: "Report generation is already in progress.",
+        StoppedRunNoResultsMessage: "No completed Elevate results were found for this job yet.",
         RunFolderBusyMessage: "A batch run is already active for this folder: {0}",
         IntegrationMissingLaunch: "Peters Research Elevate is not detected. Install Elevate or set ELEVATE_EXE_PATH.",
         IntegrationMissingCheck: "Elevate was not found. Check installation or define ELEVATE_EXE_PATH.",
@@ -207,6 +212,7 @@ public sealed class AppLocalizationService
         ProjectBatchUnknownSecondaryButton: "Пропустить",
         ProjectBatchUnknownCloseButton: "Отмена",
         ProjectBatchRetryButton: "Повторить",
+        StopJobButton: "Остановить",
         ProjectBatchGeneratingReports: "Формирование отчетов задачи...",
         EditorTitle: "Редактор ELVX",
         EditorHint: "Загрузите существующий .elvx из рабочей папки или стартуйте с встроенного шаблона. Редактор сохраняет топологию Elevate и позволяет настраивать проект, анализ, трафик и существующую лифтовую группу до batch-расчета.",
@@ -309,7 +315,9 @@ public sealed class AppLocalizationService
         StatusTitle: "Проверка",
         QueuedStatus: "В очереди",
         RunningStatus: "Выполняется",
+        StoppingStatus: "Остановка...",
         CompletedStatus: "Завершено",
+        StoppedStatus: "Остановлено досрочно",
         ProgressScenario: "Прогресс",
         MorningScenario: "Утро",
         LunchScenario: "Обед",
@@ -320,6 +328,7 @@ public sealed class AppLocalizationService
         SelectedBuildingTypeFormat: "Выбран тип здания: {0}.",
         RunStartedFormat: "{0} запущена.",
         RunCompletedFormat: "{0} завершена успешно.",
+        RunStoppedFormat: "{0} остановлена досрочно. Можно сформировать отчет по уже рассчитанным данным Elevate.",
         GeneratingReport: "Формирование отчета...",
         GeneratingReports: "Формирование отчетов...",
         GeneratingMorningReport: "Формирование утреннего отчета...",
@@ -330,6 +339,7 @@ public sealed class AppLocalizationService
         LunchReportGenerated: "Обеденный отчет успешно сформирован.",
         OperationFailedMessage: "Операция завершилась ошибкой.",
         ReportBusyMessage: "Формирование отчета уже выполняется.",
+        StoppedRunNoResultsMessage: "Для этой задачи пока не найдено завершенных результатов Elevate.",
         RunFolderBusyMessage: "Для этой папки уже выполняется batch-расчет: {0}",
         IntegrationMissingLaunch: "Peters Research Elevate не найден. Установите Elevate или задайте ELEVATE_EXE_PATH.",
         IntegrationMissingCheck: "Elevate не найден. Проверьте установку или задайте ELEVATE_EXE_PATH.",
@@ -430,6 +440,11 @@ public sealed class AppLocalizationService
         return string.Format(CultureInfo.CurrentCulture, CurrentText.RunCompletedFormat, jobTitle);
     }
 
+    public string FormatRunStopped(string jobTitle)
+    {
+        return string.Format(CultureInfo.CurrentCulture, CurrentText.RunStoppedFormat, jobTitle);
+    }
+
     public string GetQueueSummary(int activeJobs)
     {
         return activeJobs > 0
@@ -454,7 +469,9 @@ public sealed class AppLocalizationService
         return stateKind switch
         {
             JobStateKind.Running => text.RunningStatus,
+            JobStateKind.Stopping => text.StoppingStatus,
             JobStateKind.Completed => text.CompletedStatus,
+            JobStateKind.Stopped => text.StoppedStatus,
             _ => text.QueuedStatus,
         };
     }
@@ -722,6 +739,7 @@ public sealed class AppLocalizationService
         string ProjectBatchUnknownSecondaryButton,
         string ProjectBatchUnknownCloseButton,
         string ProjectBatchRetryButton,
+        string StopJobButton,
         string ProjectBatchGeneratingReports,
         string EditorTitle,
         string EditorHint,
@@ -824,7 +842,9 @@ public sealed class AppLocalizationService
         string StatusTitle,
         string QueuedStatus,
         string RunningStatus,
+        string StoppingStatus,
         string CompletedStatus,
+        string StoppedStatus,
         string ProgressScenario,
         string MorningScenario,
         string LunchScenario,
@@ -835,6 +855,7 @@ public sealed class AppLocalizationService
         string SelectedBuildingTypeFormat,
         string RunStartedFormat,
         string RunCompletedFormat,
+        string RunStoppedFormat,
         string GeneratingReport,
         string GeneratingReports,
         string GeneratingMorningReport,
@@ -845,6 +866,7 @@ public sealed class AppLocalizationService
         string LunchReportGenerated,
         string OperationFailedMessage,
         string ReportBusyMessage,
+        string StoppedRunNoResultsMessage,
         string RunFolderBusyMessage,
         string IntegrationMissingLaunch,
         string IntegrationMissingCheck,
@@ -868,5 +890,7 @@ public enum JobStateKind
 {
     Queued,
     Running,
+    Stopping,
     Completed,
+    Stopped,
 }

@@ -22,7 +22,3 @@ obj/
 tests/**/bin/
 tests/**/obj/
 build_diag.log
-
-# Local Windows build helpers
-/build-local.ps1
-/build-local.cmd

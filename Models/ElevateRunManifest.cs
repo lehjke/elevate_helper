@@ -57,6 +57,7 @@ public static class ElevateRunManifestStatus
     public const string Pending = "pending";
     public const string Running = "running";
     public const string Completed = "completed";
+    public const string Stopped = "stopped";
     public const string Failed = "failed";
 }
 
