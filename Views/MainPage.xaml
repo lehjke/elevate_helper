@@ -562,6 +562,7 @@
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
 
                                                             <StackPanel Grid.Column="0" Spacing="1">
@@ -582,6 +583,17 @@
                                                                 Opacity="0.8"
                                                                 Text="{Binding StatusText}"
                                                                 TextWrapping="Wrap" />
+
+                                                            <Button
+                                                                Grid.Column="2"
+                                                                AutomationProperties.Name="{Binding DismissButtonText}"
+                                                                Click="OnDismissJobButtonClick"
+                                                                Style="{StaticResource DismissJobButtonStyle}"
+                                                                Tag="{Binding}"
+                                                                ToolTipService.ToolTip="{Binding DismissButtonText}"
+                                                                Visibility="{Binding DismissButtonVisibility}">
+                                                                <SymbolIcon Symbol="Cancel" />
+                                                            </Button>
                                                         </Grid>
 
                                                         <ItemsControl ItemsSource="{Binding Scenarios}">

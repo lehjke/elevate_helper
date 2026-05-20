@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml.Linq;
@@ -26,6 +27,8 @@ public sealed class ElevateReportService : IElevateReportService
     private const int XlContinuous = 1;
     private const int XlThin = 2;
     private const int MeteorBlue = 10 + (39 * 256) + (81 * 65536);
+    private static readonly TimeSpan ExcelQuitGracePeriod = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ExcelKillGracePeriod = TimeSpan.FromSeconds(2);
 
     public async Task<ProcessingResult> PrintReportAsync(
         string path,
@@ -172,7 +175,11 @@ public sealed class ElevateReportService : IElevateReportService
     {
         object? excel = null;
         dynamic? excelApp = null;
+        dynamic? workbooks = null;
         dynamic? workbook = null;
+        HashSet<int> existingExcelProcessIds = CaptureExcelProcessIds();
+        int? excelProcessId = null;
+        bool ownsExcelProcess = false;
 
         try
         {
@@ -189,8 +196,14 @@ public sealed class ElevateReportService : IElevateReportService
             excelApp.Visible = false;
             excelApp.DisplayAlerts = false;
             excelApp.ScreenUpdating = false;
+            excelApp.UserControl = false;
 
-            workbook = excelApp.Workbooks.Open(templatePath);
+            excelProcessId = TryGetExcelProcessId(excelApp);
+            ownsExcelProcess = excelProcessId.HasValue &&
+                               !existingExcelProcessIds.Contains(excelProcessId.Value);
+
+            workbooks = excelApp.Workbooks;
+            workbook = workbooks.Open(templatePath);
 
             bool[] isServed = CalculateServedFloors(elevatorData, buildingData, out int servedFloors);
 
@@ -230,6 +243,7 @@ public sealed class ElevateReportService : IElevateReportService
             }
 
             ReleaseComObject(ref workbook);
+            ReleaseComObject(ref workbooks);
 
             if (excelApp is not null)
             {
@@ -254,8 +268,96 @@ public sealed class ElevateReportService : IElevateReportService
                     // Ignore COM cleanup errors.
                 }
             }
+
+            excelApp = null;
+            excel = null;
+            ForceComCleanup();
+            EnsureOwnedExcelProcessExited(excelProcessId, ownsExcelProcess);
         }
     }
+
+    private static HashSet<int> CaptureExcelProcessIds()
+    {
+        HashSet<int> processIds = [];
+        try
+        {
+            foreach (Process process in Process.GetProcessesByName("EXCEL"))
+            {
+                using (process)
+                {
+                    processIds.Add(process.Id);
+                }
+            }
+        }
+        catch
+        {
+            // If process enumeration is unavailable, cleanup still relies on Excel.Quit().
+        }
+
+        return processIds;
+    }
+
+    private static int? TryGetExcelProcessId(dynamic excelApp)
+    {
+        try
+        {
+            int hwnd = Convert.ToInt32(excelApp.Hwnd, CultureInfo.InvariantCulture);
+            if (hwnd == 0)
+            {
+                return null;
+            }
+
+            _ = GetWindowThreadProcessId(new IntPtr(hwnd), out uint processId);
+            return processId == 0 ? null : (int)processId;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void ForceComCleanup()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+    }
+
+    private static void EnsureOwnedExcelProcessExited(int? processId, bool ownsExcelProcess)
+    {
+        if (!ownsExcelProcess || processId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using Process process = Process.GetProcessById(processId.Value);
+            if (process.WaitForExit(ExcelQuitGracePeriod))
+            {
+                return;
+            }
+
+            process.Kill(entireProcessTree: true);
+            _ = process.WaitForExit(ExcelKillGracePeriod);
+        }
+        catch (ArgumentException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+        catch (NotSupportedException)
+        {
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     private static void FillTitleSheet(dynamic workbook, string[] jobData)
     {

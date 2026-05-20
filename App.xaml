@@ -170,6 +170,22 @@
                 <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
             </Style>
 
+            <Style x:Key="DismissJobButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="30" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Right" />
+                <Setter Property="VerticalAlignment" Value="Top" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+
             <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
                 <Setter Property="Background" Value="{ThemeResource IosAccentBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource IosAccentBrush}" />

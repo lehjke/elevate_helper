@@ -469,6 +469,17 @@ public sealed partial class MainPage : Page
         SetStatus($"{job.Title}: {Text.StoppingStatus}", InfoBarSeverity.Informational);
     }
 
+    private void OnDismissJobButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: JobProgressViewModel job } || !job.CanDismiss)
+        {
+            return;
+        }
+
+        _ = Jobs.Remove(job);
+        RefreshJobsSummary();
+    }
+
     private void OnExitButtonClick(object sender, RoutedEventArgs e)
     {
         Application.Current.Exit();
@@ -1472,6 +1483,8 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        SortJobs();
+
         int runningJobs = Jobs.Count(job => job.IsRunning);
         BusyRing.IsActive = runningJobs > 0;
         BusyTextBlock.Text = localizationService.GetQueueSummary(runningJobs);
@@ -1479,6 +1492,31 @@ public sealed partial class MainPage : Page
         bool hasJobs = Jobs.Count > 0;
         JobsItemsControl.Visibility = hasJobs ? Visibility.Visible : Visibility.Collapsed;
         EmptyQueueBorder.Visibility = hasJobs ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void SortJobs()
+    {
+        if (Jobs.Count < 2)
+        {
+            return;
+        }
+
+        List<JobProgressViewModel> orderedJobs = Jobs
+            .Select((job, index) => new { Job = job, Index = index })
+            .OrderBy(item => item.Job.QueueSortGroup)
+            .ThenBy(item => item.Index)
+            .Select(item => item.Job)
+            .ToList();
+
+        for (int targetIndex = 0; targetIndex < orderedJobs.Count; targetIndex++)
+        {
+            JobProgressViewModel job = orderedJobs[targetIndex];
+            int currentIndex = Jobs.IndexOf(job);
+            if (currentIndex >= 0 && currentIndex != targetIndex)
+            {
+                Jobs.Move(currentIndex, targetIndex);
+            }
+        }
     }
 
     private void SetReportButtonsEnabled(bool isEnabled)
@@ -1784,6 +1822,7 @@ public sealed partial class MainPage : Page
         private string statusText;
         private string reportButtonText;
         private string stopButtonText;
+        private string dismissButtonText;
         private bool isRunning;
         private bool isFinished;
         private bool reportActionEnabled = true;
@@ -1811,6 +1850,7 @@ public sealed partial class MainPage : Page
             statusText = string.Empty;
             reportButtonText = string.Empty;
             stopButtonText = string.Empty;
+            dismissButtonText = string.Empty;
             stateKind = JobStateKind.Queued;
 
             bool isOffice = buildingType == BuildingType.Office;
@@ -1938,10 +1978,20 @@ public sealed partial class MainPage : Page
 
         public bool IsFinished => isFinished;
 
+        public bool IsFailed => !string.IsNullOrWhiteSpace(failureMessage);
+
         public bool CanPrintReport => (stateKind is JobStateKind.Completed or JobStateKind.Stopped) &&
                                       reportActionEnabled;
 
         public bool CanRetry => isFinished && !isRunning && !string.IsNullOrWhiteSpace(failureMessage);
+
+        public bool CanDismiss => isFinished && !isRunning;
+
+        public int QueueSortGroup => !isFinished
+            ? 0
+            : IsFailed
+                ? 2
+                : 1;
 
         public string RetryButtonText { get; private set; } = string.Empty;
 
@@ -1957,6 +2007,21 @@ public sealed partial class MainPage : Page
 
                 stopButtonText = value;
                 OnPropertyChanged(nameof(StopButtonText));
+            }
+        }
+
+        public string DismissButtonText
+        {
+            get => dismissButtonText;
+            private set
+            {
+                if (dismissButtonText == value)
+                {
+                    return;
+                }
+
+                dismissButtonText = value;
+                OnPropertyChanged(nameof(DismissButtonText));
             }
         }
 
@@ -1979,6 +2044,10 @@ public sealed partial class MainPage : Page
             : Visibility.Collapsed;
 
         public Visibility StopButtonVisibility => CanStop
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        public Visibility DismissButtonVisibility => CanDismiss
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -2092,6 +2161,7 @@ public sealed partial class MainPage : Page
                 : localizationService.CurrentText.ReportButton;
             RetryButtonText = localizationService.CurrentText.ProjectBatchRetryButton;
             StopButtonText = localizationService.CurrentText.StopJobButton;
+            DismissButtonText = localizationService.CurrentText.DismissJobButton;
             OnPropertyChanged(nameof(RetryButtonText));
 
             foreach (ScenarioProgressViewModel scenario in Scenarios)
@@ -2194,6 +2264,10 @@ public sealed partial class MainPage : Page
             OnPropertyChanged(nameof(PrintReportVisibility));
             OnPropertyChanged(nameof(CanRetry));
             OnPropertyChanged(nameof(RetryButtonVisibility));
+            OnPropertyChanged(nameof(CanDismiss));
+            OnPropertyChanged(nameof(DismissButtonVisibility));
+            OnPropertyChanged(nameof(IsFailed));
+            OnPropertyChanged(nameof(QueueSortGroup));
             OnPropertyChanged(nameof(WasStoppedEarly));
             NotifyStopActionStateChanged();
         }
