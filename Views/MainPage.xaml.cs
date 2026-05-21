@@ -17,6 +17,7 @@ public sealed partial class MainPage : Page
 {
     private const float LeftColumnClipRadius = 24f;
     private readonly AppLocalizationService localizationService = AppLocalizationService.Instance;
+    private readonly AppUpdateService updateService = new();
     private readonly IElevateProjectEditorService projectEditorService = new ElevateProjectEditorService();
     private readonly IElevateIntegrationService integrationService = new ElevateIntegrationService();
     private readonly IElevateProcessingService processingService = new ElevateProcessingService();
@@ -31,6 +32,7 @@ public sealed partial class MainPage : Page
     private ElevateProjectEditorWindow? editorWindow;
     private ElevateProjectEditorDocument? loadedEditorDocument;
     private bool suppressBuildingTypeStatus;
+    private bool updateCheckStarted;
     private int nextJobId = 1;
 
     public MainPage()
@@ -51,6 +53,7 @@ public sealed partial class MainPage : Page
         RefreshIntegrationStatus(showStatusMessage: true);
         RefreshJobsSummary();
 
+        Loaded += OnMainPageLoaded;
         LeftColumnClipBorder.SizeChanged += OnLeftColumnClipBorderSizeChanged;
         ApplyLeftColumnClip();
     }
@@ -68,6 +71,70 @@ public sealed partial class MainPage : Page
     ];
 
     public AppLocalizationService.AppTextCatalog Text => localizationService.CurrentText;
+
+    public string AppVersionLabel => $"v{updateService.CurrentVersion}";
+
+    private async void OnMainPageLoaded(object sender, RoutedEventArgs e)
+    {
+        if (updateCheckStarted)
+        {
+            return;
+        }
+
+        updateCheckStarted = true;
+        await CheckForApplicationUpdateAsync();
+    }
+
+    private async Task CheckForApplicationUpdateAsync()
+    {
+        AppUpdateInfo? updateInfo;
+        try
+        {
+            updateInfo = await updateService.CheckForUpdateAsync();
+        }
+        catch
+        {
+            return;
+        }
+
+        if (updateInfo is null)
+        {
+            return;
+        }
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = Text.UpdateAvailableTitle,
+            Content = string.Format(
+                System.Globalization.CultureInfo.CurrentCulture,
+                Text.UpdateAvailableMessageFormat,
+                updateInfo.CurrentVersion,
+                updateInfo.LatestVersion),
+            PrimaryButtonText = Text.UpdateInstallButton,
+            CloseButtonText = Text.UpdateLaterButton,
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        try
+        {
+            SetStatus(Text.UpdateDownloadingStatus, InfoBarSeverity.Informational);
+            _ = await updateService.DownloadAndStartUpdateAsync(updateInfo);
+            SetStatus(Text.UpdateStartedStatus, InfoBarSeverity.Success);
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            Application.Current.Exit();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+        }
+    }
 
     private void OnLeftColumnClipBorderSizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -174,6 +241,11 @@ public sealed partial class MainPage : Page
         if (batchJobs.Count == 0)
         {
             SetStatus(Text.ProjectBatchNoJobsMessage, InfoBarSeverity.Warning);
+            return;
+        }
+
+        if (!await ConfirmProjectBatchJobsAsync(batchJobs, discoveryResult.Warnings))
+        {
             return;
         }
 
@@ -738,6 +810,163 @@ public sealed partial class MainPage : Page
                 return ElevateProjectBatchDiscoveryService.CreateManualJob(projectRoot, selection.FilePath, buildingType);
             })
             .ToList();
+    }
+
+    private async Task<bool> ConfirmProjectBatchJobsAsync(
+        IReadOnlyList<ProjectBatchJob> batchJobs,
+        IReadOnlyList<ProjectBatchWarning> warnings)
+    {
+        Grid table = new()
+        {
+            ColumnSpacing = 10,
+            RowSpacing = 8,
+        };
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        AddProjectBatchPreviewHeader(table, Text.ProjectBatchPreviewBuildingTypeHeader, column: 0);
+        AddProjectBatchPreviewHeader(table, Text.ProjectBatchPreviewPathHeader, column: 1);
+        AddProjectBatchPreviewHeader(table, Text.ProjectBatchPreviewFileCountHeader, column: 2);
+        AddProjectBatchPreviewHeader(table, Text.ProjectBatchPreviewScenariosHeader, column: 3);
+
+        for (int index = 0; index < batchJobs.Count; index++)
+        {
+            ProjectBatchJob job = batchJobs[index];
+            int row = index + 1;
+            string scenarioText = job.BuildingType == BuildingType.Office
+                ? Text.ProjectBatchPreviewMorningLunch
+                : Text.ProjectBatchPreviewSingleScenario;
+
+            AddProjectBatchPreviewCell(table, localizationService.FormatBuildingType(job.BuildingType), row, column: 0);
+            AddProjectBatchPreviewCell(table, job.WorkingFolder, row, column: 1, wrap: true);
+            AddProjectBatchPreviewCell(table, CountProjectBatchSourceFiles(job).ToString(System.Globalization.CultureInfo.CurrentCulture), row, column: 2);
+            AddProjectBatchPreviewCell(table, scenarioText, row, column: 3);
+        }
+
+        StackPanel contentStack = new()
+        {
+            Spacing = 14,
+        };
+
+        if (warnings.Count > 0)
+        {
+            contentStack.Children.Add(new TextBlock
+            {
+                Text = Text.ProjectBatchPreviewWarningsTitle,
+                FontSize = 14,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            });
+
+            contentStack.Children.Add(new TextBlock
+            {
+                Text = string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.ProjectBatchPreviewWarningsFormat,
+                    warnings.Count),
+                FontSize = 13,
+                Opacity = 0.78,
+                TextWrapping = TextWrapping.Wrap,
+            });
+
+            foreach (ProjectBatchWarning warning in warnings)
+            {
+                contentStack.Children.Add(new TextBlock
+                {
+                    Text = $"{warning.Message} {warning.Path}",
+                    FontSize = 12,
+                    Opacity = 0.82,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 720,
+                });
+            }
+        }
+
+        contentStack.Children.Add(table);
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = Text.ProjectBatchPreviewTitle,
+            Content = new ScrollViewer
+            {
+                MaxHeight = 460,
+                HorizontalScrollMode = ScrollMode.Disabled,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollMode = ScrollMode.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = contentStack,
+            },
+            PrimaryButtonText = Text.ProjectBatchPreviewStartButton,
+            CloseButtonText = Text.ProjectBatchPreviewCancelButton,
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary;
+    }
+
+    private static void AddProjectBatchPreviewHeader(Grid table, string text, int column)
+    {
+        AddProjectBatchPreviewText(
+            table,
+            text,
+            row: 0,
+            column,
+            fontWeight: Microsoft.UI.Text.FontWeights.SemiBold,
+            opacity: 0.78);
+    }
+
+    private static void AddProjectBatchPreviewCell(
+        Grid table,
+        string text,
+        int row,
+        int column,
+        bool wrap = false)
+    {
+        AddProjectBatchPreviewText(
+            table,
+            text,
+            row,
+            column,
+            fontWeight: Microsoft.UI.Text.FontWeights.Normal,
+            opacity: 1,
+            wrap);
+    }
+
+    private static void AddProjectBatchPreviewText(
+        Grid table,
+        string text,
+        int row,
+        int column,
+        Microsoft.UI.Text.FontWeight fontWeight,
+        double opacity,
+        bool wrap = false)
+    {
+        while (table.RowDefinitions.Count <= row)
+        {
+            table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        TextBlock textBlock = new()
+        {
+            Text = text,
+            FontSize = 13,
+            FontWeight = fontWeight,
+            Opacity = opacity,
+            TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
+            MaxWidth = wrap ? 520 : double.PositiveInfinity,
+        };
+
+        Grid.SetRow(textBlock, row);
+        Grid.SetColumn(textBlock, column);
+        table.Children.Add(textBlock);
+    }
+
+    private static int CountProjectBatchSourceFiles(ProjectBatchJob job)
+    {
+        return File.Exists(job.ElvxPath) ? 1 : 0;
     }
 
     private void ResetEditorStatus()

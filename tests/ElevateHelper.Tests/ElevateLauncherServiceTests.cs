@@ -40,6 +40,18 @@ public sealed class ElevateLauncherServiceTests
     }
 
     [Theory]
+    [InlineData("Do you want to save changes?", true)]
+    [InlineData("Сохранить изменения перед закрытием?", true)]
+    [InlineData("Elevate has finished processing.", false)]
+    [InlineData("The selected folder does not exist.", false)]
+    public void IsSavePromptText_MatchesOnlySavePrompts(string text, bool expected)
+    {
+        bool actual = ElevateLauncherService.IsSavePromptText(text);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("Probe 02", "Probe", true, 2)]
     [InlineData("Elevate - [Probe 09.elvx]", "Probe", true, 9)]
     [InlineData("Design 1", "Probe", false, 0)]

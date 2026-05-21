@@ -44,6 +44,17 @@ public sealed class AppLocalizationService
         StopJobButton: "Stop",
         DismissJobButton: "Remove from queue",
         ProjectBatchGeneratingReports: "Generating job reports...",
+        ProjectBatchPreviewTitle: "Review project batch",
+        ProjectBatchPreviewBuildingTypeHeader: "Building type",
+        ProjectBatchPreviewPathHeader: "Path",
+        ProjectBatchPreviewFileCountHeader: "Files",
+        ProjectBatchPreviewScenariosHeader: "Scenarios",
+        ProjectBatchPreviewMorningLunch: "morning + lunch",
+        ProjectBatchPreviewSingleScenario: "single",
+        ProjectBatchPreviewStartButton: "Start",
+        ProjectBatchPreviewCancelButton: "Cancel",
+        ProjectBatchPreviewWarningsTitle: "Skipped items",
+        ProjectBatchPreviewWarningsFormat: "{0} skipped item(s) need attention.",
         EditorTitle: "ELVX Editor",
         EditorHint: "Load an existing .elvx from the working folder or start from the built-in template. This editor keeps Elevate topology intact and lets you tune project, analysis, traffic, and existing lift parameters before the batch run.",
         EditorWorkingFolderLabel: "Working folder",
@@ -179,7 +190,13 @@ public sealed class AppLocalizationService
         JobDetailsFormat: "{0} - {1}",
         JobModeMorningLunch: "morning + lunch",
         JobModeMorningOnly: "morning only",
-        JobModeSingleScenario: "single scenario");
+        JobModeSingleScenario: "single scenario",
+        UpdateAvailableTitle: "Update available",
+        UpdateAvailableMessageFormat: "Installed version: {0}\nLatest version: {1}\n\nDo you want to download and install the update now?",
+        UpdateInstallButton: "Update",
+        UpdateLaterButton: "Later",
+        UpdateDownloadingStatus: "Downloading the update...",
+        UpdateStartedStatus: "The update installer has started. Elevate Helper will close now.");
 
     private static readonly AppTextCatalog Russian = new(
         WindowTitle: "Elevate Helper",
@@ -216,6 +233,17 @@ public sealed class AppLocalizationService
         StopJobButton: "Остановить",
         DismissJobButton: "Убрать из очереди",
         ProjectBatchGeneratingReports: "Формирование отчетов задачи...",
+        ProjectBatchPreviewTitle: "Проверка пакетного запуска",
+        ProjectBatchPreviewBuildingTypeHeader: "Тип здания",
+        ProjectBatchPreviewPathHeader: "Путь",
+        ProjectBatchPreviewFileCountHeader: "Файлы",
+        ProjectBatchPreviewScenariosHeader: "Сценарии",
+        ProjectBatchPreviewMorningLunch: "утро + обед",
+        ProjectBatchPreviewSingleScenario: "один",
+        ProjectBatchPreviewStartButton: "Запустить",
+        ProjectBatchPreviewCancelButton: "Отмена",
+        ProjectBatchPreviewWarningsTitle: "Пропущенные элементы",
+        ProjectBatchPreviewWarningsFormat: "Пропущено или требует внимания: {0}.",
         EditorTitle: "Редактор ELVX",
         EditorHint: "Загрузите существующий .elvx из рабочей папки или стартуйте с встроенного шаблона. Редактор сохраняет топологию Elevate и позволяет настраивать проект, анализ, трафик и существующую лифтовую группу до batch-расчета.",
         EditorWorkingFolderLabel: "Рабочая папка",
@@ -351,7 +379,13 @@ public sealed class AppLocalizationService
         JobDetailsFormat: "{0} - {1}",
         JobModeMorningLunch: "утренний + обеденный пик",
         JobModeMorningOnly: "только утренний пик",
-        JobModeSingleScenario: "один сценарий");
+        JobModeSingleScenario: "один сценарий",
+        UpdateAvailableTitle: "Доступно обновление",
+        UpdateAvailableMessageFormat: "Установленная версия: {0}\nПоследняя версия: {1}\n\nСкачать и установить обновление сейчас?",
+        UpdateInstallButton: "Обновить",
+        UpdateLaterButton: "Позже",
+        UpdateDownloadingStatus: "Скачивание обновления...",
+        UpdateStartedStatus: "Установщик обновления запущен. Elevate Helper сейчас закроется.");
 
     public static AppLocalizationService Instance { get; } = new();
 
@@ -744,6 +778,17 @@ public sealed class AppLocalizationService
         string StopJobButton,
         string DismissJobButton,
         string ProjectBatchGeneratingReports,
+        string ProjectBatchPreviewTitle,
+        string ProjectBatchPreviewBuildingTypeHeader,
+        string ProjectBatchPreviewPathHeader,
+        string ProjectBatchPreviewFileCountHeader,
+        string ProjectBatchPreviewScenariosHeader,
+        string ProjectBatchPreviewMorningLunch,
+        string ProjectBatchPreviewSingleScenario,
+        string ProjectBatchPreviewStartButton,
+        string ProjectBatchPreviewCancelButton,
+        string ProjectBatchPreviewWarningsTitle,
+        string ProjectBatchPreviewWarningsFormat,
         string EditorTitle,
         string EditorHint,
         string EditorWorkingFolderLabel,
@@ -879,7 +924,13 @@ public sealed class AppLocalizationService
         string JobDetailsFormat,
         string JobModeMorningLunch,
         string JobModeMorningOnly,
-        string JobModeSingleScenario);
+        string JobModeSingleScenario,
+        string UpdateAvailableTitle,
+        string UpdateAvailableMessageFormat,
+        string UpdateInstallButton,
+        string UpdateLaterButton,
+        string UpdateDownloadingStatus,
+        string UpdateStartedStatus);
 }
 
 public enum JobScenarioKind
