@@ -940,7 +940,7 @@ public sealed partial class MainPage : Page
         string text,
         int row,
         int column,
-        Microsoft.UI.Text.FontWeight fontWeight,
+        Windows.UI.Text.FontWeight fontWeight,
         double opacity,
         bool wrap = false)
     {
