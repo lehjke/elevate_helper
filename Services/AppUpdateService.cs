@@ -67,6 +67,14 @@ public sealed class AppUpdateService
         AppUpdateInfo updateInfo,
         CancellationToken cancellationToken = default)
     {
+        return await DownloadAndStartUpdateAsync(updateInfo, progress: null, cancellationToken);
+    }
+
+    public async Task<string> DownloadAndStartUpdateAsync(
+        AppUpdateInfo updateInfo,
+        IProgress<AppUpdateProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         string updateDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ElevateHelper",
@@ -74,26 +82,51 @@ public sealed class AppUpdateService
             updateInfo.LatestTag);
         Directory.CreateDirectory(updateDirectory);
 
+        progress?.Report(new AppUpdateProgress(AppUpdateProgressStage.Preparing));
+
         string installerPath = Path.Combine(updateDirectory, SanitizeFileName(updateInfo.SetupAsset.Name));
-        using HttpResponseMessage response = await httpClient.GetAsync(updateInfo.SetupAsset.DownloadUrl, cancellationToken);
+        using HttpResponseMessage response = await httpClient.GetAsync(
+            updateInfo.SetupAsset.DownloadUrl,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
 
+        long? totalBytes = response.Content.Headers.ContentLength;
+        long bytesReceived = 0;
         await using (FileStream output = File.Create(installerPath))
         {
-            await response.Content.CopyToAsync(output, cancellationToken);
+            await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
+            byte[] buffer = new byte[81920];
+            int bytesRead;
+            while ((bytesRead = await input.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                await output.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                bytesReceived += bytesRead;
+                progress?.Report(new AppUpdateProgress(
+                    AppUpdateProgressStage.Downloading,
+                    bytesReceived,
+                    totalBytes));
+            }
         }
 
+        progress?.Report(new AppUpdateProgress(AppUpdateProgressStage.Verifying, bytesReceived, totalBytes));
         VerifyDownloadedInstaller(installerPath, updateInfo.SetupAsset);
 
+        progress?.Report(new AppUpdateProgress(AppUpdateProgressStage.StartingInstaller, bytesReceived, totalBytes));
         ProcessStartInfo startInfo = new()
         {
             FileName = installerPath,
-            Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
+            Arguments = BuildSilentInstallerArguments(),
             UseShellExecute = true,
         };
         _ = Process.Start(startInfo);
 
         return installerPath;
+    }
+
+    internal static string BuildSilentInstallerArguments()
+    {
+        return "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS";
     }
 
     internal static bool IsUpdateAvailable(string currentVersion, string latestTag)
@@ -394,6 +427,24 @@ public sealed record AppUpdateInfo(
     AppUpdateAsset SetupAsset);
 
 public sealed record AppUpdateAsset(string Name, string DownloadUrl, string Digest);
+
+public sealed record AppUpdateProgress(
+    AppUpdateProgressStage Stage,
+    long BytesReceived = 0,
+    long? TotalBytes = null)
+{
+    public double? Percentage => TotalBytes is > 0
+        ? Math.Min(100d, BytesReceived * 100d / TotalBytes.Value)
+        : null;
+}
+
+public enum AppUpdateProgressStage
+{
+    Preparing,
+    Downloading,
+    Verifying,
+    StartingInstaller,
+}
 
 internal sealed record SemanticVersion(
     int Major,

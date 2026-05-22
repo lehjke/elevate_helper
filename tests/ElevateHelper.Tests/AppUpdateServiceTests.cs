@@ -116,6 +116,63 @@ public sealed class AppUpdateServiceTests
     }
 
     [Fact]
+    public async Task DownloadAndStartUpdateAsync_ReportsDownloadProgressBeforeVerification()
+    {
+        byte[] installerBytes = "not the expected installer"u8.ToArray();
+        using HttpClient httpClient = new(new StubHttpMessageHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(installerBytes),
+        }));
+        AppUpdateService service = new(httpClient);
+        List<AppUpdateProgress> updates = [];
+        InlineProgress<AppUpdateProgress> progress = new(updates.Add);
+        string latestTag = $"v2.0.5-progress-{Guid.NewGuid():N}";
+        AppUpdateInfo update = new(
+            CurrentVersion: "2.0.4",
+            LatestVersion: "2.0.5",
+            LatestTag: latestTag,
+            ReleaseUrl: "https://example.test/releases/v2.0.5",
+            SetupAsset: new AppUpdateAsset("ElevateHelper-test-setup.exe", "https://example.test/setup.exe", TestDigest));
+
+        try
+        {
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => service.DownloadAndStartUpdateAsync(update, progress));
+
+            Assert.Contains(updates, item => item.Stage == AppUpdateProgressStage.Preparing);
+            AppUpdateProgress downloadProgress = Assert.Single(
+                updates,
+                item => item.Stage == AppUpdateProgressStage.Downloading);
+            Assert.Equal(installerBytes.Length, downloadProgress.BytesReceived);
+            Assert.Equal(installerBytes.Length, downloadProgress.TotalBytes);
+            Assert.Equal(100d, downloadProgress.Percentage.GetValueOrDefault());
+            Assert.Contains(updates, item => item.Stage == AppUpdateProgressStage.Verifying);
+            Assert.DoesNotContain(updates, item => item.Stage == AppUpdateProgressStage.StartingInstaller);
+        }
+        finally
+        {
+            string updateDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ElevateHelper",
+                "updates",
+                latestTag);
+            if (Directory.Exists(updateDirectory))
+            {
+                Directory.Delete(updateDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BuildSilentInstallerArguments_LeavesRestartToInstallerRunEntry()
+    {
+        string actual = AppUpdateService.BuildSilentInstallerArguments();
+
+        Assert.Contains("/CLOSEAPPLICATIONS", actual, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/RESTARTAPPLICATIONS", actual, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void IsSha256DigestMatch_VerifiesDownloadedAssetDigest()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"elevate-helper-{Guid.NewGuid():N}.bin");
@@ -148,6 +205,21 @@ public sealed class AppUpdateServiceTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult(handler(request));
+        }
+    }
+
+    private sealed class InlineProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> handler;
+
+        public InlineProgress(Action<T> handler)
+        {
+            this.handler = handler;
+        }
+
+        public void Report(T value)
+        {
+            handler(value);
         }
     }
 }

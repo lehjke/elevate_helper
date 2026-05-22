@@ -195,7 +195,12 @@ public sealed class AppLocalizationService
         UpdateAvailableMessageFormat: "Installed version: {0}\nLatest version: {1}\n\nDo you want to download and install the update now?",
         UpdateInstallButton: "Update",
         UpdateLaterButton: "Later",
+        UpdateProgressTitle: "Installing update",
+        UpdatePreparingStatus: "Preparing update...",
         UpdateDownloadingStatus: "Downloading the update...",
+        UpdateDownloadingProgressFormat: "Downloading the update... {0:0}%",
+        UpdateVerifyingStatus: "Verifying downloaded installer...",
+        UpdateStartingInstallerStatus: "Starting installer...",
         UpdateStartedStatus: "The update installer has started. Elevate Helper will close now.");
 
     private static readonly AppTextCatalog Russian = new(
@@ -384,7 +389,12 @@ public sealed class AppLocalizationService
         UpdateAvailableMessageFormat: "Установленная версия: {0}\nПоследняя версия: {1}\n\nСкачать и установить обновление сейчас?",
         UpdateInstallButton: "Обновить",
         UpdateLaterButton: "Позже",
+        UpdateProgressTitle: "Установка обновления",
+        UpdatePreparingStatus: "Подготовка обновления...",
         UpdateDownloadingStatus: "Скачивание обновления...",
+        UpdateDownloadingProgressFormat: "Скачивание обновления... {0:0}%",
+        UpdateVerifyingStatus: "Проверка установщика...",
+        UpdateStartingInstallerStatus: "Запуск установщика...",
         UpdateStartedStatus: "Установщик обновления запущен. Elevate Helper сейчас закроется.");
 
     public static AppLocalizationService Instance { get; } = new();
@@ -929,7 +939,12 @@ public sealed class AppLocalizationService
         string UpdateAvailableMessageFormat,
         string UpdateInstallButton,
         string UpdateLaterButton,
+        string UpdateProgressTitle,
+        string UpdatePreparingStatus,
         string UpdateDownloadingStatus,
+        string UpdateDownloadingProgressFormat,
+        string UpdateVerifyingStatus,
+        string UpdateStartingInstallerStatus,
         string UpdateStartedStatus);
 }
 

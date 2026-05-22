@@ -127,15 +127,113 @@ public sealed partial class MainPage : Page
 
         try
         {
-            SetStatus(Text.UpdateDownloadingStatus, InfoBarSeverity.Informational);
-            _ = await updateService.DownloadAndStartUpdateAsync(updateInfo);
-            SetStatus(Text.UpdateStartedStatus, InfoBarSeverity.Success);
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
-            Application.Current.Exit();
+            await DownloadAndInstallUpdateWithProgressAsync(updateInfo);
         }
         catch (Exception ex)
         {
             SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+        }
+    }
+
+    private async Task DownloadAndInstallUpdateWithProgressAsync(AppUpdateInfo updateInfo)
+    {
+        TextBlock progressTextBlock = new()
+        {
+            Text = Text.UpdatePreparingStatus,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        ProgressBar progressBar = new()
+        {
+            IsIndeterminate = true,
+            Minimum = 0,
+            Maximum = 100,
+        };
+        StackPanel progressContent = new()
+        {
+            Spacing = 12,
+            Children =
+            {
+                progressTextBlock,
+                progressBar,
+            },
+        };
+        ContentDialog progressDialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = Text.UpdateProgressTitle,
+            Content = progressContent,
+            DefaultButton = ContentDialogButton.None,
+        };
+        TaskCompletionSource<string> updateTaskCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Progress<AppUpdateProgress> progress = new(updateProgress =>
+            ApplyUpdateProgress(updateProgress, progressTextBlock, progressBar));
+
+        progressDialog.Opened += async (_, _) =>
+        {
+            try
+            {
+                SetStatus(Text.UpdatePreparingStatus, InfoBarSeverity.Informational);
+                string installerPath = await updateService.DownloadAndStartUpdateAsync(updateInfo, progress);
+                updateTaskCompletion.TrySetResult(installerPath);
+            }
+            catch (Exception ex)
+            {
+                updateTaskCompletion.TrySetException(ex);
+            }
+            finally
+            {
+                progressDialog.Hide();
+            }
+        };
+
+        await progressDialog.ShowAsync();
+        _ = await updateTaskCompletion.Task;
+        SetStatus(Text.UpdateStartedStatus, InfoBarSeverity.Success);
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        Application.Current.Exit();
+    }
+
+    private void ApplyUpdateProgress(
+        AppUpdateProgress updateProgress,
+        TextBlock progressTextBlock,
+        ProgressBar progressBar)
+    {
+        switch (updateProgress.Stage)
+        {
+            case AppUpdateProgressStage.Downloading:
+                if (updateProgress.Percentage is double percentage)
+                {
+                    progressBar.IsIndeterminate = false;
+                    progressBar.Value = percentage;
+                    progressTextBlock.Text = string.Format(
+                        System.Globalization.CultureInfo.CurrentCulture,
+                        Text.UpdateDownloadingProgressFormat,
+                        percentage);
+                    SetStatus(progressTextBlock.Text, InfoBarSeverity.Informational);
+                }
+                else
+                {
+                    progressBar.IsIndeterminate = true;
+                    progressTextBlock.Text = Text.UpdateDownloadingStatus;
+                    SetStatus(Text.UpdateDownloadingStatus, InfoBarSeverity.Informational);
+                }
+
+                break;
+            case AppUpdateProgressStage.Verifying:
+                progressBar.IsIndeterminate = true;
+                progressTextBlock.Text = Text.UpdateVerifyingStatus;
+                SetStatus(Text.UpdateVerifyingStatus, InfoBarSeverity.Informational);
+                break;
+            case AppUpdateProgressStage.StartingInstaller:
+                progressBar.IsIndeterminate = true;
+                progressTextBlock.Text = Text.UpdateStartingInstallerStatus;
+                SetStatus(Text.UpdateStartingInstallerStatus, InfoBarSeverity.Informational);
+                break;
+            default:
+                progressBar.IsIndeterminate = true;
+                progressTextBlock.Text = Text.UpdatePreparingStatus;
+                SetStatus(Text.UpdatePreparingStatus, InfoBarSeverity.Informational);
+                break;
         }
     }
 
