@@ -6,7 +6,7 @@ namespace ElevateHelperWinUI;
 
 public sealed partial class MainWindow : Window
 {
-    private const int PreferredWidth = 1080;
+    private const int PreferredWidth = 960;
     private const int PreferredHeight = 900;
     private const int WorkAreaMargin = 80;
 

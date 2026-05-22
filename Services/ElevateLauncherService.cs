@@ -1045,7 +1045,14 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             }
             else if (observedDesignWindow)
             {
-                return;
+                if (!TryClickNoOnSaveConfirmationDialogs(process.Id))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                TryClickNoOnSaveConfirmationDialogs(process.Id);
             }
 
             await Task.Delay(WindowPollDelay, cancellationToken);
@@ -1109,7 +1116,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             return false;
         }
 
-        return IsSavePromptText(BuildDialogSearchText(windowHandle));
+        string searchText = BuildDialogSearchText(windowHandle);
+        return IsSavePromptText(searchText) ||
+               GetWindowTitle(windowHandle).Contains("Elevate", StringComparison.OrdinalIgnoreCase);
     }
 
     internal static bool IsSavePromptText(string text)
@@ -1121,7 +1130,13 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
         string normalized = text.ToLowerInvariant();
         return normalized.Contains("save", StringComparison.Ordinal) ||
-               normalized.Contains("сохран", StringComparison.Ordinal);
+               normalized.Contains("сохран", StringComparison.Ordinal) ||
+               normalized.Contains("close", StringComparison.Ordinal) ||
+               normalized.Contains("exit", StringComparison.Ordinal) ||
+               normalized.Contains("quit", StringComparison.Ordinal) ||
+               normalized.Contains("закры", StringComparison.Ordinal) ||
+               normalized.Contains("выход", StringComparison.Ordinal) ||
+               normalized.Contains("заверш", StringComparison.Ordinal);
     }
 
     private static string BuildDialogSearchText(IntPtr dialogHandle)

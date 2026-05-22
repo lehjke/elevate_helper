@@ -47,6 +47,9 @@
                     <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0A84FF" />
                     <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#FF0A84FF" />
                     <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#1F0A84FF" />
+                    <SolidColorBrush x:Key="ProgressBarForeground" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="ProgressBarForegroundThemeBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="ProgressBarIndeterminateForegroundThemeBrush" Color="#FF0A84FF" />
                     <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#FFFFFFFF" />
                     <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FFFFFFFF" />
                     <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#FFFFFFFF" />
@@ -87,6 +90,9 @@
                     <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0A84FF" />
                     <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#FF0A84FF" />
                     <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#2E0A84FF" />
+                    <SolidColorBrush x:Key="ProgressBarForeground" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="ProgressBarForegroundThemeBrush" Color="#FF0A84FF" />
+                    <SolidColorBrush x:Key="ProgressBarIndeterminateForegroundThemeBrush" Color="#FF0A84FF" />
                     <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#FF5A5A5E" />
                     <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FF626266" />
                     <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#FF505054" />
@@ -108,16 +114,16 @@
 
             <Style x:Key="HeroTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe UI Variable Display" />
-                <Setter Property="FontSize" Value="22" />
+                <Setter Property="FontSize" Value="24" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="LineHeight" Value="26" />
+                <Setter Property="LineHeight" Value="29" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
             <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="17" />
+                <Setter Property="FontSize" Value="19" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="LineHeight" Value="22" />
+                <Setter Property="LineHeight" Value="24" />
                 <Setter Property="Margin" Value="0,0,0,2" />
             </Style>
 
@@ -163,6 +169,73 @@
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border
+                                x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="Root"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="1"
+                                                    Duration="0:0:0.10" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="Root"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0.92"
+                                                    Duration="0:0:0.10" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="Root"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0.84"
+                                                    Duration="0:0:0.06" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="Root"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0.55"
+                                                    Duration="0:0:0.10" />
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <ContentPresenter
+                                    x:Name="ContentPresenter"
+                                    Padding="{TemplateBinding Padding}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    ContentTransitions="{TemplateBinding ContentTransitions}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <Style x:Key="SubtleActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
@@ -345,6 +418,114 @@
                                     ContentTemplate="{TemplateBinding ContentTemplate}"
                                     ContentTransitions="{TemplateBinding ContentTransitions}"
                                     Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="RoundCheckToggleStyle" TargetType="ToggleButton">
+                <Setter Property="Width" Value="22" />
+                <Setter Property="Height" Value="22" />
+                <Setter Property="MinWidth" Value="22" />
+                <Setter Property="MinHeight" Value="22" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="11" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosSubtleTextBrush}" />
+                <Setter Property="BorderThickness" Value="1.5" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border
+                                x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="Root"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0.82"
+                                                    Duration="0:0:0.06" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="Root"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0.45"
+                                                    Duration="0:0:0.10" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Checked">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Visibility">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="Visible" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedPointerOver">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Visibility">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="Visible" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedPressed">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="Root"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0.82"
+                                                    Duration="0:0:0.06" />
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Visibility">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="Visible" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <FontIcon
+                                    x:Name="CheckGlyph"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontFamily="Segoe MDL2 Assets"
+                                    FontSize="11"
+                                    Foreground="White"
+                                    Glyph="&#xE73E;"
+                                    Visibility="Collapsed" />
                             </Border>
                         </ControlTemplate>
                     </Setter.Value>

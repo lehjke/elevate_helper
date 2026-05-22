@@ -481,6 +481,32 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunExistingBatchAsync_RunsElevateWithoutPreparingCopies()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        string generatedCopy = System.IO.Path.Combine(workspace.Path, "Project02.elvx");
+        File.WriteAllText(generatedCopy, "<Project />");
+        string staleResult = System.IO.Path.Combine(workspace.Path, "batch_results.csv");
+        File.WriteAllText(staleResult, "keep");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunExistingBatchAsync(
+            workspace.Path,
+            BuildingType.Residence,
+            includeLunchPeak: true,
+            morningProgress: null,
+            lunchProgress: null);
+
+        Assert.True(result.Success, result.Message);
+        Assert.Single(launcher.ResidenceCalls);
+        Assert.True(File.Exists(generatedCopy));
+        Assert.Equal("keep", File.ReadAllText(staleResult));
+    }
+
+    [Fact]
     public async Task RunAsync_InvalidPath_ReturnsFailResult()
     {
         ElevateProcessingService service = new(new FakeLauncherService());

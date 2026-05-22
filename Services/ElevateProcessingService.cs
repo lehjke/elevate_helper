@@ -181,6 +181,55 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             cancellationToken);
     }
 
+    public async Task<ProcessingResult> RunExistingBatchAsync(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return ProcessingResult.Fail("Path to Elevate files is empty.");
+        }
+
+        if (!Directory.Exists(path))
+        {
+            return ProcessingResult.Fail($"Path does not exist: {path}");
+        }
+
+        try
+        {
+            if (buildingType == BuildingType.Office)
+            {
+                await launcherService.LaunchOfficeAsync(
+                    path,
+                    includeLunchPeak,
+                    morningProgress,
+                    lunchProgress,
+                    cancellationToken);
+                return ProcessingResult.Ok();
+            }
+
+            if (buildingType is BuildingType.Residence or BuildingType.Hotel)
+            {
+                await launcherService.LaunchResidenceAsync(path, morningProgress, cancellationToken);
+                return ProcessingResult.Ok();
+            }
+
+            return ProcessingResult.Fail($"Unknown building type: {buildingType}");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return ProcessingResult.Fail(ex.Message, ex);
+        }
+    }
+
     public void ModifyHandlingCapacity(string xmlFilePath, int newCapacity)
     {
         XDocument xmlDocument = LoadXml(xmlFilePath);

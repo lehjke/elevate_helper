@@ -23,6 +23,7 @@ public sealed partial class MainPage : Page
     private readonly IElevateProcessingService processingService = new ElevateProcessingService();
     private readonly IElevateReportService reportService = new ElevateReportService();
     private readonly ElevateProjectBatchDiscoveryService projectBatchDiscoveryService = new();
+    private readonly ElevateResultMetricsService resultMetricsService = new();
     private readonly SemaphoreSlim reportExecutionLock = new(1, 1);
     private readonly object activeProcessingFoldersSync = new();
     private readonly HashSet<string> activeProcessingFolders = new(StringComparer.OrdinalIgnoreCase);
@@ -33,6 +34,7 @@ public sealed partial class MainPage : Page
     private ElevateProjectEditorDocument? loadedEditorDocument;
     private bool suppressBuildingTypeStatus;
     private bool updateCheckStarted;
+    private ProjectInputMode projectInputMode = ProjectInputMode.Standard;
     private int nextJobId = 1;
 
     public MainPage()
@@ -50,6 +52,7 @@ public sealed partial class MainPage : Page
 
         ResetEditorStatus();
         UpdateModeButtons(BuildingType.Office);
+        UpdateProjectInputModeVisibility();
         RefreshIntegrationStatus(showStatusMessage: true);
         RefreshJobsSummary();
 
@@ -167,6 +170,13 @@ public sealed partial class MainPage : Page
 
     private void OnRunButtonClick(object sender, RoutedEventArgs e)
     {
+        RefreshProjectInputMode();
+        if (projectInputMode == ProjectInputMode.ProjectBatch)
+        {
+            OnRunProjectBatchButtonClick(sender, e);
+            return;
+        }
+
         if (!TryGetInputs(out string path, out BuildingType buildingType))
         {
             return;
@@ -372,6 +382,7 @@ public sealed partial class MainPage : Page
     private void OnEditorPathTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateEditorOutputPreview();
+        RefreshProjectInputMode();
     }
 
     private void OnEditorOutputFieldsChanged(object sender, TextChangedEventArgs e)
@@ -526,7 +537,8 @@ public sealed partial class MainPage : Page
             job.IncludeLunchPeak,
             normalizedPath,
             job.AutoGenerateReport,
-            job.ReportOutputRoot);
+            job.ReportOutputRoot,
+            rerunExistingBatch: true);
     }
 
     private void OnStopJobButtonClick(object sender, RoutedEventArgs e)
@@ -1462,7 +1474,8 @@ public sealed partial class MainPage : Page
         bool includeLunchPeak,
         string activeProcessingFolder,
         bool autoGenerateReport = false,
-        string? reportOutputRoot = null)
+        string? reportOutputRoot = null,
+        bool rerunExistingBatch = false)
     {
         using CancellationTokenSource stopSource = new();
         job.AttachStopSource(stopSource);
@@ -1472,12 +1485,9 @@ public sealed partial class MainPage : Page
 
         try
         {
-            ProcessingResult result = await InvokeProcessingAsync(
-                job,
-                path,
-                buildingType,
-                includeLunchPeak,
-                stopSource.Token);
+            ProcessingResult result = rerunExistingBatch
+                ? await InvokeExistingBatchAsync(job, path, buildingType, includeLunchPeak, stopSource.Token)
+                : await InvokeProcessingAsync(job, path, buildingType, includeLunchPeak, stopSource.Token);
             if (job.StopRequested)
             {
                 await CompleteStoppedJobAsync(job, autoGenerateReport, reportOutputRoot);
@@ -1680,6 +1690,27 @@ public sealed partial class MainPage : Page
             cancellationToken);
     }
 
+    private async Task<ProcessingResult> InvokeExistingBatchAsync(
+        JobProgressViewModel job,
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        CancellationToken cancellationToken)
+    {
+        Progress<ElevateProgressInfo> morningProgress = new(update => HandleProgressUpdate(job, update));
+        Progress<ElevateProgressInfo>? lunchProgress = buildingType == BuildingType.Office && includeLunchPeak
+            ? new Progress<ElevateProgressInfo>(update => HandleProgressUpdate(job, update))
+            : null;
+
+        return await processingService.RunExistingBatchAsync(
+            path,
+            buildingType,
+            includeLunchPeak,
+            morningProgress,
+            lunchProgress,
+            cancellationToken);
+    }
+
     private void HandleProgressUpdate(JobProgressViewModel job, ElevateProgressInfo update)
     {
         if (!DispatcherQueue.HasThreadAccess)
@@ -1689,6 +1720,37 @@ public sealed partial class MainPage : Page
         }
 
         job.UpdateProgress(update.Scenario, update.Completed, update.Total, localizationService);
+        UpdateJobScenarioMetrics(job, update.Scenario);
+    }
+
+    private void UpdateJobScenarioMetrics(JobProgressViewModel job, string? scenario)
+    {
+        string metricsPath = ResolveMetricsPath(job, scenario);
+        ElevateResultMetrics? metrics = resultMetricsService.ReadLatestMetrics(metricsPath);
+        if (metrics is null)
+        {
+            return;
+        }
+
+        job.UpdateScenarioMetrics(
+            scenario,
+            ElevateResultMetricsService.Format(metrics, System.Globalization.CultureInfo.CurrentCulture));
+    }
+
+    private static string ResolveMetricsPath(JobProgressViewModel job, string? scenario)
+    {
+        if (job.BuildingType != BuildingType.Office)
+        {
+            return job.JobPath;
+        }
+
+        if (!string.IsNullOrWhiteSpace(scenario) &&
+            scenario.Contains("lunch", StringComparison.OrdinalIgnoreCase))
+        {
+            return Path.Combine(job.JobPath, "lunch");
+        }
+
+        return Path.Combine(job.JobPath, "morning");
     }
 
     private void SetStatus(string message, InfoBarSeverity severity)
@@ -1870,11 +1932,96 @@ public sealed partial class MainPage : Page
 
     private void UpdateBetaFeatureVisibility()
     {
-        bool isVisible = BetaFeaturesCheckBox.IsOn;
-        EditorWindowCard.Visibility = isVisible
+        bool isBetaVisible = BetaFeaturesCheckBox.IsOn;
+        EditorWindowCard.Visibility = isBetaVisible
             ? Visibility.Visible
             : Visibility.Collapsed;
-        ProjectBatchCard.Visibility = isVisible
+        ProjectBatchCard.Visibility = projectInputMode == ProjectInputMode.ProjectBatch
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void RefreshProjectInputMode()
+    {
+        ProjectInputMode newMode = DetectProjectInputMode(PathTextBox.Text);
+        if (projectInputMode == newMode)
+        {
+            if (newMode == ProjectInputMode.ProjectBatch)
+            {
+                SyncProjectBatchPathFromMainPath();
+            }
+
+            return;
+        }
+
+        projectInputMode = newMode;
+        SyncProjectBatchPathFromMainPath();
+        UpdateProjectInputModeVisibility();
+    }
+
+    private ProjectInputMode DetectProjectInputMode(string? rawPath)
+    {
+        string path = rawPath?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+        {
+            return ProjectInputMode.Standard;
+        }
+
+        try
+        {
+            if (Directory.EnumerateFiles(path, "*.elvx", SearchOption.TopDirectoryOnly).Any())
+            {
+                return ProjectInputMode.Standard;
+            }
+
+            if (!Directory
+                .EnumerateDirectories(path)
+                .Select(Path.GetFileName)
+                .Any(IsKnownProjectBatchTypeFolder))
+            {
+                return ProjectInputMode.Standard;
+            }
+
+            ProjectBatchDiscoveryResult discoveryResult = projectBatchDiscoveryService.Discover(path);
+            return discoveryResult.Jobs.Count > 0
+                ? ProjectInputMode.ProjectBatch
+                : ProjectInputMode.Standard;
+        }
+        catch
+        {
+            return ProjectInputMode.Standard;
+        }
+    }
+
+    private static bool IsKnownProjectBatchTypeFolder(string? folderName)
+    {
+        return folderName is not null &&
+               (folderName.Equals("Office", StringComparison.OrdinalIgnoreCase) ||
+                folderName.Equals("Res", StringComparison.OrdinalIgnoreCase) ||
+                folderName.Equals("Residence", StringComparison.OrdinalIgnoreCase) ||
+                folderName.Equals("Hotel", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void SyncProjectBatchPathFromMainPath()
+    {
+        if (projectInputMode != ProjectInputMode.ProjectBatch)
+        {
+            return;
+        }
+
+        string path = PathTextBox.Text?.Trim() ?? string.Empty;
+        if (!string.Equals(ProjectBatchPathTextBox.Text, path, StringComparison.Ordinal))
+        {
+            ProjectBatchPathTextBox.Text = path;
+        }
+    }
+
+    private void UpdateProjectInputModeVisibility()
+    {
+        bool isBatchMode = projectInputMode == ProjectInputMode.ProjectBatch;
+        BuildingTypeCard.Visibility = isBatchMode ? Visibility.Collapsed : Visibility.Visible;
+        ActionsCard.Visibility = isBatchMode ? Visibility.Collapsed : Visibility.Visible;
+        ProjectBatchCard.Visibility = isBatchMode
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -2030,6 +2177,12 @@ public sealed partial class MainPage : Page
 
         Bindings.Update();
         RefreshJobsSummary();
+    }
+
+    private enum ProjectInputMode
+    {
+        Standard,
+        ProjectBatch,
     }
 
     public sealed class JobProgressViewModel : INotifyPropertyChanged
@@ -2379,6 +2532,11 @@ public sealed partial class MainPage : Page
             }
         }
 
+        public void UpdateScenarioMetrics(string? scenario, string metricsText)
+        {
+            ResolveScenario(scenario).MetricsText = metricsText;
+        }
+
         public void ApplyLocalization(AppLocalizationService localizationService)
         {
             Title = string.IsNullOrWhiteSpace(customTitle)
@@ -2525,6 +2683,7 @@ public sealed partial class MainPage : Page
         private double maximum;
         private bool isIndeterminate = true;
         private string progressText = "0/0";
+        private string metricsText = string.Empty;
 
         public ScenarioProgressViewModel(JobScenarioKind scenarioKind)
         {
@@ -2566,6 +2725,26 @@ public sealed partial class MainPage : Page
                 OnPropertyChanged(nameof(ProgressText));
             }
         }
+
+        public string MetricsText
+        {
+            get => metricsText;
+            set
+            {
+                if (metricsText == value)
+                {
+                    return;
+                }
+
+                metricsText = value;
+                OnPropertyChanged(nameof(MetricsText));
+                OnPropertyChanged(nameof(MetricsVisibility));
+            }
+        }
+
+        public Visibility MetricsVisibility => string.IsNullOrWhiteSpace(metricsText)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         public int Completed
         {

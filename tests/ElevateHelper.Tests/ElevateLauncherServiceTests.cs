@@ -42,6 +42,8 @@ public sealed class ElevateLauncherServiceTests
     [Theory]
     [InlineData("Do you want to save changes?", true)]
     [InlineData("Сохранить изменения перед закрытием?", true)]
+    [InlineData("Close Elevate without saving?", true)]
+    [InlineData("Закрыть Design 1?", true)]
     [InlineData("Elevate has finished processing.", false)]
     [InlineData("The selected folder does not exist.", false)]
     public void IsSavePromptText_MatchesOnlySavePrompts(string text, bool expected)

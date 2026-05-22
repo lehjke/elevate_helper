@@ -85,4 +85,15 @@ public interface IElevateProcessingService
     {
         return RetryLastFailedRunAsync(path, cancellationToken);
     }
+
+    Task<ProcessingResult> RunExistingBatchAsync(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
+        CancellationToken cancellationToken = default)
+    {
+        return RunAsync(path, buildingType, includeLunchPeak, morningProgress, lunchProgress, cancellationToken);
+    }
 }
