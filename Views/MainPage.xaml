@@ -272,6 +272,32 @@
                             </Border>
 
                             <Border
+                                x:Name="EditorWindowCard"
+                                Style="{StaticResource SectionCardStyle}">
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Style="{StaticResource SectionIconBadgeStyle}">
+                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Edit" />
+                                        </Border>
+                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.CalculationFileTitle, Mode=OneTime}" />
+                                    </StackPanel>
+
+                                    <TextBlock
+                                        Style="{StaticResource SectionHintStyle}"
+                                        Text="{x:Bind Text.CalculationFileHint, Mode=OneTime}" />
+
+                                    <TextBlock
+                                        x:Name="CalculationFileStatusTextBlock"
+                                        Style="{StaticResource SectionHintStyle}" />
+
+                                    <Button
+                                        Click="OnOpenEditorWindowClick"
+                                        Content="{x:Bind Text.OpenEditorWindowButton, Mode=OneTime}"
+                                        Style="{StaticResource PrimaryActionButtonStyle}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
                                 x:Name="ActionsCard"
                                 Style="{StaticResource SectionCardStyle}">
                                 <StackPanel Spacing="8">
@@ -439,34 +465,6 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border
-                                x:Name="EditorWindowCard"
-                                Style="{StaticResource SectionCardStyle}"
-                                Visibility="Collapsed">
-                                <StackPanel Spacing="8">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Edit" />
-                                        </Border>
-                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.EditorTitle, Mode=OneTime}" />
-                                        <Border Style="{StaticResource BetaBadgeStyle}">
-                                            <TextBlock
-                                                FontSize="11"
-                                                FontWeight="SemiBold"
-                                                Text="BETA" />
-                                        </Border>
-                                    </StackPanel>
-
-                                    <TextBlock
-                                        Style="{StaticResource SectionHintStyle}"
-                                        Text="{x:Bind Text.EditorWindowHint, Mode=OneTime}" />
-
-                                    <Button
-                                        Click="OnOpenEditorWindowClick"
-                                        Content="{x:Bind Text.OpenEditorWindowButton, Mode=OneTime}"
-                                        Style="{StaticResource PrimaryActionButtonStyle}" />
-                                </StackPanel>
-                            </Border>
                             </StackPanel>
                         </ScrollViewer>
                     </Border>

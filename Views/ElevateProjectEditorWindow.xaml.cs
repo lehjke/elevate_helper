@@ -35,10 +35,9 @@ namespace ElevateHelperWinUI.Views
         private string preservedTrafficMode = string.Empty;
         private int preservedLearningRuns;
         private int preservedRandomSeed;
-        private double preservedHandlingCapacity;
-        private double preservedLoadingTime;
-        private double preservedUnloadingTime;
         private string preservedLogoFile = string.Empty;
+
+        public event EventHandler? DocumentSaved;
 
         public ElevateProjectEditorWindow(string workingFolder, BuildingType buildingType)
         {
@@ -52,6 +51,7 @@ namespace ElevateHelperWinUI.Views
             DispatcherComboBox.ItemsSource = dispatcherOptions;
 
             localizationService.LanguageChanged += OnLanguageChanged;
+            RootGrid.Loaded += OnRootGridLoaded;
             Closed += OnClosed;
 
             ConfigureWindow();
@@ -105,6 +105,7 @@ namespace ElevateHelperWinUI.Views
 
             ProjectTabButton.Content = Text.EditorProjectTabTitle;
             AnalysisTabButton.Content = Text.EditorAnalysisTabTitle;
+            TrafficTabButton.Content = Text.EditorTrafficSectionTitle;
             BuildingTabButton.Content = Text.EditorBuildingTabTitle;
             LiftGroupTabButton.Content = Text.EditorLiftGroupTabTitle;
 
@@ -117,6 +118,15 @@ namespace ElevateHelperWinUI.Views
             DispatcherLabelTextBlock.Text = Text.EditorDispatcherHeader;
             SimulationsLabelTextBlock.Text = Text.EditorSimulationsHeader;
             AbsenteeismLabelTextBlock.Text = Text.EditorAbsenteeismHeader;
+
+            TrafficSplitTitleTextBlock.Text = Text.EditorTrafficSplitTitle;
+            IncomingLabelTextBlock.Text = Text.EditorIncomingHeader;
+            OutgoingLabelTextBlock.Text = Text.EditorOutgoingHeader;
+            InterfloorLabelTextBlock.Text = Text.EditorInterfloorHeader;
+            TrafficParametersTitleTextBlock.Text = Text.EditorTrafficParametersTitle;
+            HandlingCapacityLabelTextBlock.Text = Text.EditorHandlingCapacityHeader;
+            LoadingTimeLabelTextBlock.Text = Text.EditorLoadingTimeHeader;
+            UnloadingTimeLabelTextBlock.Text = Text.EditorUnloadingTimeHeader;
 
             FloorNameColumnTextBlock.Text = Text.EditorFloorNameColumn;
             InterfloorHeightColumnTextBlock.Text = Text.EditorInterfloorHeightColumn;
@@ -156,12 +166,51 @@ namespace ElevateHelperWinUI.Views
             ProjectCompanyTextBox.Text = string.Empty;
             SimulationCountTextBox.Text = "10";
             AbsenteeismTextBox.Text = buildingType == BuildingType.Office ? "20" : string.Empty;
+            IncomingTextBox.Text = "100";
+            OutgoingTextBox.Text = "0";
+            InterfloorTextBox.Text = "0";
+            HandlingCapacityTextBox.Text = "12";
+            LoadingTimeTextBox.Text = "1";
+            UnloadingTimeTextBox.Text = "1";
 
             List<ElevateProjectEditorFloor> fallbackFloors = BuildFallbackFloors();
             ApplyBuildingRows(fallbackFloors);
             liftRows.Clear();
             AddDefaultLiftRow(fallbackFloors);
             RefreshLiftCountSummary();
+        }
+
+        private async void OnRootGridLoaded(object sender, RoutedEventArgs e)
+        {
+            RootGrid.Loaded -= OnRootGridLoaded;
+            await LoadInitialDocumentAsync();
+        }
+
+        private async Task LoadInitialDocumentAsync()
+        {
+            try
+            {
+                string? existingFilePath = TryResolveExistingElvxPath();
+                if (!string.IsNullOrWhiteSpace(existingFilePath))
+                {
+                    ElevateProjectEditorDocument document = await projectEditorService.LoadFile(existingFilePath);
+                    ApplyLoadedDocument(document);
+                    SetStatus(
+                        string.Format(CultureInfo.CurrentCulture, Text.EditorLoadSuccessFormat, Path.GetFileName(existingFilePath)),
+                        InfoBarSeverity.Success);
+                    return;
+                }
+
+                ElevateProjectEditorDocument templateDocument = await projectEditorService.LoadTemplate(buildingType);
+                ApplyLoadedDocument(templateDocument);
+                SetStatus(
+                    string.Format(CultureInfo.CurrentCulture, Text.EditorLoadSuccessFormat, Path.GetFileName(templateDocument.TemplatePath ?? string.Empty)),
+                    InfoBarSeverity.Informational);
+            }
+            catch (Exception ex)
+            {
+                SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+            }
         }
 
         private async void OnLoadExistingButtonClick(object sender, RoutedEventArgs e)
@@ -219,6 +268,7 @@ namespace ElevateHelperWinUI.Views
 
                 ElevateProjectEditorDocument refreshedDocument = await projectEditorService.LoadFile(outputPath);
                 ApplyLoadedDocument(refreshedDocument);
+                DocumentSaved?.Invoke(this, EventArgs.Empty);
                 SetStatus(string.Format(CultureInfo.CurrentCulture, Text.EditorSaveSuccessFormat, Path.GetFileName(outputPath)), InfoBarSeverity.Success);
             }
             catch (Exception ex)
@@ -240,6 +290,11 @@ namespace ElevateHelperWinUI.Views
         private void OnAnalysisTabButtonClick(object sender, RoutedEventArgs e)
         {
             ShowSection(EditorSection.Analysis);
+        }
+
+        private void OnTrafficTabButtonClick(object sender, RoutedEventArgs e)
+        {
+            ShowSection(EditorSection.Traffic);
         }
 
         private void OnBuildingTabButtonClick(object sender, RoutedEventArgs e)
@@ -281,6 +336,7 @@ namespace ElevateHelperWinUI.Views
             currentSection = section;
             ProjectPanel.Visibility = section == EditorSection.Project ? Visibility.Visible : Visibility.Collapsed;
             AnalysisPanel.Visibility = section == EditorSection.Analysis ? Visibility.Visible : Visibility.Collapsed;
+            TrafficPanel.Visibility = section == EditorSection.Traffic ? Visibility.Visible : Visibility.Collapsed;
             BuildingPanel.Visibility = section == EditorSection.Building ? Visibility.Visible : Visibility.Collapsed;
             LiftGroupPanel.Visibility = section == EditorSection.LiftGroup ? Visibility.Visible : Visibility.Collapsed;
             ApplySectionVisuals();
@@ -290,6 +346,7 @@ namespace ElevateHelperWinUI.Views
         {
             SetTabButtonStyle(ProjectTabButton, currentSection == EditorSection.Project);
             SetTabButtonStyle(AnalysisTabButton, currentSection == EditorSection.Analysis);
+            SetTabButtonStyle(TrafficTabButton, currentSection == EditorSection.Traffic);
             SetTabButtonStyle(BuildingTabButton, currentSection == EditorSection.Building);
             SetTabButtonStyle(LiftGroupTabButton, currentSection == EditorSection.LiftGroup);
         }
@@ -343,9 +400,6 @@ namespace ElevateHelperWinUI.Views
             preservedTrafficMode = document.Analysis.TrafficMode;
             preservedLearningRuns = document.Analysis.LearningRuns;
             preservedRandomSeed = document.Analysis.RandomSeed;
-            preservedHandlingCapacity = document.Traffic.HandlingCapacity;
-            preservedLoadingTime = document.Traffic.LoadingTimeSeconds;
-            preservedUnloadingTime = document.Traffic.UnloadingTimeSeconds;
             preservedLogoFile = document.Job.LogoFile;
 
             SourceValueTextBlock.Text = document.SourcePath ?? document.TemplatePath ?? "-";
@@ -357,6 +411,12 @@ namespace ElevateHelperWinUI.Views
             ProjectCompanyTextBox.Text = document.Job.Company;
             SimulationCountTextBox.Text = document.Analysis.SimulationsPerConfiguration.ToString(CultureInfo.InvariantCulture);
             AbsenteeismTextBox.Text = FormatEditableNumber(document.Building.AbsenteeismPercent);
+            IncomingTextBox.Text = FormatEditableNumber(document.Traffic.IncomingPercent);
+            OutgoingTextBox.Text = FormatEditableNumber(document.Traffic.OutgoingPercent);
+            InterfloorTextBox.Text = FormatEditableNumber(document.Traffic.InterfloorPercent);
+            HandlingCapacityTextBox.Text = FormatEditableNumber(document.Traffic.HandlingCapacity);
+            LoadingTimeTextBox.Text = FormatEditableNumber(document.Traffic.LoadingTimeSeconds);
+            UnloadingTimeTextBox.Text = FormatEditableNumber(document.Traffic.UnloadingTimeSeconds);
 
             ApplyDispatcherSelection(document.Analysis.DispatcherAlgorithmName);
             ApplyBuildingRows(document.Floors);
@@ -768,6 +828,7 @@ namespace ElevateHelperWinUI.Views
 
             if (!TryParseDouble(AbsenteeismTextBox.Text, Text.EditorAbsenteeismHeader, out double absenteeism, buildingType != BuildingType.Office) ||
                 !TryParseInt(SimulationCountTextBox.Text, Text.EditorSimulationsHeader, out int simulationCount) ||
+                !TryBuildTraffic(out ElevateProjectEditorTrafficSection traffic) ||
                 !TryBuildFloors(out List<ElevateProjectEditorFloor> floors) ||
                 !TryBuildCars(floors, out List<ElevateProjectEditorCar> cars))
             {
@@ -803,17 +864,43 @@ namespace ElevateHelperWinUI.Views
                     AbsenteeismPercent = buildingType == BuildingType.Office ? absenteeism : loadedDocument.Building.AbsenteeismPercent,
                     NumberOfFloors = floors.Count,
                 },
-                Traffic = new ElevateProjectEditorTrafficSection
-                {
-                    IncomingPercent = loadedDocument.Traffic.IncomingPercent,
-                    OutgoingPercent = loadedDocument.Traffic.OutgoingPercent,
-                    InterfloorPercent = loadedDocument.Traffic.InterfloorPercent,
-                    HandlingCapacity = preservedHandlingCapacity,
-                    LoadingTimeSeconds = preservedLoadingTime,
-                    UnloadingTimeSeconds = preservedUnloadingTime,
-                },
+                Traffic = traffic,
                 Floors = floors,
                 Cars = cars,
+            };
+
+            return true;
+        }
+
+        private bool TryBuildTraffic(out ElevateProjectEditorTrafficSection traffic)
+        {
+            traffic = new ElevateProjectEditorTrafficSection();
+
+            if (!TryParseDouble(IncomingTextBox.Text, Text.EditorIncomingHeader, out double incoming, false) ||
+                !TryParseDouble(OutgoingTextBox.Text, Text.EditorOutgoingHeader, out double outgoing, false) ||
+                !TryParseDouble(InterfloorTextBox.Text, Text.EditorInterfloorHeader, out double interfloor, false) ||
+                !TryParseDouble(HandlingCapacityTextBox.Text, Text.EditorHandlingCapacityHeader, out double handlingCapacity, false) ||
+                !TryParseDouble(LoadingTimeTextBox.Text, Text.EditorLoadingTimeHeader, out double loadingTime, false) ||
+                !TryParseDouble(UnloadingTimeTextBox.Text, Text.EditorUnloadingTimeHeader, out double unloadingTime, false))
+            {
+                return false;
+            }
+
+            double splitTotal = incoming + outgoing + interfloor;
+            if (Math.Abs(splitTotal - 100d) > 0.01d)
+            {
+                SetStatus(Text.EditorTrafficSplitTotalMessage, InfoBarSeverity.Warning);
+                return false;
+            }
+
+            traffic = new ElevateProjectEditorTrafficSection
+            {
+                IncomingPercent = incoming,
+                OutgoingPercent = outgoing,
+                InterfloorPercent = interfloor,
+                HandlingCapacity = handlingCapacity,
+                LoadingTimeSeconds = loadingTime,
+                UnloadingTimeSeconds = unloadingTime,
             };
 
             return true;
@@ -994,6 +1081,12 @@ namespace ElevateHelperWinUI.Views
 
         private string ResolveExistingElvxPath()
         {
+            return TryResolveExistingElvxPath()
+                ?? throw new InvalidOperationException(Text.EditorExistingFileMissingMessage);
+        }
+
+        private string? TryResolveExistingElvxPath()
+        {
             string[] topLevelFiles = Directory.GetFiles(workingFolder, "*.elvx", SearchOption.TopDirectoryOnly);
             string? existingElvxPath = SelectPreferredElvxPath(topLevelFiles);
             if (!string.IsNullOrEmpty(existingElvxPath))
@@ -1008,7 +1101,7 @@ namespace ElevateHelperWinUI.Views
                 return existingElvxPath;
             }
 
-            throw new InvalidOperationException(Text.EditorExistingFileMissingMessage);
+            return null;
         }
 
         private static string? SelectPreferredElvxPath(IEnumerable<string> files)
@@ -1510,6 +1603,7 @@ namespace ElevateHelperWinUI.Views
     {
         Project,
         Analysis,
+        Traffic,
         Building,
         LiftGroup,
     }

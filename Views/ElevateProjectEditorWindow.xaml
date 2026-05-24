@@ -5,7 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Grid x:Name="RootGrid" Background="{ThemeResource IosPageBackgroundBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel MaxWidth="1120" Margin="20,18,20,24" HorizontalAlignment="Center" Spacing="16">
                 <Border Style="{StaticResource HeroCardStyle}">
@@ -67,12 +67,14 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
                         <Button x:Name="ProjectTabButton" Grid.Column="0" Click="OnProjectTabButtonClick" Style="{StaticResource PrimaryActionButtonStyle}" />
                         <Button x:Name="AnalysisTabButton" Grid.Column="1" Click="OnAnalysisTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                        <Button x:Name="BuildingTabButton" Grid.Column="2" Click="OnBuildingTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                        <Button x:Name="LiftGroupTabButton" Grid.Column="3" Click="OnLiftGroupTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                        <Button x:Name="TrafficTabButton" Grid.Column="2" Click="OnTrafficTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                        <Button x:Name="BuildingTabButton" Grid.Column="3" Click="OnBuildingTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                        <Button x:Name="LiftGroupTabButton" Grid.Column="4" Click="OnLiftGroupTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
                     </Grid>
                 </Border>
 
@@ -132,6 +134,65 @@
                                 <TextBlock x:Name="SimulationsLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
                                 <TextBox x:Name="SimulationCountTextBox" PlaceholderText="10" />
                             </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel x:Name="TrafficPanel" Spacing="18" Visibility="Collapsed">
+                            <TextBlock
+                                x:Name="TrafficSplitTitleTextBlock"
+                                FontSize="18"
+                                FontWeight="SemiBold" />
+
+                            <Grid ColumnSpacing="12" RowSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Spacing="6">
+                                    <TextBlock x:Name="IncomingLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="IncomingTextBox" PlaceholderText="100" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Spacing="6">
+                                    <TextBlock x:Name="OutgoingLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="OutgoingTextBox" PlaceholderText="0" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Spacing="6">
+                                    <TextBlock x:Name="InterfloorLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="InterfloorTextBox" PlaceholderText="0" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock
+                                x:Name="TrafficParametersTitleTextBlock"
+                                Margin="0,8,0,0"
+                                FontSize="18"
+                                FontWeight="SemiBold" />
+
+                            <Grid ColumnSpacing="12" RowSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Spacing="6">
+                                    <TextBlock x:Name="HandlingCapacityLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="HandlingCapacityTextBox" PlaceholderText="12" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Spacing="6">
+                                    <TextBlock x:Name="LoadingTimeLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="LoadingTimeTextBox" PlaceholderText="1" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Spacing="6">
+                                    <TextBlock x:Name="UnloadingTimeLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
+                                    <TextBox x:Name="UnloadingTimeTextBox" PlaceholderText="1" />
+                                </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <StackPanel x:Name="BuildingPanel" Spacing="16" Visibility="Collapsed">

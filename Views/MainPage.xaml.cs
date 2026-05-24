@@ -31,6 +31,8 @@ public sealed partial class MainPage : Page
     private readonly ObservableCollection<FloorEditorRowViewModel> editorFloors = [];
     private readonly ObservableCollection<CarEditorRowViewModel> editorCars = [];
     private ElevateProjectEditorWindow? editorWindow;
+    private string? editorWindowPath;
+    private BuildingType? editorWindowBuildingType;
     private ElevateProjectEditorDocument? loadedEditorDocument;
     private bool suppressBuildingTypeStatus;
     private bool updateCheckStarted;
@@ -669,6 +671,12 @@ public sealed partial class MainPage : Page
 
     private void OnOpenEditorWindowClick(object sender, RoutedEventArgs e)
     {
+        if (projectInputMode == ProjectInputMode.ProjectBatch)
+        {
+            SetStatus(Text.CalculationFileBatchModeStatus, InfoBarSeverity.Informational);
+            return;
+        }
+
         if (!TryGetInputs(out string path, out BuildingType buildingType))
         {
             return;
@@ -676,11 +684,26 @@ public sealed partial class MainPage : Page
 
         if (editorWindow is not null)
         {
-            editorWindow.Activate();
-            return;
+            string normalizedPath = Path.GetFullPath(path);
+            if (string.Equals(editorWindowPath, normalizedPath, StringComparison.OrdinalIgnoreCase) &&
+                editorWindowBuildingType == buildingType)
+            {
+                editorWindow.Activate();
+                return;
+            }
+
+            editorWindow.DocumentSaved -= OnEditorWindowDocumentSaved;
+            editorWindow.Closed -= OnEditorWindowClosed;
+            editorWindow.Close();
+            editorWindow = null;
+            editorWindowPath = null;
+            editorWindowBuildingType = null;
         }
 
         editorWindow = new ElevateProjectEditorWindow(path, buildingType);
+        editorWindowPath = Path.GetFullPath(path);
+        editorWindowBuildingType = buildingType;
+        editorWindow.DocumentSaved += OnEditorWindowDocumentSaved;
         editorWindow.Closed += OnEditorWindowClosed;
         editorWindow.Activate();
     }
@@ -689,9 +712,17 @@ public sealed partial class MainPage : Page
     {
         if (editorWindow is not null)
         {
+            editorWindow.DocumentSaved -= OnEditorWindowDocumentSaved;
             editorWindow.Closed -= OnEditorWindowClosed;
             editorWindow = null;
+            editorWindowPath = null;
+            editorWindowBuildingType = null;
         }
+    }
+
+    private void OnEditorWindowDocumentSaved(object? sender, EventArgs e)
+    {
+        RefreshCalculationFileStatus();
     }
 
     private void OnLanguageFlyoutOptionClick(object sender, RoutedEventArgs e)
@@ -751,6 +782,7 @@ public sealed partial class MainPage : Page
 
         UpdateModeButtons(selectedType.Value);
         UpdateEditorOutputPreview();
+        RefreshCalculationFileStatus();
 
         if (suppressBuildingTypeStatus)
         {
@@ -2030,13 +2062,7 @@ public sealed partial class MainPage : Page
 
     private void UpdateBetaFeatureVisibility()
     {
-        bool isBetaVisible = BetaFeaturesCheckBox.IsOn;
-        EditorWindowCard.Visibility = isBetaVisible
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        ProjectBatchCard.Visibility = projectInputMode == ProjectInputMode.ProjectBatch
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        UpdateProjectInputModeVisibility();
     }
 
     private void RefreshProjectInputMode()
@@ -2049,6 +2075,7 @@ public sealed partial class MainPage : Page
                 SyncProjectBatchPathFromMainPath();
             }
 
+            RefreshCalculationFileStatus();
             return;
         }
 
@@ -2118,10 +2145,88 @@ public sealed partial class MainPage : Page
     {
         bool isBatchMode = projectInputMode == ProjectInputMode.ProjectBatch;
         BuildingTypeCard.Visibility = isBatchMode ? Visibility.Collapsed : Visibility.Visible;
+        EditorWindowCard.Visibility = isBatchMode ? Visibility.Collapsed : Visibility.Visible;
         ActionsCard.Visibility = isBatchMode ? Visibility.Collapsed : Visibility.Visible;
         ProjectBatchCard.Visibility = isBatchMode
             ? Visibility.Visible
             : Visibility.Collapsed;
+        RefreshCalculationFileStatus();
+    }
+
+    private void RefreshCalculationFileStatus()
+    {
+        if (projectInputMode == ProjectInputMode.ProjectBatch)
+        {
+            CalculationFileStatusTextBlock.Text = Text.CalculationFileBatchModeStatus;
+            return;
+        }
+
+        string path = PathTextBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            CalculationFileStatusTextBlock.Text = Text.CalculationFileNoPathStatus;
+            return;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            CalculationFileStatusTextBlock.Text = Text.CalculationFileMissingPathStatus;
+            return;
+        }
+
+        try
+        {
+            string[] elvxFiles = GetCalculationElvxCandidates(path);
+            string? preferredFile = SelectPreferredCalculationElvxPath(elvxFiles);
+            if (preferredFile is null)
+            {
+                CalculationFileStatusTextBlock.Text = Text.CalculationFileTemplateStatus;
+                return;
+            }
+
+            string fileName = Path.GetFileName(preferredFile);
+            CalculationFileStatusTextBlock.Text = elvxFiles.Length == 1
+                ? string.Format(System.Globalization.CultureInfo.CurrentCulture, Text.CalculationFileExistingStatusFormat, fileName)
+                : string.Format(System.Globalization.CultureInfo.CurrentCulture, Text.CalculationFileMultipleStatusFormat, elvxFiles.Length, fileName);
+        }
+        catch (Exception ex)
+        {
+            CalculationFileStatusTextBlock.Text = localizationService.TranslateRuntimeMessage(ex.Message);
+        }
+    }
+
+    private static string? SelectPreferredCalculationElvxPath(IEnumerable<string> files)
+    {
+        return files
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(path => path.EndsWith("01.elvx", StringComparison.OrdinalIgnoreCase))
+            ?? files.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+    }
+
+    private static string[] GetCalculationElvxCandidates(string path)
+    {
+        string[] topLevelFiles = Directory.GetFiles(path, "*.elvx", SearchOption.TopDirectoryOnly);
+        if (topLevelFiles.Length > 0)
+        {
+            return topLevelFiles;
+        }
+
+        return Directory
+            .GetFiles(path, "*.elvx", SearchOption.AllDirectories)
+            .Where(filePath => !IsKnownScenarioFolder(Path.GetDirectoryName(filePath)))
+            .ToArray();
+    }
+
+    private static bool IsKnownScenarioFolder(string? directoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return false;
+        }
+
+        string folderName = Path.GetFileName(directoryPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        return folderName.Equals("morning", StringComparison.OrdinalIgnoreCase) ||
+               folderName.Equals("lunch", StringComparison.OrdinalIgnoreCase);
     }
 
     private BuildingType? GetSelectedBuildingType()
@@ -2274,6 +2379,7 @@ public sealed partial class MainPage : Page
         }
 
         Bindings.Update();
+        RefreshCalculationFileStatus();
         RefreshJobsSummary();
     }
 
