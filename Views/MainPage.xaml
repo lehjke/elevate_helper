@@ -40,12 +40,23 @@
                             VerticalAlignment="Center"
                             Source="ms-appx:///Assets/AppIcon.png" />
 
-                        <TextBlock
+                        <StackPanel
                             Grid.Column="1"
                             VerticalAlignment="Center"
-                            FontSize="19"
-                            FontWeight="SemiBold"
-                            Text="{x:Bind Text.AppTitle, Mode=OneTime}" />
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="19"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind Text.AppTitle, Mode=OneTime}" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource IosSubtleTextBrush}"
+                                Text="{x:Bind AppVersionLabel, Mode=OneTime}" />
+                        </StackPanel>
 
                         <TextBlock
                             Grid.Column="2"
@@ -60,7 +71,7 @@
                                 <Flyout
                                     x:Name="LanguageFlyout"
                                     FlyoutPresenterStyle="{StaticResource LanguageFlyoutPresenterStyle}"
-                                    Placement="BottomEdgeAlignedLeft">
+                                    Placement="Bottom">
                                     <StackPanel MinWidth="158" Spacing="2">
                                         <Button
                                             x:Name="EnglishLanguageButton"
@@ -211,7 +222,9 @@
                                     </StackPanel>
                                 </Border>
 
-                            <Border Style="{StaticResource SectionCardStyle}">
+                            <Border
+                                x:Name="BuildingTypeCard"
+                                Style="{StaticResource SectionCardStyle}">
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
@@ -258,7 +271,9 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource SectionCardStyle}">
+                            <Border
+                                x:Name="ActionsCard"
+                                Style="{StaticResource SectionCardStyle}">
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
@@ -346,12 +361,6 @@
                                             <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Folder" />
                                         </Border>
                                         <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ProjectBatchTitle, Mode=OneTime}" />
-                                        <Border Style="{StaticResource BetaBadgeStyle}">
-                                            <TextBlock
-                                                FontSize="11"
-                                                FontWeight="SemiBold"
-                                                Text="BETA" />
-                                        </Border>
                                     </StackPanel>
 
                                     <TextBlock
@@ -410,32 +419,10 @@
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
 
-                                                <CheckBox
+                                                <ToggleButton
                                                     x:Name="ProjectBatchUnlimitedRunsCheckBox"
-                                                    Width="22"
-                                                    Height="22"
-                                                    MinWidth="22"
-                                                    MinHeight="22"
-                                                    Padding="0"
-                                                    HorizontalAlignment="Left"
-                                                    VerticalAlignment="Center"
                                                     AutomationProperties.Name="{x:Bind Text.ProjectBatchUnlimitedRuns, Mode=OneTime}"
-                                                    CornerRadius="11">
-                                                    <CheckBox.Resources>
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminate" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePointerOver" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePressed" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminate" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePointerOver" Color="#FF0A84FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePressed" Color="#FF0A84FF" />
-                                                    </CheckBox.Resources>
-                                                </CheckBox>
+                                                    Style="{StaticResource RoundCheckToggleStyle}" />
 
                                                 <TextBlock
                                                     Grid.Column="1"
@@ -562,6 +549,7 @@
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
 
                                                             <StackPanel Grid.Column="0" Spacing="1">
@@ -582,6 +570,17 @@
                                                                 Opacity="0.8"
                                                                 Text="{Binding StatusText}"
                                                                 TextWrapping="Wrap" />
+
+                                                            <Button
+                                                                Grid.Column="2"
+                                                                AutomationProperties.Name="{Binding DismissButtonText}"
+                                                                Click="OnDismissJobButtonClick"
+                                                                Style="{StaticResource DismissJobButtonStyle}"
+                                                                Tag="{Binding}"
+                                                                ToolTipService.ToolTip="{Binding DismissButtonText}"
+                                                                Visibility="{Binding DismissButtonVisibility}">
+                                                                <SymbolIcon Symbol="Cancel" />
+                                                            </Button>
                                                         </Grid>
 
                                                         <ItemsControl ItemsSource="{Binding Scenarios}">
@@ -612,16 +611,29 @@
                                                                         </Grid>
 
                                                                         <ProgressBar
-                                                                            Height="5"
                                                                             IsIndeterminate="{Binding IsIndeterminate}"
                                                                             Maximum="{Binding Maximum}"
+                                                                            Style="{StaticResource ScenarioProgressBarStyle}"
                                                                             Value="{Binding Value}" />
+
+                                                                        <TextBlock
+                                                                            FontSize="12"
+                                                                            Foreground="{ThemeResource IosSubtleTextBrush}"
+                                                                            Text="{Binding MetricsText}"
+                                                                            Visibility="{Binding MetricsVisibility}" />
                                                                     </StackPanel>
                                                                 </DataTemplate>
                                                             </ItemsControl.ItemTemplate>
                                                         </ItemsControl>
 
                                                         <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <Button
+                                                                Click="OnStopJobButtonClick"
+                                                                Content="{Binding StopButtonText}"
+                                                                IsEnabled="{Binding CanStop}"
+                                                                Style="{StaticResource ActionButtonStyle}"
+                                                                Tag="{Binding}"
+                                                                Visibility="{Binding StopButtonVisibility}" />
                                                             <Button
                                                                 Click="OnJobReportButtonClick"
                                                                 Content="{Binding ReportButtonText}"

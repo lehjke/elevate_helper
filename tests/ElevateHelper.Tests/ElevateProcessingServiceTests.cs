@@ -253,6 +253,39 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_CanceledRun_WritesStoppedRunManifest()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        FakeLauncherService launcher = new()
+        {
+            WaitForResidenceCancellation = true,
+        };
+        ElevateProcessingService service = new(launcher);
+        using CancellationTokenSource cancellationTokenSource = new();
+
+        cancellationTokenSource.CancelAfter(TimeSpan.FromMilliseconds(20));
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 1,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: false,
+            cancellationToken: cancellationTokenSource.Token);
+
+        Assert.False(result.Success);
+        Assert.Contains("stopped", result.Message, StringComparison.OrdinalIgnoreCase);
+
+        ElevateRunManifest manifest = ReadRunManifest(workspace.Path);
+        Assert.Equal(ElevateRunManifestStatus.Stopped, manifest.Status);
+        Assert.NotNull(manifest.CompletedAtUtc);
+        Assert.Contains(
+            manifest.Steps,
+            step =>
+                step.Name == ElevateRunManifestStepNames.PrepareAndRunElevate &&
+                step.Status == ElevateRunManifestStatus.Stopped);
+    }
+
+    [Fact]
     public async Task RunAsync_WritesRunHistorySnapshot()
     {
         using TestWorkspace workspace = new();
@@ -448,6 +481,32 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunExistingBatchAsync_RunsElevateWithoutPreparingCopies()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        string generatedCopy = System.IO.Path.Combine(workspace.Path, "Project02.elvx");
+        File.WriteAllText(generatedCopy, "<Project />");
+        string staleResult = System.IO.Path.Combine(workspace.Path, "batch_results.csv");
+        File.WriteAllText(staleResult, "keep");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunExistingBatchAsync(
+            workspace.Path,
+            BuildingType.Residence,
+            includeLunchPeak: true,
+            morningProgress: null,
+            lunchProgress: null);
+
+        Assert.True(result.Success, result.Message);
+        Assert.Single(launcher.ResidenceCalls);
+        Assert.True(File.Exists(generatedCopy));
+        Assert.Equal("keep", File.ReadAllText(staleResult));
+    }
+
+    [Fact]
     public async Task RunAsync_InvalidPath_ReturnsFailResult()
     {
         ElevateProcessingService service = new(new FakeLauncherService());
@@ -486,10 +545,14 @@ public sealed class ElevateProcessingServiceTests
         public List<string> ResidenceCalls { get; } = [];
         public List<(string Path, bool IncludeLunchPeak)> OfficeCalls { get; } = [];
 
+        public bool WaitForResidenceCancellation { get; init; }
+
         public Task LaunchResidenceAsync(string path, CancellationToken cancellationToken = default)
         {
             ResidenceCalls.Add(path);
-            return Task.CompletedTask;
+            return WaitForResidenceCancellation
+                ? WaitForCancellationAsync(cancellationToken)
+                : Task.CompletedTask;
         }
 
         public Task LaunchOfficeAsync(
@@ -499,6 +562,16 @@ public sealed class ElevateProcessingServiceTests
         {
             OfficeCalls.Add((path, includeLunchPeak));
             return Task.CompletedTask;
+        }
+
+        private static async Task WaitForCancellationAsync(CancellationToken cancellationToken)
+        {
+            TaskCompletionSource<bool> waitTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using CancellationTokenRegistration registration = cancellationToken.Register(
+                static state => ((TaskCompletionSource<bool>)state!).TrySetCanceled(),
+                waitTask);
+
+            await waitTask.Task;
         }
     }
 

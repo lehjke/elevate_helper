@@ -10,8 +10,10 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 {
     private const int RunBatchCommandId = 32819;
     private const int DialogOkControlId = 1;
+    private const int DialogNoControlId = 7;
     private const int DialogFolderEditControlId = 14148;
     private const uint WmCommand = 0x0111;
+    private const uint WmClose = 0x0010;
     private const uint WmSetText = 0x000C;
     private const uint BmClick = 0x00F5;
     private static readonly SemaphoreSlim BatchSubmissionLock = new(1, 1);
@@ -21,6 +23,8 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static readonly TimeSpan DialogCloseTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan BatchStartTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CompletedOutputsSettleDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan DesignWindowAppearTimeout = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan ProcessStopGracePeriod = TimeSpan.FromSeconds(8);
 
     private readonly IElevateIntegrationService integrationService;
 
@@ -111,46 +115,53 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         Process? process = null;
         ResultFileBaseline? resultBaseline = null;
         bool submissionLockAcquired = false;
+        CancellationTokenRegistration stopRegistration = default;
+        ProcessStopRequest? stopRequest = null;
 
         try
         {
-            await BatchSubmissionLock.WaitAsync(cancellationToken);
-            submissionLockAcquired = true;
-
-            process = Process.Start(new ProcessStartInfo
-            {
-                FileName = integrationInfo.ExecutablePath,
-                UseShellExecute = true,
-            });
-
-            if (process is null)
-            {
-                throw new InvalidOperationException("Unable to start Elevate.exe.");
-            }
-
             try
             {
-                _ = process.WaitForInputIdle(5000);
+                await BatchSubmissionLock.WaitAsync(cancellationToken);
+                submissionLockAcquired = true;
+
+                process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = integrationInfo.ExecutablePath,
+                    UseShellExecute = true,
+                });
+
+                if (process is null)
+                {
+                    throw new InvalidOperationException("Unable to start Elevate.exe.");
+                }
+
+                stopRequest = new ProcessStopRequest(process);
+                stopRegistration = cancellationToken.Register(
+                    static state => ((ProcessStopRequest)state!).Start(),
+                    stopRequest);
+
+                try
+                {
+                    _ = process.WaitForInputIdle(5000);
+                }
+                catch
+                {
+                    // Some startup modes do not support WaitForInputIdle.
+                }
+
+                await Task.Delay(StartupDelay, cancellationToken);
+                resultBaseline = CaptureResultFileBaseline(path);
+                await SubmitBatchFolderAsync(process, path, progressContext, resultBaseline, cancellationToken);
             }
-            catch
+            finally
             {
-                // Some startup modes do not support WaitForInputIdle.
+                if (submissionLockAcquired)
+                {
+                    _ = BatchSubmissionLock.Release();
+                }
             }
 
-            await Task.Delay(StartupDelay, cancellationToken);
-            resultBaseline = CaptureResultFileBaseline(path);
-            await SubmitBatchFolderAsync(process, path, progressContext, resultBaseline, cancellationToken);
-        }
-        finally
-        {
-            if (submissionLockAcquired)
-            {
-                _ = BatchSubmissionLock.Release();
-            }
-        }
-
-        try
-        {
             await MonitorProgressAsync(
                 process,
                 path,
@@ -161,7 +172,103 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
         finally
         {
-            process.Dispose();
+            stopRegistration.Dispose();
+            if (stopRequest?.PendingTask is { } pendingStopTask)
+            {
+                await pendingStopTask;
+            }
+
+            process?.Dispose();
+        }
+    }
+
+    private static void RequestProcessStop(Process? process)
+    {
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            process.Refresh();
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            bool closeRequested = process.CloseMainWindow();
+            if (closeRequested && WaitForExitWhileAnsweringNo(process, ProcessStopGracePeriod))
+            {
+                return;
+            }
+
+            process.Refresh();
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+        catch (NotSupportedException)
+        {
+        }
+    }
+
+    private static bool WaitForExitWhileAnsweringNo(Process process, TimeSpan timeout)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            TryClickNoOnSaveConfirmationDialogs(process.Id);
+            if (process.WaitForExit((int)WindowPollDelay.TotalMilliseconds))
+            {
+                return true;
+            }
+
+            process.Refresh();
+            if (process.HasExited)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private sealed class ProcessStopRequest
+    {
+        private readonly object syncRoot = new();
+        private readonly Process process;
+        private Task? stopTask;
+
+        public ProcessStopRequest(Process process)
+        {
+            this.process = process;
+        }
+
+        public Task? PendingTask
+        {
+            get
+            {
+                lock (syncRoot)
+                {
+                    return stopTask;
+                }
+            }
+        }
+
+        public void Start()
+        {
+            lock (syncRoot)
+            {
+                stopTask ??= Task.Run(() => RequestProcessStop(process));
+            }
         }
     }
 
@@ -380,6 +487,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 if (observation.DesignVisible ||
                     DateTimeOffset.UtcNow - completedOutputsSince >= CompletedOutputsSettleDelay)
                 {
+                    await CloseDesignWindowsAfterCompletionAsync(process, cancellationToken);
                     ReportProgress(
                         progress,
                         progressContext,
@@ -912,6 +1020,200 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         return titles;
     }
 
+    private static async Task CloseDesignWindowsAfterCompletionAsync(
+        Process process,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + DesignWindowAppearTimeout;
+        bool observedDesignWindow = false;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            process.Refresh();
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            List<IntPtr> designWindows = GetProcessWindowHandles(process.Id, IsDesignWindowHandle);
+            if (designWindows.Count > 0)
+            {
+                observedDesignWindow = true;
+                CloseDesignWindowHandles(process.Id, designWindows);
+            }
+            else if (observedDesignWindow)
+            {
+                if (!TryClickNoOnSaveConfirmationDialogs(process.Id))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                TryClickNoOnSaveConfirmationDialogs(process.Id);
+            }
+
+            await Task.Delay(WindowPollDelay, cancellationToken);
+        }
+    }
+
+    private static void CloseDesignWindows(int processId)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + DialogCloseTimeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            List<IntPtr> designWindows = GetProcessWindowHandles(processId, IsDesignWindowHandle);
+            if (designWindows.Count == 0)
+            {
+                return;
+            }
+
+            CloseDesignWindowHandles(processId, designWindows);
+            Thread.Sleep(WindowPollDelay);
+        }
+    }
+
+    private static void CloseDesignWindowHandles(int processId, IReadOnlyCollection<IntPtr> designWindows)
+    {
+        foreach (IntPtr windowHandle in designWindows)
+        {
+            _ = PostMessage(windowHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        TryClickNoOnSaveConfirmationDialogs(processId);
+    }
+
+    private static bool IsDesignWindowHandle(IntPtr windowHandle)
+    {
+        return IsDesignWindowTitle(GetWindowTitle(windowHandle));
+    }
+
+    private static bool TryClickNoOnSaveConfirmationDialogs(int processId)
+    {
+        bool clicked = false;
+        foreach (IntPtr dialogHandle in GetProcessWindowHandles(processId, IsSaveConfirmationDialogHandle))
+        {
+            IntPtr noButtonHandle = GetDlgItem(dialogHandle, DialogNoControlId);
+            if (noButtonHandle == IntPtr.Zero)
+            {
+                continue;
+            }
+
+            _ = SendMessage(noButtonHandle, BmClick, IntPtr.Zero, IntPtr.Zero);
+            clicked = true;
+        }
+
+        return clicked;
+    }
+
+    private static bool IsSaveConfirmationDialogHandle(IntPtr windowHandle)
+    {
+        if (!GetWindowClass(windowHandle).Equals("#32770", StringComparison.Ordinal) ||
+            GetDlgItem(windowHandle, DialogNoControlId) == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        string searchText = BuildDialogSearchText(windowHandle);
+        return IsSavePromptText(searchText) ||
+               GetWindowTitle(windowHandle).Contains("Elevate", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsSavePromptText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        string normalized = text.ToLowerInvariant();
+        return normalized.Contains("save", StringComparison.Ordinal) ||
+               normalized.Contains("сохран", StringComparison.Ordinal) ||
+               normalized.Contains("close", StringComparison.Ordinal) ||
+               normalized.Contains("exit", StringComparison.Ordinal) ||
+               normalized.Contains("quit", StringComparison.Ordinal) ||
+               normalized.Contains("закры", StringComparison.Ordinal) ||
+               normalized.Contains("выход", StringComparison.Ordinal) ||
+               normalized.Contains("заверш", StringComparison.Ordinal);
+    }
+
+    private static string BuildDialogSearchText(IntPtr dialogHandle)
+    {
+        StringBuilder builder = new();
+        builder.Append(GetWindowTitle(dialogHandle));
+
+        foreach (string childText in GetChildWindowTexts(dialogHandle))
+        {
+            builder.Append(' ');
+            builder.Append(childText);
+        }
+
+        return builder.ToString();
+    }
+
+    private static IReadOnlyList<string> GetChildWindowTexts(IntPtr parentHandle)
+    {
+        List<string> texts = [];
+
+        EnumChildWindows(parentHandle, (childHandle, _) =>
+        {
+            string text = GetWindowTitle(childHandle);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                texts.Add(text);
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return texts;
+    }
+
+    private static List<IntPtr> GetProcessWindowHandles(
+        int processId,
+        Func<IntPtr, bool> predicate)
+    {
+        List<IntPtr> handles = [];
+
+        EnumWindows((windowHandle, _) =>
+        {
+            if (!IsWindowVisible(windowHandle))
+            {
+                return true;
+            }
+
+            GetWindowThreadProcessId(windowHandle, out uint windowProcessId);
+            if (windowProcessId != (uint)processId)
+            {
+                return true;
+            }
+
+            if (predicate(windowHandle))
+            {
+                handles.Add(windowHandle);
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return handles;
+    }
+
+    private static string GetWindowTitle(IntPtr windowHandle)
+    {
+        int length = GetWindowTextLength(windowHandle);
+        if (length <= 0)
+        {
+            return string.Empty;
+        }
+
+        StringBuilder builder = new(length + 1);
+        _ = GetWindowText(windowHandle, builder, builder.Capacity);
+        return builder.ToString().Trim();
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -944,6 +1246,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
