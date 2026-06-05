@@ -115,9 +115,17 @@ public sealed class LiftGroupRulesService
             return MotionProfiles[25];
         }
 
-        return MotionProfiles.TryGetValue(speedKey, out MotionProfile? profile)
-            ? profile
-            : MotionProfiles[25];
+        if (speedKey <= 25)
+        {
+            return MotionProfiles[25];
+        }
+
+        if (speedKey <= 60)
+        {
+            return MotionProfiles[30];
+        }
+
+        return MotionProfiles[70];
     }
 
     public CabinDimensions ResolveCabinDimensions(string capacityText, string floorAreaText)
@@ -193,7 +201,6 @@ public sealed class LiftGroupRulesService
     public DoorOpeningKind ResolveDoorOpeningKind(string? doorType)
     {
         if (string.Equals(doorType, "Ð¦Ðž", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(doorType, "ÖÎ", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(doorType, "Central", StringComparison.OrdinalIgnoreCase))
         {
             return DoorOpeningKind.Central;

@@ -347,6 +347,7 @@ public sealed partial class MainPage : Page
             .OrderBy(job => job.BuildingTypeFolderName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(job => job.GroupName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        bool includeOfficeLunchPeak = ShouldIncludeProjectBatchOfficeLunchPeak();
 
         if (batchJobs.Count == 0)
         {
@@ -354,12 +355,12 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        if (!await ConfirmProjectBatchJobsAsync(batchJobs, discoveryResult.Warnings))
+        if (!await ConfirmProjectBatchJobsAsync(batchJobs, discoveryResult.Warnings, includeOfficeLunchPeak))
         {
             return;
         }
 
-        StartProjectBatchJobs(batchJobs, parallelRuns, discoveryResult.Warnings.Count);
+        StartProjectBatchJobs(batchJobs, parallelRuns, discoveryResult.Warnings.Count, includeOfficeLunchPeak);
     }
 
     private async void OnBrowseFolderButtonClick(object sender, RoutedEventArgs e)
@@ -393,6 +394,17 @@ public sealed partial class MainPage : Page
         }
 
         ProjectBatchUnlimitedRunsCheckBox.IsChecked = ProjectBatchUnlimitedRunsCheckBox.IsChecked != true;
+    }
+
+    private void OnProjectBatchMorningOnlyOptionTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source &&
+            IsDescendantOf(source, ProjectBatchMorningOnlyCheckBox))
+        {
+            return;
+        }
+
+        ProjectBatchMorningOnlyCheckBox.IsChecked = ProjectBatchMorningOnlyCheckBox.IsChecked != true;
     }
 
     private static bool IsDescendantOf(DependencyObject source, DependencyObject ancestor)
@@ -877,6 +889,11 @@ public sealed partial class MainPage : Page
         return true;
     }
 
+    private bool ShouldIncludeProjectBatchOfficeLunchPeak()
+    {
+        return ProjectBatchMorningOnlyCheckBox.IsChecked != true;
+    }
+
     private async Task<IReadOnlyList<ProjectBatchJob>?> ResolveUnknownProjectBatchJobsAsync(
         string projectRoot,
         IReadOnlyList<string> unknownElvxFiles)
@@ -956,7 +973,8 @@ public sealed partial class MainPage : Page
 
     private async Task<bool> ConfirmProjectBatchJobsAsync(
         IReadOnlyList<ProjectBatchJob> batchJobs,
-        IReadOnlyList<ProjectBatchWarning> warnings)
+        IReadOnlyList<ProjectBatchWarning> warnings,
+        bool includeOfficeLunchPeak)
     {
         Grid table = new()
         {
@@ -977,9 +995,7 @@ public sealed partial class MainPage : Page
         {
             ProjectBatchJob job = batchJobs[index];
             int row = index + 1;
-            string scenarioText = job.BuildingType == BuildingType.Office
-                ? Text.ProjectBatchPreviewMorningLunch
-                : Text.ProjectBatchPreviewSingleScenario;
+            string scenarioText = GetProjectBatchScenarioText(job.BuildingType, includeOfficeLunchPeak);
 
             AddProjectBatchPreviewCell(table, localizationService.FormatBuildingType(job.BuildingType), row, column: 0);
             AddProjectBatchPreviewCell(table, job.WorkingFolder, row, column: 1, wrap: true);
@@ -1047,6 +1063,18 @@ public sealed partial class MainPage : Page
 
         ContentDialogResult result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
+    }
+
+    private string GetProjectBatchScenarioText(BuildingType buildingType, bool includeOfficeLunchPeak)
+    {
+        if (buildingType != BuildingType.Office)
+        {
+            return Text.ProjectBatchPreviewSingleScenario;
+        }
+
+        return includeOfficeLunchPeak
+            ? Text.ProjectBatchPreviewMorningLunch
+            : Text.ProjectBatchPreviewMorningOnly;
     }
 
     private static void AddProjectBatchPreviewHeader(Grid table, string text, int column)
@@ -1511,7 +1539,11 @@ public sealed partial class MainPage : Page
         _ = RunProcessingJobAsync(job, normalizedPath, buildingType, includeLunchPeak, normalizedPath);
     }
 
-    private void StartProjectBatchJobs(IReadOnlyList<ProjectBatchJob> batchJobs, int parallelRuns, int warningCount)
+    private void StartProjectBatchJobs(
+        IReadOnlyList<ProjectBatchJob> batchJobs,
+        int parallelRuns,
+        int warningCount,
+        bool includeOfficeLunchPeak)
     {
         int effectiveParallelRuns = parallelRuns == int.MaxValue
             ? Math.Max(1, batchJobs.Count)
@@ -1519,6 +1551,7 @@ public sealed partial class MainPage : Page
         SemaphoreSlim parallelism = new(effectiveParallelRuns, effectiveParallelRuns);
 
         int startedJobs = 0;
+        bool startedOfficeJob = false;
         foreach (ProjectBatchJob batchJob in batchJobs)
         {
             string normalizedPath = NormalizeProcessingFolder(batchJob.WorkingFolder);
@@ -1533,7 +1566,7 @@ public sealed partial class MainPage : Page
                 continue;
             }
 
-            bool includeLunchPeak = batchJob.BuildingType == BuildingType.Office;
+            bool includeLunchPeak = batchJob.BuildingType == BuildingType.Office && includeOfficeLunchPeak;
             string title = $"{batchJob.BuildingTypeFolderName} / {batchJob.GroupName}";
             JobProgressViewModel job = CreateJob(
                 normalizedPath,
@@ -1543,6 +1576,7 @@ public sealed partial class MainPage : Page
                 batchJob.ProjectRoot);
 
             startedJobs++;
+            startedOfficeJob |= batchJob.BuildingType == BuildingType.Office;
             _ = RunProjectBatchJobAsync(job, batchJob, includeLunchPeak, normalizedPath, parallelism);
         }
 
@@ -1562,6 +1596,14 @@ public sealed partial class MainPage : Page
                 System.Globalization.CultureInfo.CurrentCulture,
                 Text.ProjectBatchWarningsFormat,
                 warningCount);
+        }
+
+        if (startedOfficeJob)
+        {
+            startedMessage += " " + string.Format(
+                System.Globalization.CultureInfo.CurrentCulture,
+                Text.ProjectBatchOfficeScenarioStatusFormat,
+                GetProjectBatchScenarioText(BuildingType.Office, includeOfficeLunchPeak));
         }
 
         SetStatus(startedMessage, warningCount > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Informational);
@@ -2515,6 +2557,7 @@ public sealed partial class MainPage : Page
 
                 statusText = value;
                 OnPropertyChanged(nameof(StatusText));
+                OnPropertyChanged(nameof(HeaderStatusText));
             }
         }
 
@@ -2565,6 +2608,14 @@ public sealed partial class MainPage : Page
         public bool IsFinished => isFinished;
 
         public bool IsFailed => !string.IsNullOrWhiteSpace(failureMessage);
+
+        public string HeaderStatusText => IsFailed ? string.Empty : StatusText;
+
+        public Visibility HeaderStatusVisibility => IsFailed ? Visibility.Collapsed : Visibility.Visible;
+
+        public string FailureMessage => failureMessage ?? string.Empty;
+
+        public Visibility FailureMessageVisibility => IsFailed ? Visibility.Visible : Visibility.Collapsed;
 
         public bool CanPrintReport => (stateKind is JobStateKind.Completed or JobStateKind.Stopped) &&
                                       reportActionEnabled;
@@ -2666,7 +2717,7 @@ public sealed partial class MainPage : Page
         public void MarkRunning(AppLocalizationService localizationService)
         {
             isFinished = false;
-            failureMessage = null;
+            SetFailureMessage(null);
             stopRequested = false;
             stateKind = JobStateKind.Running;
             IsRunning = true;
@@ -2677,7 +2728,7 @@ public sealed partial class MainPage : Page
         public void MarkCompleted(AppLocalizationService localizationService)
         {
             isFinished = true;
-            failureMessage = null;
+            SetFailureMessage(null);
             stopRequested = false;
             stateKind = JobStateKind.Completed;
             IsRunning = false;
@@ -2688,7 +2739,7 @@ public sealed partial class MainPage : Page
         public void MarkStopped(AppLocalizationService localizationService)
         {
             isFinished = true;
-            failureMessage = null;
+            SetFailureMessage(null);
             stopRequested = false;
             stateKind = JobStateKind.Stopped;
             IsRunning = false;
@@ -2699,7 +2750,7 @@ public sealed partial class MainPage : Page
         public void MarkFailed(string message)
         {
             isFinished = true;
-            failureMessage = message;
+            SetFailureMessage(message);
             stopRequested = false;
             IsRunning = false;
             StatusText = message;
@@ -2728,7 +2779,7 @@ public sealed partial class MainPage : Page
                 : $"{target.Label}: {completed}/{total}";
             stateKind = JobStateKind.Running;
             IsRunning = true;
-            failureMessage = null;
+            SetFailureMessage(null);
 
             if (completed == 0 && total == 0)
             {
@@ -2848,6 +2899,24 @@ public sealed partial class MainPage : Page
                    scenario.Contains(token, StringComparison.OrdinalIgnoreCase);
         }
 
+        private void SetFailureMessage(string? message)
+        {
+            if (failureMessage == message)
+            {
+                return;
+            }
+
+            failureMessage = message;
+            OnPropertyChanged(nameof(FailureMessage));
+            OnPropertyChanged(nameof(FailureMessageVisibility));
+            OnPropertyChanged(nameof(HeaderStatusText));
+            OnPropertyChanged(nameof(HeaderStatusVisibility));
+            OnPropertyChanged(nameof(IsFailed));
+            OnPropertyChanged(nameof(CanRetry));
+            OnPropertyChanged(nameof(RetryButtonVisibility));
+            OnPropertyChanged(nameof(QueueSortGroup));
+        }
+
         private void NotifyReportActionStateChanged()
         {
             OnPropertyChanged(nameof(IsFinished));
@@ -2858,6 +2927,10 @@ public sealed partial class MainPage : Page
             OnPropertyChanged(nameof(CanDismiss));
             OnPropertyChanged(nameof(DismissButtonVisibility));
             OnPropertyChanged(nameof(IsFailed));
+            OnPropertyChanged(nameof(HeaderStatusText));
+            OnPropertyChanged(nameof(HeaderStatusVisibility));
+            OnPropertyChanged(nameof(FailureMessage));
+            OnPropertyChanged(nameof(FailureMessageVisibility));
             OnPropertyChanged(nameof(QueueSortGroup));
             OnPropertyChanged(nameof(WasStoppedEarly));
             NotifyStopActionStateChanged();

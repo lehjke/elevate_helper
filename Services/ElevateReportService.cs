@@ -979,7 +979,7 @@ public sealed class ElevateReportService : IElevateReportService
 
     internal static bool ShouldPrintGroupServedMark(bool isReportServedFloor, string? elevatorServesFloor)
     {
-        return isReportServedFloor && IsYes(elevatorServesFloor);
+        return isReportServedFloor && IsElevatorServesFloor(elevatorServesFloor);
     }
 
     private static void ApplyFlowTrafficBorders(
@@ -1364,7 +1364,7 @@ public sealed class ElevateReportService : IElevateReportService
             bool isServedByElevator = false;
             for (int elevator = 1; elevator <= elevatorData.NoElevators; elevator++)
             {
-                if (!IsYes(elevatorData.FloorsServed[elevator, floor]))
+                if (!IsElevatorServesFloor(elevatorData.FloorsServed[elevator, floor]))
                 {
                     continue;
                 }
@@ -1684,13 +1684,7 @@ public sealed class ElevateReportService : IElevateReportService
             buildingData.FloorLevel[i] = buildingData.FloorLevel[i - 1] + buildingData.FloorHeight[i - 1];
         }
 
-        for (int i = 1; i <= buildingData.NoFloors; i++)
-        {
-            if (string.Equals(buildingData.FloorType[i], "Парковка", StringComparison.Ordinal))
-            {
-                buildingData.NoPeople[i] = (buildingData.TotalPeople * buildingData.Bias[i]) / 120d;
-            }
-        }
+        ApplyParkingPopulationAndTotals(buildingData);
 
         ElevatorDataModel elevatorData = new();
         elevatorData.Dispatcher = sheet.Get(analysisDataRow + 3, 6);
@@ -1732,7 +1726,7 @@ public sealed class ElevateReportService : IElevateReportService
         {
             for (int j = 1; j <= buildingData.NoFloors; j++)
             {
-                elevatorData.FloorsServed[i, j] = sheet.Get(elevatorDataRow + 14 + j, 3 + i);
+                elevatorData.FloorsServed[i, j] = NormalizeElevatorServedMark(sheet.Get(elevatorDataRow + 14 + j, 3 + i));
             }
         }
 
@@ -1844,13 +1838,7 @@ public sealed class ElevateReportService : IElevateReportService
             }
         }
 
-        for (int i = 1; i <= buildingData.NoFloors; i++)
-        {
-            if (string.Equals(buildingData.FloorType[i], "Парковка", StringComparison.Ordinal))
-            {
-                buildingData.NoPeople[i] = (buildingData.TotalPeople * buildingData.Bias[i]) / 120d;
-            }
-        }
+        ApplyParkingPopulationAndTotals(buildingData);
 
         return buildingData;
     }
@@ -1912,7 +1900,7 @@ public sealed class ElevateReportService : IElevateReportService
                 int floorIndex = ToInt(((string?)floorServedElement.Attribute("FloorIndex")) ?? string.Empty);
                 if (floorIndex >= 1 && floorIndex <= buildingData.NoFloors)
                 {
-                    elevatorData.FloorsServed[i, floorIndex] = "Yes";
+                    elevatorData.FloorsServed[i, floorIndex] = IsFloorServedElement(floorServedElement) ? "Yes" : "No";
                 }
             }
         }
@@ -1940,6 +1928,38 @@ public sealed class ElevateReportService : IElevateReportService
                 ? ParseDoubleFlexible((string?)trafficPeriod.Attribute("SplitInterfloor"))
                 : ParseDoubleFlexible(standardElement?.Element("Interfloor")?.Value),
         };
+    }
+
+    private static void ApplyParkingPopulationAndTotals(BuildingDataModel buildingData)
+    {
+        double baseTotalPeople = buildingData.TotalPeople;
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            if (string.Equals(buildingData.FloorType[i], "Парковка", StringComparison.Ordinal))
+            {
+                buildingData.NoPeople[i] = CalculateParkingPopulation(baseTotalPeople, buildingData.Bias[i]);
+            }
+        }
+
+        RecalculateBuildingTotals(buildingData);
+    }
+
+    internal static double CalculateParkingPopulation(double totalPeople, double bias)
+    {
+        return Math.Round((totalPeople * bias) / 120d, 0, MidpointRounding.AwayFromZero);
+    }
+
+    private static void RecalculateBuildingTotals(BuildingDataModel buildingData)
+    {
+        buildingData.TotalPeople = 0;
+        buildingData.CTotalPeople = 0;
+
+        for (int i = 1; i <= buildingData.NoFloors; i++)
+        {
+            buildingData.TotalPeople += buildingData.NoPeople[i];
+            buildingData.CTotalPeople += buildingData.NoPeople[i] * buildingData.FloorFactor[i];
+        }
     }
 
     private static string NormalizeBuildingType(string? rawValue)
@@ -2539,7 +2559,6 @@ public sealed class ElevateReportService : IElevateReportService
 
     private static readonly (int OpenKey, int CloseKey, string Width, string Type)[] DoorTimingRules =
     [
-        (20, 33, "600", "ТО"),
         (21, 35, "650", "ТО"),
         (21, 37, "700", "ТО"),
         (22, 39, "750", "ТО"),
@@ -2590,6 +2609,11 @@ public sealed class ElevateReportService : IElevateReportService
         (25, 45, "1800", "ЦО"),
     ];
 
+    private static readonly (int OpenKey, int CloseKey)[] RemovedDoorTimingRules =
+    [
+        (20, 33),
+    ];
+
     internal static (string Width, string Type) ResolveDoorInfo(
         double doorOpenTime,
         double doorCloseTime,
@@ -2606,7 +2630,7 @@ public sealed class ElevateReportService : IElevateReportService
         return matches.Count switch
         {
             0 => ("-", "-"),
-            1 => matches[0],
+            1 => CanUseSingleDoorMatch(matches[0].Type, openKey, closeKey, doorPreOpening) ? matches[0] : ("-", "-"),
             _ => ResolveAmbiguousDoorInfo(matches, doorPreOpening),
         };
     }
@@ -2654,9 +2678,7 @@ public sealed class ElevateReportService : IElevateReportService
     {
         if (doorPreOpening is not null)
         {
-            string preferredType = doorPreOpening.Value > 0.01d
-                ? "ЦО"
-                : "ТО";
+            string preferredType = ResolveDoorTypeByPreOpening(doorPreOpening.Value);
 
             (string Width, string Type) exactMatch = matches.FirstOrDefault(match =>
                 string.Equals(match.Type, preferredType, StringComparison.Ordinal));
@@ -2668,6 +2690,32 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         return ("-", "-");
+    }
+
+    private static bool DoorTypeMatchesPreOpening(string doorType, double? doorPreOpening)
+    {
+        return doorPreOpening is null ||
+               string.Equals(doorType, ResolveDoorTypeByPreOpening(doorPreOpening.Value), StringComparison.Ordinal);
+    }
+
+    private static bool CanUseSingleDoorMatch(string doorType, int openKey, int closeKey, double? doorPreOpening)
+    {
+        if (doorPreOpening is null && HasRemovedDoorTimingRule(openKey, closeKey))
+        {
+            return false;
+        }
+
+        return DoorTypeMatchesPreOpening(doorType, doorPreOpening);
+    }
+
+    private static bool HasRemovedDoorTimingRule(int openKey, int closeKey)
+    {
+        return RemovedDoorTimingRules.Any(rule => rule.OpenKey == openKey && rule.CloseKey == closeKey);
+    }
+
+    private static string ResolveDoorTypeByPreOpening(double doorPreOpening)
+    {
+        return doorPreOpening > 0.01d ? "ЦО" : "ТО";
     }
 
     private static void SortOneBased(double[] arr)
@@ -2868,6 +2916,95 @@ public sealed class ElevateReportService : IElevateReportService
         return NearlyEquals(value, Math.Round(value))
             ? Math.Round(value).ToString(CultureInfo.InvariantCulture)
             : value.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private static string NormalizeElevatorServedMark(string? value)
+    {
+        return IsElevatorServesFloor(value) ? "Yes" : "No";
+    }
+
+    internal static bool IsFloorServedElement(XElement floorServedElement)
+    {
+        string[] explicitFlagAttributes =
+        [
+            "Served",
+            "IsServed",
+            "Value",
+            "Selected",
+            "Service",
+            "Serves",
+            "FloorServed",
+        ];
+
+        foreach (string attributeName in explicitFlagAttributes)
+        {
+            string? attributeValue = (string?)floorServedElement.Attribute(attributeName);
+            if (!string.IsNullOrWhiteSpace(attributeValue))
+            {
+                return IsElevatorServesFloor(attributeValue);
+            }
+        }
+
+        string? doors = (string?)floorServedElement.Attribute("Doors");
+        if (!string.IsNullOrWhiteSpace(doors))
+        {
+            string normalizedDoors = NormalizeElevateText(doors).Trim();
+            return !(normalizedDoors.Equals("No", StringComparison.OrdinalIgnoreCase) ||
+                     normalizedDoors.Equals("False", StringComparison.OrdinalIgnoreCase) ||
+                     normalizedDoors.Equals("0", StringComparison.Ordinal) ||
+                     normalizedDoors.Equals("-", StringComparison.Ordinal) ||
+                     normalizedDoors.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+                     normalizedDoors.Equals("No Doors", StringComparison.OrdinalIgnoreCase) ||
+                     normalizedDoors.Equals("Нет", StringComparison.OrdinalIgnoreCase));
+        }
+
+        string elementValue = floorServedElement.Value;
+        if (!string.IsNullOrWhiteSpace(elementValue))
+        {
+            return IsElevatorServesFloor(elementValue);
+        }
+
+        return true;
+    }
+
+    internal static bool IsElevatorServesFloor(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string normalized = NormalizeElevateText(value).Trim();
+        if (normalized.Equals("Yes", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("True", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("1", StringComparison.Ordinal) ||
+            normalized.Equals("f", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Front", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Front Door", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Front Doors", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Served", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Да", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (normalized.Equals("No", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("False", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("0", StringComparison.Ordinal) ||
+            normalized.Equals("-", StringComparison.Ordinal) ||
+            normalized.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("No Doors", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Нет", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (normalized.Contains("Door", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static bool IsYes(string? value)

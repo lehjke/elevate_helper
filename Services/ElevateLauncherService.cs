@@ -1045,10 +1045,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             }
             else if (observedDesignWindow)
             {
-                if (!TryClickNoOnSaveConfirmationDialogs(process.Id))
-                {
-                    return;
-                }
+                TryClickNoOnSaveConfirmationDialogs(process.Id);
             }
             else
             {
@@ -1095,14 +1092,16 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         bool clicked = false;
         foreach (IntPtr dialogHandle in GetProcessWindowHandles(processId, IsSaveConfirmationDialogHandle))
         {
-            IntPtr noButtonHandle = GetDlgItem(dialogHandle, DialogNoControlId);
+            IntPtr noButtonHandle = FindNoSaveButton(dialogHandle);
             if (noButtonHandle == IntPtr.Zero)
             {
-                continue;
+                clicked |= PostMessage(dialogHandle, WmCommand, (IntPtr)DialogNoControlId, IntPtr.Zero);
             }
-
-            _ = SendMessage(noButtonHandle, BmClick, IntPtr.Zero, IntPtr.Zero);
-            clicked = true;
+            else
+            {
+                _ = SendMessage(noButtonHandle, BmClick, IntPtr.Zero, IntPtr.Zero);
+                clicked = true;
+            }
         }
 
         return clicked;
@@ -1110,15 +1109,66 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
     private static bool IsSaveConfirmationDialogHandle(IntPtr windowHandle)
     {
-        if (!GetWindowClass(windowHandle).Equals("#32770", StringComparison.Ordinal) ||
-            GetDlgItem(windowHandle, DialogNoControlId) == IntPtr.Zero)
+        if (!GetWindowClass(windowHandle).Equals("#32770", StringComparison.Ordinal))
         {
             return false;
         }
 
-        string searchText = BuildDialogSearchText(windowHandle);
-        return IsSavePromptText(searchText) ||
-               GetWindowTitle(windowHandle).Contains("Elevate", StringComparison.OrdinalIgnoreCase);
+        IReadOnlyList<string> childTexts = GetChildWindowTexts(windowHandle);
+        return IsSaveConfirmationDialogText(GetWindowTitle(windowHandle), childTexts);
+    }
+
+    internal static bool IsSaveConfirmationDialogText(string? title, IEnumerable<string> childTexts)
+    {
+        string searchText = BuildDialogSearchText(title, childTexts);
+        if (IsSavePromptText(searchText))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(title) &&
+               title.Contains("Elevate", StringComparison.OrdinalIgnoreCase) &&
+               childTexts.Any(IsNoSaveButtonText);
+    }
+
+    private static IntPtr FindNoSaveButton(IntPtr dialogHandle)
+    {
+        IntPtr noButtonHandle = GetDlgItem(dialogHandle, DialogNoControlId);
+        if (noButtonHandle != IntPtr.Zero)
+        {
+            return noButtonHandle;
+        }
+
+        IntPtr foundHandle = IntPtr.Zero;
+        EnumChildWindows(dialogHandle, (childHandle, _) =>
+        {
+            if (GetWindowClass(childHandle).Equals("Button", StringComparison.OrdinalIgnoreCase) &&
+                IsNoSaveButtonText(GetWindowTitle(childHandle)))
+            {
+                foundHandle = childHandle;
+                return false;
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return foundHandle;
+    }
+
+    internal static bool IsNoSaveButtonText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        string normalized = text
+            .Replace("&", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Trim();
+
+        return normalized.Equals("No", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("Нет", StringComparison.OrdinalIgnoreCase);
     }
 
     internal static bool IsSavePromptText(string text)
@@ -1141,10 +1191,15 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
     private static string BuildDialogSearchText(IntPtr dialogHandle)
     {
-        StringBuilder builder = new();
-        builder.Append(GetWindowTitle(dialogHandle));
+        return BuildDialogSearchText(GetWindowTitle(dialogHandle), GetChildWindowTexts(dialogHandle));
+    }
 
-        foreach (string childText in GetChildWindowTexts(dialogHandle))
+    private static string BuildDialogSearchText(string? title, IEnumerable<string> childTexts)
+    {
+        StringBuilder builder = new();
+        builder.Append(title);
+
+        foreach (string childText in childTexts)
         {
             builder.Append(' ');
             builder.Append(childText);

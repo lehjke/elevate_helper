@@ -56,4 +56,18 @@ public sealed class AppLocalizationServiceTests
         Assert.DoesNotContain("\u0443\u0442\u0440\u0435\u043D", actual, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\u043E\u0431\u0435\u0434\u0435\u043D", actual, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void ProjectBatchMorningOnlyLabels_AreLocalized()
+    {
+        AppLocalizationService service = new(persistSelection: false);
+
+        service.SetLanguage(AppLanguage.English);
+        Assert.Equal("Morning peak only", service.CurrentText.ProjectBatchMorningOnly);
+        Assert.Equal("morning only", service.CurrentText.ProjectBatchPreviewMorningOnly);
+
+        service.SetLanguage(AppLanguage.Russian);
+        Assert.Equal("\u0422\u043E\u043B\u044C\u043A\u043E \u0443\u0442\u0440\u0435\u043D\u043D\u0438\u0439 \u043F\u0438\u043A", service.CurrentText.ProjectBatchMorningOnly);
+        Assert.Equal("\u0442\u043E\u043B\u044C\u043A\u043E \u0443\u0442\u0440\u043E", service.CurrentText.ProjectBatchPreviewMorningOnly);
+    }
 }

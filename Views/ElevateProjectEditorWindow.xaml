@@ -66,15 +66,11 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
                         <Button x:Name="ProjectTabButton" Grid.Column="0" Click="OnProjectTabButtonClick" Style="{StaticResource PrimaryActionButtonStyle}" />
-                        <Button x:Name="AnalysisTabButton" Grid.Column="1" Click="OnAnalysisTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                        <Button x:Name="TrafficTabButton" Grid.Column="2" Click="OnTrafficTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                        <Button x:Name="BuildingTabButton" Grid.Column="3" Click="OnBuildingTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                        <Button x:Name="LiftGroupTabButton" Grid.Column="4" Click="OnLiftGroupTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                        <Button x:Name="BuildingTabButton" Grid.Column="1" Click="OnBuildingTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                        <Button x:Name="LiftGroupTabButton" Grid.Column="2" Click="OnLiftGroupTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
                     </Grid>
                 </Border>
 
@@ -223,18 +219,20 @@
                                 BorderThickness="1"
                                 CornerRadius="16">
                                 <StackPanel>
-                                    <Grid Padding="12,10" Background="{ThemeResource AccentFillColorTertiaryBrush}">
+                                    <Grid Padding="12,10" Background="{ThemeResource IosAccentBrush}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="2.2*" />
-                                            <ColumnDefinition Width="1.4*" />
-                                            <ColumnDefinition Width="1.2*" />
+                                            <ColumnDefinition Width="1.3*" />
+                                            <ColumnDefinition Width="1.1*" />
+                                            <ColumnDefinition Width="1.1*" />
                                             <ColumnDefinition Width="0.8*" />
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBlock x:Name="FloorNameColumnTextBlock" FontWeight="SemiBold" />
-                                        <TextBlock x:Name="InterfloorHeightColumnTextBlock" Grid.Column="1" FontWeight="SemiBold" />
-                                        <TextBlock x:Name="PopulationColumnTextBlock" Grid.Column="2" FontWeight="SemiBold" />
-                                        <TextBlock x:Name="EntranceColumnTextBlock" Grid.Column="3" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="FloorNameColumnTextBlock" FontWeight="SemiBold" Foreground="White" />
+                                        <TextBlock x:Name="InterfloorHeightColumnTextBlock" Grid.Column="1" FontWeight="SemiBold" Foreground="White" />
+                                        <TextBlock x:Name="PopulationColumnTextBlock" Grid.Column="2" FontWeight="SemiBold" Foreground="White" />
+                                        <TextBlock x:Name="EntranceBiasColumnTextBlock" Grid.Column="3" FontWeight="SemiBold" Foreground="White" />
+                                        <TextBlock x:Name="EntranceColumnTextBlock" Grid.Column="4" FontWeight="SemiBold" Foreground="White" />
                                     </Grid>
 
                                     <ItemsControl x:Name="FloorsItemsControl">
@@ -249,15 +247,21 @@
                                                     <Grid ColumnSpacing="10">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="2.2*" />
-                                                            <ColumnDefinition Width="1.4*" />
-                                                            <ColumnDefinition Width="1.2*" />
+                                                            <ColumnDefinition Width="1.3*" />
+                                                            <ColumnDefinition Width="1.1*" />
+                                                            <ColumnDefinition Width="1.1*" />
                                                             <ColumnDefinition Width="0.8*" />
                                                         </Grid.ColumnDefinitions>
 
                                                         <TextBox PlaceholderText="Level 1" Text="{Binding FloorName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                         <TextBox Grid.Column="1" PlaceholderText="3,9" Text="{Binding InterfloorHeightText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                         <TextBox Grid.Column="2" PlaceholderText="150" Text="{Binding PopulationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <CheckBox Grid.Column="3" HorizontalAlignment="Center" IsChecked="{Binding EntranceFloor, Mode=TwoWay}" />
+                                                        <TextBox Grid.Column="3" PlaceholderText="0" Text="{Binding EntranceBiasText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <ToggleButton
+                                                            Grid.Column="4"
+                                                            HorizontalAlignment="Center"
+                                                            IsChecked="{Binding EntranceFloor, Mode=TwoWay}"
+                                                            Style="{StaticResource RoundCheckToggleStyle}" />
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -304,6 +308,7 @@
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
 
                                                     <StackPanel Grid.Row="0" Grid.Column="0" Spacing="6">
@@ -335,33 +340,21 @@
                                                         <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding DoorOpeningLabel}" />
                                                         <ComboBox DisplayMemberPath="DisplayName" ItemsSource="{Binding DoorOpeningOptions}" SelectedItem="{Binding SelectedDoorOpening, Mode=TwoWay}" />
                                                     </StackPanel>
+
+                                                    <StackPanel Grid.Row="2" Grid.Column="0" Spacing="6">
+                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding HomeFloorLabel}" />
+                                                        <TextBox PlaceholderText="1" Text="{Binding HomeFloor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </StackPanel>
                                                 </Grid>
-
-                                                <StackPanel Spacing="6">
-                                                    <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding HomeFloorLabel}" />
-                                                    <TextBox PlaceholderText="1" Text="{Binding HomeFloor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                </StackPanel>
-
-                                                <StackPanel Spacing="8">
-                                                    <TextBlock FontWeight="SemiBold" Text="{Binding ServedFloorsLabel}" />
-                                                    <ItemsControl ItemsSource="{Binding ServedFloors}">
-                                                        <ItemsControl.ItemsPanel>
-                                                            <ItemsPanelTemplate>
-                                                                <WrapGrid Orientation="Horizontal" MaximumRowsOrColumns="3" />
-                                                            </ItemsPanelTemplate>
-                                                        </ItemsControl.ItemsPanel>
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <CheckBox Margin="0,0,18,8" Content="{Binding FloorName}" IsChecked="{Binding IsServed, Mode=TwoWay}" />
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </StackPanel>
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollBarVisibility="Disabled">
+                                <StackPanel x:Name="LiftGroupTablesPanel" MinWidth="1040" Spacing="16" />
+                            </ScrollViewer>
                         </StackPanel>
                     </Grid>
                 </Border>

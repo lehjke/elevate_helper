@@ -9,8 +9,14 @@ public sealed class LiftGroupRulesServiceTests
     [Theory]
     [InlineData("1.0", "0.900000", "1.000000")]
     [InlineData("1.75", "0.900000", "1.000000")]
+    [InlineData("2.5", "0.900000", "1.000000")]
+    [InlineData("2.6", "1.100000", "1.500000")]
+    [InlineData("3.0", "1.100000", "1.500000")]
     [InlineData("4.0", "1.100000", "1.500000")]
+    [InlineData("6.0", "1.100000", "1.500000")]
+    [InlineData("6.1", "1.200000", "1.800000")]
     [InlineData("8.0", "1.200000", "1.800000")]
+    [InlineData("10.0", "1.200000", "1.800000")]
     public void ResolveMotionProfile_ReturnsExpectedBand(string speed, string expectedAcceleration, string expectedJerk)
     {
         MotionProfile profile = service.ResolveMotionProfile(speed);

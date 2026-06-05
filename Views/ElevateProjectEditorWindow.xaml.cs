@@ -10,6 +10,7 @@ using ElevateHelperWinUI.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Windows.Graphics;
 
 namespace ElevateHelperWinUI.Views
@@ -86,7 +87,7 @@ namespace ElevateHelperWinUI.Views
         {
             WorkingFolderValueTextBlock.Text = workingFolder;
             BuildingTypeValueTextBlock.Text = localizationService.FormatBuildingType(buildingType);
-            AbsenteeismCard.Visibility = buildingType == BuildingType.Office ? Visibility.Visible : Visibility.Collapsed;
+            AbsenteeismCard.Visibility = Visibility.Collapsed;
         }
 
         private void ApplyLocalizedText()
@@ -104,8 +105,6 @@ namespace ElevateHelperWinUI.Views
             CloseButton.Content = Text.EditorCloseButton;
 
             ProjectTabButton.Content = Text.EditorProjectTabTitle;
-            AnalysisTabButton.Content = Text.EditorAnalysisTabTitle;
-            TrafficTabButton.Content = Text.EditorTrafficSectionTitle;
             BuildingTabButton.Content = Text.EditorBuildingTabTitle;
             LiftGroupTabButton.Content = Text.EditorLiftGroupTabTitle;
 
@@ -131,6 +130,7 @@ namespace ElevateHelperWinUI.Views
             FloorNameColumnTextBlock.Text = Text.EditorFloorNameColumn;
             InterfloorHeightColumnTextBlock.Text = Text.EditorInterfloorHeightColumn;
             PopulationColumnTextBlock.Text = Text.EditorPopulationColumn;
+            EntranceBiasColumnTextBlock.Text = Text.EditorEntranceBiasColumn;
             EntranceColumnTextBlock.Text = Text.EditorEntranceColumn;
             AddFloorAboveButton.Content = Text.EditorAddFloorAboveButton;
             AddFloorBelowButton.Content = Text.EditorAddFloorBelowButton;
@@ -164,6 +164,7 @@ namespace ElevateHelperWinUI.Views
             ProjectMadeByTextBox.Text = string.Empty;
             ProjectCheckedByTextBox.Text = string.Empty;
             ProjectCompanyTextBox.Text = string.Empty;
+            preservedLogoFile = string.Empty;
             SimulationCountTextBox.Text = "10";
             AbsenteeismTextBox.Text = buildingType == BuildingType.Office ? "20" : string.Empty;
             IncomingTextBox.Text = "100";
@@ -292,11 +293,6 @@ namespace ElevateHelperWinUI.Views
             ShowSection(EditorSection.Analysis);
         }
 
-        private void OnTrafficTabButtonClick(object sender, RoutedEventArgs e)
-        {
-            ShowSection(EditorSection.Traffic);
-        }
-
         private void OnBuildingTabButtonClick(object sender, RoutedEventArgs e)
         {
             ShowSection(EditorSection.Building);
@@ -336,7 +332,7 @@ namespace ElevateHelperWinUI.Views
             currentSection = section;
             ProjectPanel.Visibility = section == EditorSection.Project ? Visibility.Visible : Visibility.Collapsed;
             AnalysisPanel.Visibility = section == EditorSection.Analysis ? Visibility.Visible : Visibility.Collapsed;
-            TrafficPanel.Visibility = section == EditorSection.Traffic ? Visibility.Visible : Visibility.Collapsed;
+            TrafficPanel.Visibility = Visibility.Collapsed;
             BuildingPanel.Visibility = section == EditorSection.Building ? Visibility.Visible : Visibility.Collapsed;
             LiftGroupPanel.Visibility = section == EditorSection.LiftGroup ? Visibility.Visible : Visibility.Collapsed;
             ApplySectionVisuals();
@@ -345,8 +341,6 @@ namespace ElevateHelperWinUI.Views
         private void ApplySectionVisuals()
         {
             SetTabButtonStyle(ProjectTabButton, currentSection == EditorSection.Project);
-            SetTabButtonStyle(AnalysisTabButton, currentSection == EditorSection.Analysis);
-            SetTabButtonStyle(TrafficTabButton, currentSection == EditorSection.Traffic);
             SetTabButtonStyle(BuildingTabButton, currentSection == EditorSection.Building);
             SetTabButtonStyle(LiftGroupTabButton, currentSection == EditorSection.LiftGroup);
         }
@@ -388,6 +382,7 @@ namespace ElevateHelperWinUI.Views
             liftRows.Remove(row);
             RefreshLiftTitles();
             RefreshLiftCountSummary();
+            RebuildLiftGroupTables();
         }
 
         private void OnOutputRelevantFieldChanged(object sender, TextChangedEventArgs e)
@@ -451,6 +446,7 @@ namespace ElevateHelperWinUI.Views
                     FloorName = floor.FloorName,
                     InterfloorHeightText = FormatEditableNumber(interfloorHeight),
                     PopulationText = FormatEditableNumber(floor.Population),
+                    EntranceBiasText = FormatEditableNumber(floor.EntranceBiasPercent),
                     EntranceFloor = floor.EntranceFloor,
                 };
                 row.PropertyChanged += OnBuildingFloorRowPropertyChanged;
@@ -486,6 +482,7 @@ namespace ElevateHelperWinUI.Views
                 FloorName = SuggestFloorName(isTopFloor),
                 InterfloorHeightText = ResolveSuggestedInterfloorHeightText(seed.InterfloorHeightText),
                 PopulationText = isTopFloor ? seed.PopulationText : "0",
+                EntranceBiasText = "0",
                 EntranceFloor = false,
             };
             newRow.PropertyChanged += OnBuildingFloorRowPropertyChanged;
@@ -566,6 +563,8 @@ namespace ElevateHelperWinUI.Views
                     liftRow.HomeFloor = ResolveFallbackHomeFloor(floors);
                 }
             }
+
+            RebuildLiftGroupTables();
         }
 
         private BuildingFloorRowViewModel CreateDefaultFloorRow()
@@ -576,6 +575,7 @@ namespace ElevateHelperWinUI.Views
                 FloorName = "Level 1",
                 InterfloorHeightText = "3,9",
                 PopulationText = "150",
+                EntranceBiasText = "100",
                 EntranceFloor = true,
             };
         }
@@ -634,6 +634,7 @@ namespace ElevateHelperWinUI.Views
             {
                 RefreshLiftTitles();
                 RefreshLiftCountSummary();
+                RebuildLiftGroupTables();
             }
         }
 
@@ -744,6 +745,7 @@ namespace ElevateHelperWinUI.Views
             liftRows.Add(row);
             RefreshLiftTitles();
             RefreshLiftCountSummary();
+            RebuildLiftGroupTables();
         }
 
         private LiftCarRowViewModel CloneLiftRow(LiftCarRowViewModel source)
@@ -798,6 +800,7 @@ namespace ElevateHelperWinUI.Views
             }
 
             RefreshLiftTitles();
+            RebuildLiftGroupTables();
         }
 
         private void ApplyLocalizationToLiftRow(LiftCarRowViewModel row, DoorOpeningKind selectedKind)
@@ -809,7 +812,9 @@ namespace ElevateHelperWinUI.Views
             row.DoorWidthLabel = Text.EditorDoorWidthHeader;
             row.DoorOpeningLabel = Text.EditorDoorOpeningHeader;
             row.HomeFloorLabel = Text.EditorCarHomeFloorLabel;
-            row.ServedFloorsLabel = localizationService.CurrentLanguage == AppLanguage.Russian ? "Обслуживаемые этажи" : "Served floors";
+            row.ServedFloorsLabel = localizationService.CurrentLanguage == AppLanguage.Russian
+                ? "Обслуживаемые этажи (f / 0)"
+                : "Served floors (f / 0)";
             row.RemoveButtonLabel = Text.EditorRemoveLiftButton;
 
             row.DoorOpeningOptions.Clear();
@@ -817,6 +822,168 @@ namespace ElevateHelperWinUI.Views
             row.DoorOpeningOptions.Add(new DoorOpeningOption(DoorOpeningKind.Telescopic, Text.EditorDoorOpeningTelescopic));
             row.SelectedDoorOpening = row.DoorOpeningOptions.FirstOrDefault(option => option.Kind == selectedKind) ?? row.DoorOpeningOptions.FirstOrDefault();
         }
+
+        private void RebuildLiftGroupTables()
+        {
+            LiftGroupTablesPanel.Children.Clear();
+            if (liftRows.Count == 0)
+            {
+                return;
+            }
+
+            LiftGroupTablesPanel.Children.Add(CreateServedFloorsTableCard());
+        }
+
+        private Border CreateServedFloorsTableCard()
+        {
+            Grid table = CreateLiftTable(labelColumnWidth: 220, valueColumnWidth: 86);
+            AddLiftTableHeader(table, Text.EditorFloorNameColumn);
+
+            int rowIndex = 1;
+            foreach (BuildingFloorRowViewModel floorRow in floorRows)
+            {
+                EnsureGridRow(table, rowIndex);
+                AddTableLabel(table, rowIndex, floorRow.FloorName);
+                for (int liftIndex = 0; liftIndex < liftRows.Count; liftIndex++)
+                {
+                    ServedFloorRowViewModel? servedFloor = liftRows[liftIndex].ServedFloors.FirstOrDefault(floor => floor.FloorIndex == rowIndex);
+                    if (servedFloor is not null)
+                    {
+                        FrameworkElement cell = CreateTextCell(servedFloor, nameof(ServedFloorRowViewModel.ServiceText));
+                        Grid.SetRow(cell, rowIndex);
+                        Grid.SetColumn(cell, liftIndex + 1);
+                        table.Children.Add(cell);
+                    }
+                }
+
+                rowIndex++;
+            }
+
+            return CreateTableCard(localizationService.CurrentLanguage == AppLanguage.Russian ? "Обслуживаемые этажи" : "Floors Served", table);
+        }
+
+        private Grid CreateLiftTable(double labelColumnWidth, double valueColumnWidth)
+        {
+            Grid table = new()
+            {
+                ColumnSpacing = 8,
+                RowSpacing = 8,
+            };
+            table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(labelColumnWidth) });
+            foreach (LiftCarRowViewModel _ in liftRows)
+            {
+                table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(valueColumnWidth) });
+            }
+
+            return table;
+        }
+
+        private void AddLiftTableHeader(Grid table, string labelHeader)
+        {
+            EnsureGridRow(table, 0);
+            AddHeaderCell(table, 0, 0, labelHeader);
+            for (int index = 0; index < liftRows.Count; index++)
+            {
+                TextBlock title = new()
+                {
+                    MaxWidth = 72,
+                    Text = liftRows[index].Title,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                };
+                Grid.SetRow(title, 0);
+                Grid.SetColumn(title, index + 1);
+                table.Children.Add(title);
+            }
+        }
+
+        private Border CreateTableCard(string title, Grid table)
+        {
+            StackPanel panel = new()
+            {
+                Spacing = 12,
+            };
+            panel.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontSize = 18,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            });
+            panel.Children.Add(table);
+
+            Border border = new()
+            {
+                Child = panel,
+                Style = ResolveStyle("SectionCardStyle"),
+            };
+            return border;
+        }
+
+        private static void EnsureGridRow(Grid table, int rowIndex)
+        {
+            while (table.RowDefinitions.Count <= rowIndex)
+            {
+                table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+        }
+
+        private void AddHeaderCell(Grid table, int rowIndex, int columnIndex, string text)
+        {
+            TextBlock header = new()
+            {
+                Text = text,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.WrapWholeWords,
+            };
+            Grid.SetRow(header, rowIndex);
+            Grid.SetColumn(header, columnIndex);
+            table.Children.Add(header);
+        }
+
+        private void AddTableLabel(Grid table, int rowIndex, string text)
+        {
+            TextBlock label = new()
+            {
+                Text = text,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.WrapWholeWords,
+            };
+            Grid.SetRow(label, rowIndex);
+            Grid.SetColumn(label, 0);
+            table.Children.Add(label);
+        }
+
+        private FrameworkElement CreateTextCell(object source, string path)
+        {
+            TextBox textBox = new()
+            {
+                MinWidth = 64,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+            };
+            textBox.SetBinding(TextBox.TextProperty, CreateTwoWayBinding(source, path));
+            return textBox;
+        }
+
+        private static Binding CreateTwoWayBinding(object source, string path)
+        {
+            return new Binding
+            {
+                Source = source,
+                Path = new PropertyPath(path),
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
+            };
+        }
+
+        private static Style? ResolveStyle(string key)
+        {
+            return Application.Current.Resources.TryGetValue(key, out object styleObject) && styleObject is Style style
+                ? style
+                : null;
+        }
+
         private bool TryBuildDocument(out ElevateProjectEditorDocument? document)
         {
             document = null;
@@ -826,9 +993,7 @@ namespace ElevateHelperWinUI.Views
                 return false;
             }
 
-            if (!TryParseDouble(AbsenteeismTextBox.Text, Text.EditorAbsenteeismHeader, out double absenteeism, buildingType != BuildingType.Office) ||
-                !TryParseInt(SimulationCountTextBox.Text, Text.EditorSimulationsHeader, out int simulationCount) ||
-                !TryBuildTraffic(out ElevateProjectEditorTrafficSection traffic) ||
+            if (!TryParseInt(SimulationCountTextBox.Text, Text.EditorSimulationsHeader, out int simulationCount) ||
                 !TryBuildFloors(out List<ElevateProjectEditorFloor> floors) ||
                 !TryBuildCars(floors, out List<ElevateProjectEditorCar> cars))
             {
@@ -852,7 +1017,7 @@ namespace ElevateHelperWinUI.Views
                 },
                 Analysis = new ElevateProjectEditorAnalysisSection
                 {
-                    DispatcherAlgorithmName = (DispatcherComboBox.SelectedItem as DispatcherOption)?.Value ?? "Group Collective",
+                    DispatcherAlgorithmName = buildingType == BuildingType.Office ? "Mixed Control (Enhanced ACA)" : "Group Collective",
                     TrafficMode = preservedTrafficMode,
                     SimulationsPerConfiguration = simulationCount,
                     LearningRuns = preservedLearningRuns,
@@ -861,10 +1026,10 @@ namespace ElevateHelperWinUI.Views
                 Building = new ElevateProjectEditorBuildingSection
                 {
                     BuildingType = buildingType,
-                    AbsenteeismPercent = buildingType == BuildingType.Office ? absenteeism : loadedDocument.Building.AbsenteeismPercent,
+                    AbsenteeismPercent = buildingType == BuildingType.Office ? 20d : 0d,
                     NumberOfFloors = floors.Count,
                 },
-                Traffic = traffic,
+                Traffic = loadedDocument.Traffic,
                 Floors = floors,
                 Cars = cars,
             };
@@ -914,7 +1079,8 @@ namespace ElevateHelperWinUI.Views
             foreach (BuildingFloorRowViewModel row in floorRows)
             {
                 if (!TryParseDouble(row.InterfloorHeightText, row.FloorName, out double interfloorHeight, false) ||
-                    !TryParseDouble(row.PopulationText, row.FloorName, out double population, false))
+                    !TryParseDouble(row.PopulationText, row.FloorName, out double population, false) ||
+                    !TryParseDouble(row.EntranceBiasText, Text.EditorEntranceBiasColumn, out double entranceBias, false))
                 {
                     return false;
                 }
@@ -928,6 +1094,7 @@ namespace ElevateHelperWinUI.Views
                     InterfloorHeight = interfloorHeight,
                     FloorLevel = currentLevel,
                     Population = population,
+                    EntranceBiasPercent = entranceBias,
                     EntranceFloor = row.EntranceFloor,
                 });
             }
@@ -992,12 +1159,16 @@ namespace ElevateHelperWinUI.Views
                     Id = row.Id,
                     HomeShaft = row.HomeShaft,
                     TemplateXml = row.TemplateXml,
+                    CabinWidthMm = cabinWidth,
+                    CabinDepthMm = cabinHeight,
                     CapacityKg = ParseFlexibleDouble(row.CapacityOption).ToString("0.000000", CultureInfo.InvariantCulture),
                     FloorAreaM2 = liftGroupRulesService.ResolveCarAreaSquareMeters(cabinWidth, cabinHeight).ToString("0.000000", CultureInfo.InvariantCulture),
                     Speed = ParseFlexibleDouble(row.SpeedOption).ToString("0.000000", CultureInfo.InvariantCulture),
                     Acceleration = motionProfile.Acceleration,
                     Jerk = motionProfile.Jerk,
                     DoorPreOpening = doorProfile.DoorPreOpening,
+                    DoorWidthMm = row.SelectedDoorWidth,
+                    DoorOpeningKind = openingKind,
                     DoorOpenTime = doorProfile.DoorOpenTime,
                     DoorCloseTime = doorProfile.DoorCloseTime,
                     HomeFloor = homeFloor.ToString(CultureInfo.InvariantCulture),
@@ -1024,6 +1195,7 @@ namespace ElevateHelperWinUI.Views
                     InterfloorHeight = interfloorHeight,
                     FloorLevel = currentLevel,
                     Population = ParseFlexibleDouble(row.PopulationText),
+                    EntranceBiasPercent = ParseFlexibleDouble(row.EntranceBiasText),
                     EntranceFloor = row.EntranceFloor,
                 });
             }
@@ -1035,9 +1207,9 @@ namespace ElevateHelperWinUI.Views
         {
             return new List<ElevateProjectEditorFloor>
             {
-                new ElevateProjectEditorFloor { FloorIndex = 1, SourceFloorName = string.Empty, FloorName = "Level 1", InterfloorHeight = 0d, FloorLevel = 0d, Population = 0d, EntranceFloor = true },
-                new ElevateProjectEditorFloor { FloorIndex = 2, SourceFloorName = string.Empty, FloorName = "Level 2", InterfloorHeight = 3.9d, FloorLevel = 3.9d, Population = 150d, EntranceFloor = false },
-                new ElevateProjectEditorFloor { FloorIndex = 3, SourceFloorName = string.Empty, FloorName = "Level 3", InterfloorHeight = 3.9d, FloorLevel = 7.8d, Population = 150d, EntranceFloor = false },
+                new ElevateProjectEditorFloor { FloorIndex = 1, SourceFloorName = string.Empty, FloorName = "Level 1", InterfloorHeight = 0d, FloorLevel = 0d, Population = 0d, EntranceFloor = true, EntranceBiasPercent = 100d },
+                new ElevateProjectEditorFloor { FloorIndex = 2, SourceFloorName = string.Empty, FloorName = "Level 2", InterfloorHeight = 3.9d, FloorLevel = 3.9d, Population = 150d, EntranceFloor = false, EntranceBiasPercent = 0d },
+                new ElevateProjectEditorFloor { FloorIndex = 3, SourceFloorName = string.Empty, FloorName = "Level 3", InterfloorHeight = 3.9d, FloorLevel = 7.8d, Population = 150d, EntranceFloor = false, EntranceBiasPercent = 0d },
             };
         }
 
@@ -1153,7 +1325,7 @@ namespace ElevateHelperWinUI.Views
         private void SetStatus(string message, InfoBarSeverity severity)
         {
             StatusInfoBar.Message = message;
-            StatusInfoBar.Severity = severity;
+            StatusInfoBar.Severity = severity == InfoBarSeverity.Success ? InfoBarSeverity.Informational : severity;
             StatusInfoBar.IsOpen = true;
         }
 
@@ -1323,6 +1495,7 @@ namespace ElevateHelperWinUI.Views
         private string floorName = string.Empty;
         private string interfloorHeightText = string.Empty;
         private string populationText = string.Empty;
+        private string entranceBiasText = string.Empty;
         private bool entranceFloor;
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -1349,6 +1522,12 @@ namespace ElevateHelperWinUI.Views
         {
             get => populationText;
             set => SetProperty(ref populationText, value, nameof(PopulationText));
+        }
+
+        public string EntranceBiasText
+        {
+            get => entranceBiasText;
+            set => SetProperty(ref entranceBiasText, value, nameof(EntranceBiasText));
         }
 
         public bool EntranceFloor
@@ -1558,7 +1737,28 @@ namespace ElevateHelperWinUI.Views
         public bool IsServed
         {
             get => isServed;
-            set => SetProperty(ref isServed, value, nameof(IsServed));
+            set
+            {
+                if (isServed == value)
+                {
+                    return;
+                }
+
+                isServed = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsServed)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ServiceText)));
+            }
+        }
+
+        public string ServiceText
+        {
+            get => isServed ? "f" : "0";
+            set
+            {
+                string normalized = value?.Trim() ?? string.Empty;
+                IsServed = normalized.Equals("f", StringComparison.OrdinalIgnoreCase) ||
+                           normalized.Equals("1", StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         private void SetProperty<T>(ref T field, T value, string propertyName)
@@ -1603,7 +1803,6 @@ namespace ElevateHelperWinUI.Views
     {
         Project,
         Analysis,
-        Traffic,
         Building,
         LiftGroup,
     }

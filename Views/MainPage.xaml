@@ -458,6 +458,37 @@
                                         </Grid>
                                     </StackPanel>
 
+                                    <StackPanel Spacing="4">
+                                        <TextBlock
+                                            FontWeight="SemiBold"
+                                            Text="{x:Bind Text.ProjectBatchOfficeScenariosHeader, Mode=OneTime}" />
+
+                                        <Grid
+                                            MinHeight="38"
+                                            VerticalAlignment="Center"
+                                            ColumnSpacing="8"
+                                            Tapped="OnProjectBatchMorningOnlyOptionTapped">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <ToggleButton
+                                                x:Name="ProjectBatchMorningOnlyCheckBox"
+                                                AutomationProperties.Name="{x:Bind Text.ProjectBatchMorningOnly, Mode=OneTime}"
+                                                Style="{StaticResource RoundCheckToggleStyle}" />
+
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Text="{x:Bind Text.ProjectBatchMorningOnly, Mode=OneTime}" />
+                                        </Grid>
+
+                                        <TextBlock
+                                            Style="{StaticResource SectionHintStyle}"
+                                            Text="{x:Bind Text.ProjectBatchOfficeScenariosHint, Mode=OneTime}" />
+                                    </StackPanel>
+
                                     <Button
                                         Click="OnRunProjectBatchButtonClick"
                                         Content="{x:Bind Text.ProjectBatchRunButton, Mode=OneTime}"
@@ -564,10 +595,13 @@
 
                                                             <TextBlock
                                                                 Grid.Column="1"
+                                                                MaxWidth="160"
                                                                 HorizontalAlignment="Right"
                                                                 Opacity="0.8"
-                                                                Text="{Binding StatusText}"
-                                                                TextWrapping="Wrap" />
+                                                                Text="{Binding HeaderStatusText}"
+                                                                TextTrimming="CharacterEllipsis"
+                                                                TextWrapping="NoWrap"
+                                                                Visibility="{Binding HeaderStatusVisibility}" />
 
                                                             <Button
                                                                 Grid.Column="2"
@@ -580,6 +614,19 @@
                                                                 <SymbolIcon Symbol="Cancel" />
                                                             </Button>
                                                         </Grid>
+
+                                                        <Border
+                                                            Background="{ThemeResource IosAccentSoftBrush}"
+                                                            CornerRadius="14"
+                                                            Padding="10"
+                                                            Visibility="{Binding FailureMessageVisibility}">
+                                                            <TextBlock
+                                                                MaxLines="5"
+                                                                Text="{Binding FailureMessage}"
+                                                                TextTrimming="CharacterEllipsis"
+                                                                TextWrapping="Wrap"
+                                                                ToolTipService.ToolTip="{Binding FailureMessage}" />
+                                                        </Border>
 
                                                         <ItemsControl ItemsSource="{Binding Scenarios}">
                                                             <ItemsControl.ItemsPanel>

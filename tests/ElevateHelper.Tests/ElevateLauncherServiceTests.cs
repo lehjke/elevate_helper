@@ -31,6 +31,7 @@ public sealed class ElevateLauncherServiceTests
     [InlineData("Design 1", true)]
     [InlineData("Design1", true)]
     [InlineData("Elevate - [Design1]", true)]
+    [InlineData("Elevate - [Design 1]", true)]
     [InlineData("Probe 01", false)]
     public void IsDesignWindowTitle_RecognizesDesignWindow(string title, bool expected)
     {
@@ -42,6 +43,8 @@ public sealed class ElevateLauncherServiceTests
     [Theory]
     [InlineData("Do you want to save changes?", true)]
     [InlineData("Сохранить изменения перед закрытием?", true)]
+    [InlineData("Сохранить изменения в Design1?", true)]
+    [InlineData("Сохранить изменения в Design 1?", true)]
     [InlineData("Close Elevate without saving?", true)]
     [InlineData("Закрыть Design 1?", true)]
     [InlineData("Elevate has finished processing.", false)]
@@ -51,6 +54,52 @@ public sealed class ElevateLauncherServiceTests
         bool actual = ElevateLauncherService.IsSavePromptText(text);
 
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("No", true)]
+    [InlineData("&No", true)]
+    [InlineData("Нет", true)]
+    [InlineData("&Нет", true)]
+    [InlineData("Да", false)]
+    [InlineData("Отмена", false)]
+    public void IsNoSaveButtonText_RecognizesLocalizedNoButton(string text, bool expected)
+    {
+        bool actual = ElevateLauncherService.IsNoSaveButtonText(text);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void IsSaveConfirmationDialogText_RecognizesRussianElevateDesignPrompt()
+    {
+        bool actual = ElevateLauncherService.IsSaveConfirmationDialogText(
+            "Elevate",
+            new[]
+            {
+                "Сохранить изменения в Design1?",
+                "Да",
+                "Нет",
+                "Отмена",
+            });
+
+        Assert.True(actual);
+    }
+
+    [Fact]
+    public void IsSaveConfirmationDialogText_RecognizesRussianElevateDesignPromptWithSpace()
+    {
+        bool actual = ElevateLauncherService.IsSaveConfirmationDialogText(
+            "Elevate",
+            new[]
+            {
+                "Сохранить изменения в Design 1?",
+                "Да",
+                "Нет",
+                "Отмена",
+            });
+
+        Assert.True(actual);
     }
 
     [Theory]

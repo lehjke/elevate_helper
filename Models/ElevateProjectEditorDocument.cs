@@ -92,6 +92,8 @@ public sealed class ElevateProjectEditorFloor
     public double Population { get; set; }
 
     public bool EntranceFloor { get; set; }
+
+    public double EntranceBiasPercent { get; set; }
 }
 
 public sealed class ElevateProjectEditorCar

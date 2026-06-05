@@ -9,6 +9,8 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
     private const string OfficeTemplateFileName = "Office.elvx";
     private const string ResidenceTemplateFileName = "Residential.elvx";
     private const string HotelTemplateFileName = "Hotel.elvx";
+    private const string OfficeDispatcherAlgorithmName = "Mixed Control (Enhanced ACA)";
+    private const string GroupCollectiveDispatcherAlgorithmName = "Group Collective";
     private static readonly LiftGroupRulesService LiftRules = new();
 
     public Task<ElevateProjectEditorDocument> LoadTemplate(
@@ -118,8 +120,9 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
 
         BuildingType buildingType = ParseBuildingType((string?)buildingData.Attribute("BuildingType"));
 
-        List<ElevateProjectEditorFloor> floors = ParseFloors(buildingData);
+        List<ElevateProjectEditorFloor> floors = ParseFloors(buildingData, standardPassenger);
         List<ElevateProjectEditorCar> cars = ParseCars(configuration);
+        string logoFile = ResolveLogoFile(root, jobData);
 
         return new ElevateProjectEditorDocument
         {
@@ -134,7 +137,7 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
                 MadeBy = (string?)jobData.Attribute("MadeBy") ?? string.Empty,
                 CheckedBy = (string?)jobData.Attribute("CheckedBy") ?? string.Empty,
                 Company = (string?)jobData.Attribute("Company") ?? string.Empty,
-                LogoFile = (string?)jobData.Attribute("LogoFile") ?? string.Empty,
+                LogoFile = logoFile,
             },
             Analysis = new ElevateProjectEditorAnalysisSection
             {
@@ -188,6 +191,16 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             .Elements("Period")
             .FirstOrDefault(period => string.Equals((string?)period.Attribute("Id"), "0", StringComparison.Ordinal));
         XElement? configuration = elevatorData.Element("Advanced")?.Element("Configuration");
+        BuildingType normalizedBuildingType = document.Building.BuildingType;
+        string dispatcherAlgorithmName = ResolveDispatcherAlgorithmName(normalizedBuildingType);
+        double absenteeismPercent = ResolveAbsenteeismPercent(normalizedBuildingType);
+        List<ElevateProjectEditorCar> normalizedCars = document.Cars
+            .Select(NormalizeCarRules)
+            .ToList();
+        document.BuildingType = normalizedBuildingType;
+        document.Analysis.DispatcherAlgorithmName = dispatcherAlgorithmName;
+        document.Building.AbsenteeismPercent = absenteeismPercent;
+        document.Cars = normalizedCars;
         List<string> originalFloorNames = buildingData.Elements("Floor")
             .Select(floorElement => (string?)floorElement.Attribute("FloorName") ?? string.Empty)
             .ToList();
@@ -199,8 +212,10 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
         SetAttribute(jobData, "CheckedBy", document.Job.CheckedBy);
         SetAttribute(jobData, "Company", document.Job.Company);
         SetAttribute(jobData, "LogoFile", document.Job.LogoFile);
+        SetLogoFileName(root, document.Job.LogoFile);
 
-        SetAttribute(algorithm, "AlgorithmName", document.Analysis.DispatcherAlgorithmName);
+        SetAttribute(algorithm, "AlgorithmSource", "Standard");
+        SetAttribute(algorithm, "AlgorithmName", dispatcherAlgorithmName);
         SetAttribute(algorithm, "Mode", document.Analysis.TrafficMode);
         if (simulationParameters is not null)
         {
@@ -209,12 +224,15 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             SetAttribute(simulationParameters, "RandomNumberSeedForPassengerGenerator", document.Analysis.RandomSeed.ToString(CultureInfo.InvariantCulture));
         }
 
-        SetAttribute(buildingData, "BuildingType", ToBuildingTypeCode(document.Building.BuildingType));
-        SetAttribute(buildingData, "AbsenteeismPercent", FormatDouble(document.Building.AbsenteeismPercent));
+        SetAttribute(buildingData, "BuildingType", ToBuildingTypeCode(normalizedBuildingType));
+        SetAttribute(buildingData, "AbsenteeismPercent", FormatDouble(absenteeismPercent));
         SetAttribute(buildingData, "NoOfFloors", document.Floors.Count.ToString(CultureInfo.InvariantCulture));
         RebuildBuildingFloors(buildingData, document.Floors);
         RebuildStandardPassengerFloors(standardPassenger, originalFloorNames, document.Floors);
-        RebuildXDispatchFloors(elevatorData.Element("XDispatch"), document.Floors);
+        RebuildXDispatchFloors(
+            elevatorData.Element("XDispatch"),
+            document.Floors,
+            UsesDestinationCallStations(dispatcherAlgorithmName));
         RebuildPassengerDemand(passengerData.Element("Advanced"), document.Floors);
         UpdateFloorReferences(root, document.Floors);
 
@@ -224,7 +242,7 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
         standardPassenger.SetElementValue("HandlingCapacity", FormatDouble(document.Traffic.HandlingCapacity));
         SetAttribute(standardPassenger, "LoadingTime", FormatDouble(document.Traffic.LoadingTimeSeconds));
         SetAttribute(standardPassenger, "UnloadingTime", FormatDouble(document.Traffic.UnloadingTimeSeconds));
-        ApplyLiftSummary(standardPassenger, document.Cars);
+        ApplyLiftSummary(standardPassenger, normalizedCars);
 
         if (trafficPeriod is not null)
         {
@@ -235,13 +253,62 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
 
         if (configuration is not null)
         {
-            RebuildConfiguration(configuration, document.Cars, document.Floors);
+            RebuildConfiguration(configuration, normalizedCars, document.Floors);
         }
     }
 
-    private static List<ElevateProjectEditorFloor> ParseFloors(XElement buildingData)
+    private static ElevateProjectEditorCar NormalizeCarRules(ElevateProjectEditorCar car)
+    {
+        if (car.CabinWidthMm <= 0 || car.CabinDepthMm <= 0)
+        {
+            CabinDimensions cabinDimensions = LiftRules.ResolveCabinDimensions(car.CapacityKg, car.FloorAreaM2);
+            if (car.CabinWidthMm <= 0)
+            {
+                car.CabinWidthMm = cabinDimensions.WidthMm;
+            }
+
+            if (car.CabinDepthMm <= 0)
+            {
+                car.CabinDepthMm = cabinDimensions.DepthMm;
+            }
+        }
+
+        int doorWidthMm = car.DoorWidthMm > 0 ? car.DoorWidthMm : 1000;
+        DoorProfile doorProfile = LiftRules.ResolveDoorProfile(doorWidthMm, car.DoorOpeningKind);
+        MotionProfile motionProfile = LiftRules.ResolveMotionProfile(car.Speed);
+
+        car.DoorWidthMm = doorWidthMm;
+        car.FloorAreaM2 = FormatDouble(LiftRules.ResolveCarAreaSquareMeters(car.CabinWidthMm, car.CabinDepthMm));
+        car.Acceleration = motionProfile.Acceleration;
+        car.Jerk = motionProfile.Jerk;
+        car.DoorPreOpening = doorProfile.DoorPreOpening;
+        car.DoorOpenTime = doorProfile.DoorOpenTime;
+        car.DoorCloseTime = doorProfile.DoorCloseTime;
+        return car;
+    }
+
+    private static string ResolveDispatcherAlgorithmName(BuildingType buildingType)
+    {
+        return buildingType == BuildingType.Office
+            ? OfficeDispatcherAlgorithmName
+            : GroupCollectiveDispatcherAlgorithmName;
+    }
+
+    private static double ResolveAbsenteeismPercent(BuildingType buildingType)
+    {
+        return buildingType == BuildingType.Office ? 20d : 0d;
+    }
+
+    private static bool UsesDestinationCallStations(string dispatcherAlgorithmName)
+    {
+        return dispatcherAlgorithmName.Contains("Mixed Control", StringComparison.OrdinalIgnoreCase) ||
+               dispatcherAlgorithmName.Contains("ACA", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<ElevateProjectEditorFloor> ParseFloors(XElement buildingData, XElement standardPassenger)
     {
         List<XElement> floorElements = buildingData.Elements("Floor").ToList();
+        List<XElement> entranceBiasElements = standardPassenger.Elements("Floor").ToList();
         List<ElevateProjectEditorFloor> floors = [];
         double previousFloorLevel = 0d;
 
@@ -258,6 +325,9 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
                 FloorLevel = floorLevel,
                 Population = ParseDouble((string?)floorElement.Attribute("NoOfPeople")),
                 EntranceFloor = ParseBool((string?)floorElement.Attribute("EntranceFloor")),
+                EntranceBiasPercent = index < entranceBiasElements.Count
+                    ? ParseDouble((string?)entranceBiasElements[index].Attribute("EntranceBias"))
+                    : 0d,
             });
 
             previousFloorLevel = floorLevel;
@@ -308,6 +378,7 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
                     HomeFloor = (string?)car.Attribute("HomeFloor") ?? string.Empty,
                     TemplateXml = car.ToString(SaveOptions.DisableFormatting),
                     ServedFloorIndexes = car.Elements("FloorServed")
+                        .Where(ElevateReportService.IsFloorServedElement)
                         .Select(floorServed => ParseInt((string?)floorServed.Attribute("FloorIndex")))
                         .Where(index => index > 0)
                         .Distinct()
@@ -580,13 +651,16 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
                 ? matchedBiasElement
                 : new XElement("Floor", new XAttribute("EntranceBias", "0.000000"));
 
-            standardPassenger.Add(new XElement(sourceElement));
+            XElement floorElement = new(sourceElement);
+            SetAttribute(floorElement, "EntranceBias", FormatDouble(floor.EntranceBiasPercent));
+            standardPassenger.Add(floorElement);
         }
     }
 
     private static void RebuildXDispatchFloors(
         XElement? xDispatch,
-        IReadOnlyList<ElevateProjectEditorFloor> floors)
+        IReadOnlyList<ElevateProjectEditorFloor> floors,
+        bool enableDestinationCallStations)
     {
         if (xDispatch is null)
         {
@@ -605,6 +679,9 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             XElement template = ResolveFloorTemplate(existingFloorElements, floor, index);
             XElement floorElement = new(template);
             SetAttribute(floorElement, "FloorName", floor.FloorName);
+            SetAttribute(floorElement, "DestinationButtons", enableDestinationCallStations ? "True" : "False");
+            SetAttribute(floorElement, "UpCallsServedUpPeak", "True");
+            SetAttribute(floorElement, "DownCallsServedUpPeak", "True");
             xDispatch.Add(floorElement);
         }
     }
@@ -838,6 +915,17 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
         return 0d;
     }
 
+    private static string ResolveLogoFile(XElement root, XElement jobData)
+    {
+        string? jobLogoFile = (string?)jobData.Attribute("LogoFile");
+        if (!string.IsNullOrWhiteSpace(jobLogoFile))
+        {
+            return jobLogoFile;
+        }
+
+        return root.Element("LogoFileName")?.Value ?? string.Empty;
+    }
+
     private static bool ParseBool(string? rawValue)
     {
         return rawValue is not null &&
@@ -852,6 +940,31 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
     private static void SetAttribute(XElement element, string attributeName, string? value)
     {
         element.SetAttributeValue(attributeName, value ?? string.Empty);
+    }
+
+    private static void SetLogoFileName(XElement root, string? logoFile)
+    {
+        XElement? logoFileNameElement = root.Element("LogoFileName");
+        if (logoFileNameElement is not null)
+        {
+            logoFileNameElement.Value = logoFile ?? string.Empty;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(logoFile))
+        {
+            return;
+        }
+
+        XElement newLogoFileNameElement = new("LogoFileName", logoFile);
+        XElement? simulatorMenuItem = root.Element("LiftSimulatorServerMenuItem");
+        if (simulatorMenuItem is not null)
+        {
+            simulatorMenuItem.AddBeforeSelf(newLogoFileNameElement);
+            return;
+        }
+
+        root.Add(newLogoFileNameElement);
     }
 
     private static string SanitizePathSegment(string value, string fallback)

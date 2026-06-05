@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
 
@@ -277,7 +278,7 @@ public sealed class ElevateReportServiceTests
     [Theory]
     [InlineData(2.90, 5.70, null, "1200", "ТО")]
     [InlineData(1.90, 3.10, null, "1100", "ЦО")]
-    [InlineData(2.04, 3.26, 0.0, "600", "ТО")]
+    [InlineData(2.04, 3.26, 0.0, "-", "-")]
     [InlineData(2.04, 3.26, 0.5, "1200", "ЦО")]
     public void ResolveDoorInfo_UsesDoorTimingsAndPreOpeningTieBreaker(
         double openTime,
@@ -369,6 +370,15 @@ public sealed class ElevateReportServiceTests
     }
 
     [Fact]
+    public void ResolveReportedDoorInfo_DoesNotMapRemovedTelescopic600Door()
+    {
+        (string width, string type) = ElevateReportService.ResolveReportedDoorInfo("2.000000", "3.300000", "0.000000");
+
+        Assert.Equal("-", width);
+        Assert.Equal("-", type);
+    }
+
+    [Fact]
     public void BuildReportEquipmentSpecValues_KeepsDoorAndStartDelayRowsAligned()
     {
         string[,] spec = new string[2, 11];
@@ -449,6 +459,53 @@ public sealed class ElevateReportServiceTests
         bool actual = ElevateReportService.ShouldPrintGroupServedMark(
             isReportServedFloor,
             elevatorServesFloor);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("f", true)]
+    [InlineData("Yes", true)]
+    [InlineData("True", true)]
+    [InlineData("1", true)]
+    [InlineData("Rear Doors", true)]
+    [InlineData("0", false)]
+    [InlineData("No", false)]
+    [InlineData("False", false)]
+    [InlineData("-", false)]
+    public void IsElevatorServesFloor_NormalizesElevateMarks(string value, bool expected)
+    {
+        bool actual = ElevateReportService.IsElevatorServesFloor(value);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void IsFloorServedElement_UsesExplicitFlagBeforeDoorAttribute()
+    {
+        XElement floorServed = XElement.Parse("<FloorServed FloorIndex=\"7\" Served=\"False\" Doors=\"Front Doors\" />");
+
+        bool actual = ElevateReportService.IsFloorServedElement(floorServed);
+
+        Assert.False(actual);
+    }
+
+    [Fact]
+    public void IsFloorServedElement_TreatsAnyRealDoorAsServed()
+    {
+        XElement floorServed = XElement.Parse("<FloorServed FloorIndex=\"7\" Doors=\"Rear Doors\" />");
+
+        bool actual = ElevateReportService.IsFloorServedElement(floorServed);
+
+        Assert.True(actual);
+    }
+
+    [Theory]
+    [InlineData(412, 7, 24)]
+    [InlineData(412, 7.5, 26)]
+    public void CalculateParkingPopulation_RoundsToWholePeople(double totalPeople, double bias, double expected)
+    {
+        double actual = ElevateReportService.CalculateParkingPopulation(totalPeople, bias);
 
         Assert.Equal(expected, actual);
     }

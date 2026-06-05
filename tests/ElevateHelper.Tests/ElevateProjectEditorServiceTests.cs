@@ -52,6 +52,7 @@ public sealed class ElevateProjectEditorServiceTests
         document.Job.MadeBy = "Codex";
         document.Job.CheckedBy = "QA";
         document.Job.Company = "Meteor";
+        document.Job.LogoFile = @"C:\Temp\logo.png";
         document.Analysis.DispatcherAlgorithmName = "Destination Control";
         document.Analysis.TrafficMode = "Lunch peak";
         document.Analysis.SimulationsPerConfiguration = 25;
@@ -67,6 +68,7 @@ public sealed class ElevateProjectEditorServiceTests
         document.Traffic.UnloadingTimeSeconds = 1.5;
         document.Floors[0].InterfloorHeight = 9.75;
         document.Floors[0].Population = 123;
+        document.Floors[0].EntranceBiasPercent = 8.25;
         document.Cars[0].CapacityKg = "1600.000000";
         document.Cars[0].DoorOpenTime = "2.100000";
 
@@ -80,22 +82,54 @@ public sealed class ElevateProjectEditorServiceTests
         XElement root = xDocument.Root!;
         Assert.Equal("Tower Alpha", (string?)root.Element("JobData")?.Attribute("JobTitle"));
         Assert.Equal("R42", (string?)root.Element("JobData")?.Attribute("JobNo"));
-        Assert.Equal("Destination Control", (string?)root.Element("AnalysisData")?.Element("Dispatcher")?.Element("Algorithm")?.Attribute("AlgorithmName"));
+        Assert.Equal(@"C:\Temp\logo.png", (string?)root.Element("JobData")?.Attribute("LogoFile"));
+        Assert.Equal("Group Collective", (string?)root.Element("AnalysisData")?.Element("Dispatcher")?.Element("Algorithm")?.Attribute("AlgorithmName"));
         Assert.Equal("Lunch peak", (string?)root.Element("AnalysisData")?.Element("Dispatcher")?.Element("Algorithm")?.Attribute("Mode"));
         Assert.Equal("25", (string?)root.Element("AnalysisData")?.Element("SimulationParameters")?.Attribute("NoOfSimulationsToRunForEachConfiguration"));
         Assert.Equal("2", (string?)root.Element("AnalysisData")?.Element("SimulationParameters")?.Attribute("NoOfLearningRuns"));
         Assert.Equal("7", (string?)root.Element("AnalysisData")?.Element("SimulationParameters")?.Attribute("RandomNumberSeedForPassengerGenerator"));
         Assert.Equal("2", (string?)root.Element("BuildingData")?.Attribute("BuildingType"));
-        Assert.Equal("12.500000", (string?)root.Element("BuildingData")?.Attribute("AbsenteeismPercent"));
+        Assert.Equal("0.000000", (string?)root.Element("BuildingData")?.Attribute("AbsenteeismPercent"));
         Assert.Equal("45.000000", root.Element("PassengerData")?.Element("Standard")?.Element("Incoming")?.Value);
         Assert.Equal("13.500000", root.Element("PassengerData")?.Element("Standard")?.Element("HandlingCapacity")?.Value);
         Assert.Equal("1.250000", (string?)root.Element("PassengerData")?.Element("Standard")?.Attribute("LoadingTime"));
+        Assert.Equal("8.250000", (string?)root.Element("PassengerData")?.Element("Standard")?.Elements("Floor").First().Attribute("EntranceBias"));
         Assert.Equal("45.000000", (string?)root.Element("PassengerData")?.Element("Traffic")?.Element("Period")?.Attribute("SplitUp"));
         Assert.Equal("9.750000", (string?)root.Element("BuildingData")?.Elements("Floor").First().Attribute("FloorLevel"));
         Assert.Equal("123.000000", (string?)root.Element("BuildingData")?.Elements("Floor").First().Attribute("NoOfPeople"));
         Assert.Equal("1600.000000", (string?)root.Element("ElevatorData")?.Element("Advanced")?.Element("Configuration")?.Elements("Car").First().Attribute("Capacity"));
-        Assert.Equal("2.100000", (string?)root.Element("ElevatorData")?.Element("Advanced")?.Element("Configuration")?.Elements("Car").First().Attribute("DoorOpenTime"));
+        Assert.Equal("1.900000", (string?)root.Element("ElevatorData")?.Element("Advanced")?.Element("Configuration")?.Elements("Car").First().Attribute("DoorOpenTime"));
+        List<XElement> xDispatchFloors = root.Element("ElevatorData")?.Element("XDispatch")?.Elements("Floor").ToList() ?? [];
+        Assert.NotEmpty(xDispatchFloors);
+        Assert.All(xDispatchFloors, floor => Assert.Equal("False", (string?)floor.Attribute("DestinationButtons")));
         Assert.NotNull(root.Element("Results"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_NormalizesOfficeDispatcherAndDestinationCalls()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Office.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        document.BuildingType = BuildingType.Office;
+        document.Building.BuildingType = BuildingType.Office;
+        document.Building.AbsenteeismPercent = 0;
+        document.Analysis.DispatcherAlgorithmName = "Group Collective";
+
+        string outputPath = Path.Combine(workspace.RootPath, "OfficeOutput.elvx");
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.True(result.Success);
+
+        XElement root = XDocument.Load(outputPath).Root!;
+        Assert.Equal("Mixed Control (Enhanced ACA)", (string?)root.Element("AnalysisData")?.Element("Dispatcher")?.Element("Algorithm")?.Attribute("AlgorithmName"));
+        Assert.Equal("20.000000", (string?)root.Element("BuildingData")?.Attribute("AbsenteeismPercent"));
+
+        List<XElement> xDispatchFloors = root.Element("ElevatorData")?.Element("XDispatch")?.Elements("Floor").ToList() ?? [];
+        Assert.NotEmpty(xDispatchFloors);
+        Assert.All(xDispatchFloors, floor => Assert.Equal("True", (string?)floor.Attribute("DestinationButtons")));
     }
 
     [Fact]
