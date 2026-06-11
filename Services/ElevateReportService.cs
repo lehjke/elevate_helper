@@ -111,6 +111,17 @@ public sealed class ElevateReportService : IElevateReportService
                 ?? throw new InvalidOperationException($"Cannot resolve project source folder for {projectSourcePath}.");
 
             ProjectParsedData projectData = ParseProjectSource(projectSourcePath);
+            string? servedFloorsCsvPath = ResolveProjectCsvSourcePath(
+                mainData.FileName,
+                mainData.SourceFileName,
+                path,
+                mainData.Folder,
+                resolvedBatchFolder);
+            if (!string.IsNullOrWhiteSpace(servedFloorsCsvPath) &&
+                !string.Equals(servedFloorsCsvPath, projectSourcePath, StringComparison.OrdinalIgnoreCase))
+            {
+                TryApplyFloorsServedFromProjectCsv(servedFloorsCsvPath, projectData.Building, projectData.Elevator);
+            }
 
             int nSteps = mainData.AWT.Length - 1;
             if (nSteps < 1)
@@ -1722,11 +1733,15 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         elevatorData.FloorsServed = new string[elevatorData.NoElevators + 1, buildingData.NoFloors + 1];
-        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        if (!TryApplyFloorsServedFromProjectCsvSheet(sheet, buildingData, elevatorData, elevatorDataRow, passengerDataRow))
         {
-            for (int j = 1; j <= buildingData.NoFloors; j++)
+            for (int i = 1; i <= elevatorData.NoElevators; i++)
             {
-                elevatorData.FloorsServed[i, j] = NormalizeElevatorServedMark(sheet.Get(elevatorDataRow + 14 + j, 3 + i));
+                for (int j = 1; j <= buildingData.NoFloors; j++)
+                {
+                    elevatorData.FloorsServed[i, j] =
+                        NormalizeCsvElevatorServedMark(sheet.Get(elevatorDataRow + 14 + j, 3 + i));
+                }
             }
         }
 
@@ -1738,6 +1753,187 @@ public sealed class ElevateReportService : IElevateReportService
         };
 
         return new ProjectParsedData(jobData, buildingData, elevatorData, passengerData);
+    }
+
+    private static bool TryApplyFloorsServedFromProjectCsv(
+        string projectCsvPath,
+        BuildingDataModel buildingData,
+        ElevatorDataModel elevatorData)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(projectCsvPath) || !File.Exists(projectCsvPath))
+            {
+                return false;
+            }
+
+            CsvSheet sheet = CsvSheet.Load(projectCsvPath);
+            int elevatorDataRow = sheet.FindRowExactInColumn(1, "ELEVATOR DATA");
+            int passengerDataRow = sheet.FindRowExactInColumn(1, "PASSENGER DATA");
+            if (elevatorDataRow == 0)
+            {
+                return false;
+            }
+
+            return TryApplyFloorsServedFromProjectCsvSheet(
+                sheet,
+                buildingData,
+                elevatorData,
+                elevatorDataRow,
+                passengerDataRow);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryApplyFloorsServedFromProjectCsvSheet(
+        CsvSheet sheet,
+        BuildingDataModel buildingData,
+        ElevatorDataModel elevatorData,
+        int elevatorDataRow,
+        int passengerDataRow)
+    {
+        int searchStartRow = Math.Max(1, elevatorDataRow + 1);
+        int searchEndRow = passengerDataRow > searchStartRow
+            ? passengerDataRow - 1
+            : sheet.RowCount;
+
+        bool appliedAny = false;
+        for (int floor = 1; floor <= buildingData.NoFloors; floor++)
+        {
+            int row = FindCsvFloorsServedRow(
+                sheet,
+                buildingData.FloorName[floor],
+                elevatorData.NoElevators,
+                searchStartRow,
+                searchEndRow);
+
+            if (row == 0)
+            {
+                continue;
+            }
+
+            for (int elevator = 1; elevator <= elevatorData.NoElevators; elevator++)
+            {
+                elevatorData.FloorsServed[elevator, floor] =
+                    NormalizeCsvElevatorServedMark(sheet.Get(row, 3 + elevator));
+            }
+
+            appliedAny = true;
+        }
+
+        return appliedAny;
+    }
+
+    private static int FindCsvFloorsServedRow(
+        CsvSheet sheet,
+        double floorName,
+        int noElevators,
+        int searchStartRow,
+        int searchEndRow)
+    {
+        for (int row = searchStartRow; row <= searchEndRow && row <= sheet.RowCount; row++)
+        {
+            if (!TryParseCsvFloorName(sheet.Get(row, 1), out double rowFloorName) ||
+                !NearlyEquals(rowFloorName, floorName, 0.001))
+            {
+                continue;
+            }
+
+            if (LooksLikeCsvFloorsServedRow(sheet, row, noElevators))
+            {
+                return row;
+            }
+        }
+
+        return 0;
+    }
+
+    private static bool TryParseCsvFloorName(string? value, out double floorName)
+    {
+        floorName = 0;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string text = NormalizeElevateText(value).Trim();
+        if (text.StartsWith('\''))
+        {
+            text = text[1..].Trim();
+        }
+
+        if (text.StartsWith("Level ", StringComparison.OrdinalIgnoreCase) && text.Length > 6)
+        {
+            text = text[6..].Trim();
+        }
+
+        return TryParseLocalizedDecimal(text, out floorName);
+    }
+
+    private static bool LooksLikeCsvFloorsServedRow(CsvSheet sheet, int row, int noElevators)
+    {
+        int markerCount = 0;
+        for (int elevator = 1; elevator <= noElevators; elevator++)
+        {
+            string value = sheet.Get(row, 3 + elevator);
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            if (!IsCsvFloorsServedMarker(value))
+            {
+                return false;
+            }
+
+            markerCount++;
+        }
+
+        return markerCount > 0;
+    }
+
+    private static bool IsCsvFloorsServedMarker(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string normalized = NormalizeElevateText(value).Trim();
+        return normalized.Equals("f", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("0", StringComparison.Ordinal) ||
+               normalized.Equals("Yes", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("No", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("True", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("False", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("Served", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("Unserved", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("Да", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("Нет", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("-", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeCsvElevatorServedMark(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "No";
+        }
+
+        string normalized = NormalizeElevateText(value).Trim();
+        if (normalized.Equals("f", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Yes", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("True", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Served", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("Да", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Yes";
+        }
+
+        return "No";
     }
 
     private static BuildingDataModel ParseBuildingDataFromElvx(XElement buildingElement, XElement passengerElement)
@@ -2918,11 +3114,6 @@ public sealed class ElevateReportService : IElevateReportService
             : value.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
-    private static string NormalizeElevatorServedMark(string? value)
-    {
-        return IsElevatorServesFloor(value) ? "Yes" : "No";
-    }
-
     internal static bool IsFloorServedElement(XElement floorServedElement)
     {
         string[] explicitFlagAttributes =
@@ -3235,6 +3426,20 @@ public sealed class ElevateReportService : IElevateReportService
         return null;
     }
 
+    internal static string? ResolveProjectCsvSourcePath(string fileName, string? sourceFileName, params string?[] searchRoots)
+    {
+        foreach (string candidate in GetProjectCsvSourceCandidates(fileName, sourceFileName))
+        {
+            string? resolvedPath = ResolveExistingCsvPath(candidate, searchRoots);
+            if (!string.IsNullOrWhiteSpace(resolvedPath))
+            {
+                return resolvedPath;
+            }
+        }
+
+        return null;
+    }
+
     internal static string DescribeProjectSourceCandidates(string fileName, string? sourceFileName)
     {
         return string.Join(" or ", GetProjectSourceCandidates(fileName, sourceFileName));
@@ -3272,6 +3477,63 @@ public sealed class ElevateReportService : IElevateReportService
                 yielded.Add(sourceProjectFileName))
             {
                 yield return sourceProjectFileName;
+            }
+        }
+    }
+
+    private static IEnumerable<string> GetProjectCsvSourceCandidates(string fileName, string? sourceFileName)
+    {
+        HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
+        string? sourceProjectFileName = string.IsNullOrWhiteSpace(sourceFileName)
+            ? null
+            : Path.GetFileName(sourceFileName);
+
+        if (!string.IsNullOrWhiteSpace(sourceProjectFileName))
+        {
+            string sourceExtension = Path.GetExtension(sourceProjectFileName);
+            if (sourceExtension.Equals(".elvx", StringComparison.OrdinalIgnoreCase))
+            {
+                string batchCsvFileName = BuildElevateResultCsvFileName(sourceProjectFileName);
+                if (yielded.Add(batchCsvFileName))
+                {
+                    yield return batchCsvFileName;
+                }
+            }
+
+            if (sourceExtension.Equals(".csv", StringComparison.OrdinalIgnoreCase) &&
+                yielded.Add(sourceProjectFileName))
+            {
+                yield return sourceProjectFileName;
+            }
+        }
+
+        string cleanFileName = Path.GetFileName(fileName.Trim());
+        string fileStem = Path.GetFileNameWithoutExtension(cleanFileName);
+        if (!string.IsNullOrWhiteSpace(fileStem))
+        {
+            string batchCsvFileName = BuildElevateResultCsvFileName($"{fileStem}.elvx");
+            if (yielded.Add(batchCsvFileName))
+            {
+                yield return batchCsvFileName;
+            }
+
+            string defaultCsvFileName = $"{fileStem}.csv";
+            if (yielded.Add(defaultCsvFileName))
+            {
+                yield return defaultCsvFileName;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(sourceProjectFileName))
+        {
+            string sourceStem = Path.GetFileNameWithoutExtension(sourceProjectFileName);
+            if (!string.IsNullOrWhiteSpace(sourceStem))
+            {
+                string sourceCsvFileName = $"{sourceStem}.csv";
+                if (yielded.Add(sourceCsvFileName))
+                {
+                    yield return sourceCsvFileName;
+                }
             }
         }
     }

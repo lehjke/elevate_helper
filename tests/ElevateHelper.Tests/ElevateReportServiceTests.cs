@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Reflection;
+using System.Text;
 using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
@@ -86,6 +87,22 @@ public sealed class ElevateReportServiceTests
         string? resolvedPath = ElevateReportService.ResolveProjectSourcePath(
             "Probe01",
             "Probe01.csv",
+            reportRoot);
+
+        Assert.Equal(projectCsvPath, resolvedPath);
+    }
+
+    [Fact]
+    public void ResolveProjectCsvSourcePath_FindsElevateBatchOutputCsvForElvxSource()
+    {
+        using ReportTestWorkspace workspace = new();
+        string reportRoot = workspace.CreateDirectory("probe");
+        string projectCsvPath = Path.Combine(reportRoot, "Probe01_elvx.csv");
+        File.WriteAllText(projectCsvPath, "csv");
+
+        string? resolvedPath = ElevateReportService.ResolveProjectCsvSourcePath(
+            "Probe01",
+            "Probe01.elvx",
             reportRoot);
 
         Assert.Equal(projectCsvPath, resolvedPath);
@@ -500,6 +517,34 @@ public sealed class ElevateReportServiceTests
         Assert.True(actual);
     }
 
+    [Fact]
+    public void ParseProjectCsv_ReadsFloorsServedTableInsteadOfDestinationCallStations()
+    {
+        using ReportTestWorkspace workspace = new();
+        string csvPath = Path.Combine(workspace.RootPath, "Project_elvx.csv");
+        File.WriteAllText(csvPath, BuildPartialFloorsServedProjectCsv(), Encoding.UTF8);
+
+        MethodInfo parseProjectCsv = typeof(ElevateReportService).GetMethod(
+            "ParseProjectCsv",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        object projectData = parseProjectCsv.Invoke(null, [csvPath])!;
+        object elevatorData = projectData.GetType().GetProperty("Elevator")!.GetValue(projectData)!;
+        string[,] floorsServed = (string[,])elevatorData.GetType().GetProperty("FloorsServed")!.GetValue(elevatorData)!;
+
+        for (int elevator = 1; elevator <= 4; elevator++)
+        {
+            Assert.Equal("Yes", floorsServed[elevator, 1]);
+            Assert.Equal("Yes", floorsServed[elevator, 2]);
+        }
+
+        for (int elevator = 5; elevator <= 6; elevator++)
+        {
+            Assert.Equal("No", floorsServed[elevator, 1]);
+            Assert.Equal("No", floorsServed[elevator, 2]);
+        }
+    }
+
     [Theory]
     [InlineData(412, 7, 24)]
     [InlineData(412, 7.5, 26)]
@@ -554,5 +599,124 @@ public sealed class ElevateReportServiceTests
                 // Keep test cleanup best-effort.
             }
         }
+    }
+
+    private static string BuildPartialFloorsServedProjectCsv()
+    {
+        string[][] rows = Enumerable.Range(0, 90)
+            .Select(_ => Array.Empty<string>())
+            .ToArray();
+
+        rows[0] = CsvRow((1, "JOB DATA"));
+        rows[1] = CsvRow((4, "Project"));
+        rows[2] = CsvRow((4, "R001"));
+        rows[3] = CsvRow((4, "Calculation"));
+        rows[4] = CsvRow((4, "Author"));
+        rows[5] = CsvRow((4, "Checker"));
+        rows[6] = CsvRow((4, "Company"));
+        rows[7] = CsvRow((4, ""));
+
+        rows[9] = CsvRow((1, "ANALYSIS DATA"));
+        rows[12] = CsvRow((6, "Mixed Control (Enhanced ACA)"));
+
+        rows[19] = CsvRow((1, "BUILDING DATA"));
+        rows[21] = BuildingFloorRow("Level -2", "3.6", "0", "No");
+        rows[22] = BuildingFloorRow("Level -1", "3.6", "0", "No");
+        rows[23] = BuildingFloorRow("Level 1", "4.0", "200", "Yes");
+        rows[24] = BuildingFloorRow("Level 2", "3.6", "200", "No");
+        rows[25] = BuildingFloorRow("Level 3", "3.6", "200", "No");
+
+        rows[30] = CsvRow((6, "20"));
+        rows[31] = CsvRow((6, "Office"));
+        rows[37] = CsvRow((6, "5"));
+
+        rows[39] = CsvRow((1, "ELEVATOR DATA"));
+        rows[40] = ElevatorRow("Car 1", "Car 2", "Car 3", "Car 4", "Car 5", "Car 6");
+
+        string[] specValues = ["1050", "3", "1.1", "1.5", "Level 1", "2", "3.3", "1", "0.5", "0"];
+        for (int index = 0; index < specValues.Length; index++)
+        {
+            rows[41 + index] = ElevatorRow(
+                specValues[index],
+                specValues[index],
+                specValues[index],
+                specValues[index],
+                specValues[index],
+                specValues[index]);
+        }
+
+        rows[54] = ElevatorRowWithFloor("Level -2", "1", "1", "1", "1", "1", "1");
+        rows[55] = ElevatorRowWithFloor("Level -1", "1", "1", "1", "1", "1", "1");
+        rows[56] = ElevatorRowWithFloor("Level 1", "1", "1", "1", "1", "1", "1");
+        rows[57] = ElevatorRowWithFloor("Level 2", "1", "1", "1", "1", "1", "1");
+        rows[58] = ElevatorRowWithFloor("Level 3", "1", "1", "1", "1", "1", "1");
+
+        rows[60] = ElevatorRowWithFloor("Level -2", "f", "f", "f", "f", "0", "0");
+        rows[61] = ElevatorRowWithFloor("Level -1", "f", "f", "f", "f", "0", "0");
+        rows[62] = ElevatorRowWithFloor("Level 1", "f", "f", "f", "f", "f", "f");
+        rows[63] = ElevatorRowWithFloor("Level 2", "f", "f", "f", "f", "f", "f");
+        rows[64] = ElevatorRowWithFloor("Level 3", "f", "f", "f", "f", "f", "f");
+
+        rows[69] = CsvRow((1, "PASSENGER DATA"));
+        rows[73] = CsvRow((4, "100"));
+        rows[74] = CsvRow((4, "0"));
+        rows[75] = CsvRow((4, "0"));
+
+        return string.Join(Environment.NewLine, rows.Select(SerializeCsvRow));
+    }
+
+    private static string[] BuildingFloorRow(string floorName, string height, string people, string entranceFloor)
+    {
+        return CsvRow((1, floorName), (3, height), (5, people), (11, entranceFloor));
+    }
+
+    private static string[] ElevatorRow(
+        string car1,
+        string car2,
+        string car3,
+        string car4,
+        string car5,
+        string car6)
+    {
+        return CsvRow((4, car1), (5, car2), (6, car3), (7, car4), (8, car5), (9, car6));
+    }
+
+    private static string[] ElevatorRowWithFloor(
+        string floorName,
+        string car1,
+        string car2,
+        string car3,
+        string car4,
+        string car5,
+        string car6)
+    {
+        return CsvRow(
+            (1, floorName),
+            (4, car1),
+            (5, car2),
+            (6, car3),
+            (7, car4),
+            (8, car5),
+            (9, car6));
+    }
+
+    private static string[] CsvRow(params (int Column, string Value)[] cells)
+    {
+        int columnCount = cells.Length == 0
+            ? 0
+            : cells.Max(cell => cell.Column);
+
+        string[] row = Enumerable.Repeat(string.Empty, columnCount).ToArray();
+        foreach ((int column, string value) in cells)
+        {
+            row[column - 1] = value;
+        }
+
+        return row;
+    }
+
+    private static string SerializeCsvRow(string[] row)
+    {
+        return string.Join(';', row);
     }
 }
