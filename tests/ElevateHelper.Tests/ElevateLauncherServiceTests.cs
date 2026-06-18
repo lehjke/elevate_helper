@@ -1,3 +1,4 @@
+using System.Reflection;
 using ElevateHelperWinUI.Services;
 
 namespace ElevateHelper.Tests;
@@ -117,6 +118,25 @@ public sealed class ElevateLauncherServiceTests
 
         Assert.Equal(expectedResult, actual);
         Assert.Equal(expectedNumber, number);
+    }
+
+    [Fact]
+    public void GetProjectPrefix_KeepsJobNumberWhenFileNameHasTrailingCopyIndex()
+    {
+        string prefix = InvokeGetProjectPrefix(
+            Enumerable
+                .Range(1, 13)
+                .Select(index => $"project g1 R07 {index:00}.elvx")
+                .ToArray());
+
+        bool parsed = ElevateLauncherService.TryParseWindowNumber(
+            "Elevate - [project g1 R07 01.elvx]",
+            prefix,
+            out int number);
+
+        Assert.Equal("project g1 R07", prefix);
+        Assert.True(parsed);
+        Assert.Equal(1, number);
     }
 
     [Theory]
@@ -281,5 +301,14 @@ public sealed class ElevateLauncherServiceTests
                 // Best-effort cleanup.
             }
         }
+    }
+
+    private static string InvokeGetProjectPrefix(IReadOnlyList<string> elvxFiles)
+    {
+        MethodInfo method = typeof(ElevateLauncherService).GetMethod(
+            "GetProjectPrefix",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        return (string)method.Invoke(null, [elvxFiles])!;
     }
 }

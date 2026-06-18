@@ -867,13 +867,32 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static string TrimProjectPrefix(string value)
     {
         string result = value.Trim();
-
-        while (result.Length > 0 && (char.IsDigit(result[^1]) || char.IsWhiteSpace(result[^1]) || result[^1] is '-' or '_' or '.'))
+        int digitStart = result.Length;
+        while (digitStart > 0 && char.IsDigit(result[digitStart - 1]))
         {
-            result = result[..^1];
+            digitStart--;
+        }
+
+        if (digitStart == result.Length)
+        {
+            return result;
+        }
+
+        if (digitStart == 0 || IsFileIndexSeparator(result[digitStart - 1]))
+        {
+            result = result[..digitStart].TrimEnd();
+            while (result.Length > 0 && IsFileIndexSeparator(result[^1]))
+            {
+                result = result[..^1].TrimEnd();
+            }
         }
 
         return result.Trim();
+    }
+
+    private static bool IsFileIndexSeparator(char value)
+    {
+        return char.IsWhiteSpace(value) || value is '-' or '_' or '.';
     }
 
     private static string BuildIntegrationNotFoundMessage(ElevateIntegrationInfo integrationInfo)
