@@ -295,9 +295,10 @@ public sealed class ElevateReportServiceTests
     [Theory]
     [InlineData(2.90, 5.70, null, "1200", "ТО")]
     [InlineData(1.90, 3.10, null, "1100", "ЦО")]
-    [InlineData(2.04, 3.26, 0.0, "-", "-")]
+    [InlineData(1.90, 3.10, 0.0, "1100", "ЦО")]
+    [InlineData(2.04, 3.26, 0.0, "1200", "ЦО")]
     [InlineData(2.04, 3.26, 0.5, "1200", "ЦО")]
-    public void ResolveDoorInfo_UsesDoorTimingsAndPreOpeningTieBreaker(
+    public void ResolveDoorInfo_UsesDoorTimingsWithoutPreOpeningTieBreaker(
         double openTime,
         double closeTime,
         double? preOpening,
@@ -311,10 +312,9 @@ public sealed class ElevateReportServiceTests
     }
 
     [Theory]
-    [InlineData(2.0, 3.3)]
-    [InlineData(2.1, 3.5)]
+    [InlineData(2.1, 3.6)]
     [InlineData(1.9, 3.2)]
-    public void ResolveDoorInfo_ReturnsUnknownForAmbiguousOrUnsupportedPairsWithoutPreOpening(
+    public void ResolveDoorInfo_ReturnsUnknownForUnsupportedPairs(
         double openTime,
         double closeTime)
     {
@@ -326,7 +326,13 @@ public sealed class ElevateReportServiceTests
 
     [Theory]
     [InlineData(1.70, 2.80, "900", "ЦО")]
+    [InlineData(2.00, 3.30, "1200", "ЦО")]
+    [InlineData(2.10, 3.50, "1300", "ЦО")]
+    [InlineData(2.20, 3.90, "750", "ТО")]
     [InlineData(2.30, 4.00, "1550", "ЦО")]
+    [InlineData(2.30, 4.10, "800", "ТО")]
+    [InlineData(2.40, 4.30, "850", "ТО")]
+    [InlineData(2.50, 4.50, "900", "ТО")]
     [InlineData(3.90, 7.80, "1750", "ТО")]
     [InlineData(4.00, 8.00, "1800", "ТО")]
     public void ResolveDoorInfo_MapsCorrectedHydraPlusRows(
@@ -343,8 +349,10 @@ public sealed class ElevateReportServiceTests
 
     [Theory]
     [InlineData(2.50, 4.50, 0.0, "900", "ТО")]
-    [InlineData(2.50, 4.50, 0.5, "1800", "ЦО")]
-    public void ResolveDoorInfo_UsesDoorPreOpeningForAmbiguousLargeDoorPairs(
+    [InlineData(2.50, 4.50, 0.5, "900", "ТО")]
+    [InlineData(2.20, 3.90, 0.5, "750", "ТО")]
+    [InlineData(2.10, 3.50, 0.0, "1300", "ЦО")]
+    public void ResolveDoorInfo_IgnoresDoorPreOpeningForDoorSize(
         double openTime,
         double closeTime,
         double preOpening,
@@ -359,10 +367,13 @@ public sealed class ElevateReportServiceTests
 
     [Theory]
     [InlineData("1.900000", "3.100000", "0.500000", "1100", "ЦО")]
+    [InlineData("1.900000", "3.100000", "0.000000", "1100", "ЦО")]
     [InlineData("2.500000", "4.500000", "0.000000", "900", "ТО")]
-    [InlineData("2.500000", "4.500000", "0.500000", "1800", "ЦО")]
+    [InlineData("2.500000", "4.500000", "0.500000", "900", "ТО")]
+    [InlineData("2.200000", "3.900000", "0.500000", "750", "ТО")]
     [InlineData("2.200000", "3.600000", "0.500000", "1350", "ЦО")]
     [InlineData("2.300000", "4.000000", "0.500000", "1550", "ЦО")]
+    [InlineData("2.300000", "4.100000", "0.500000", "800", "ТО")]
     [InlineData("3.900000", "7.800000", "0.000000", "1750", "ТО")]
     public void ResolveReportedDoorInfo_UsesElvxDoorAttributes(
         string openTime,
@@ -378,21 +389,21 @@ public sealed class ElevateReportServiceTests
     }
 
     [Fact]
-    public void ResolveReportedDoorInfo_DoesNotGuessAmbiguousDoorWithoutPreOpening()
+    public void ResolveReportedDoorInfo_DoesNotNeedPreOpeningForFormerlyAmbiguousDoor()
     {
         (string width, string type) = ElevateReportService.ResolveReportedDoorInfo("2.500000", "4.500000", null);
 
-        Assert.Equal("-", width);
-        Assert.Equal("-", type);
+        Assert.Equal("900", width);
+        Assert.Equal("ТО", type);
     }
 
     [Fact]
-    public void ResolveReportedDoorInfo_DoesNotMapRemovedTelescopic600Door()
+    public void ResolveReportedDoorInfo_MapsRemainingCentralDoorAfterRemovingTelescopic600Door()
     {
         (string width, string type) = ElevateReportService.ResolveReportedDoorInfo("2.000000", "3.300000", "0.000000");
 
-        Assert.Equal("-", width);
-        Assert.Equal("-", type);
+        Assert.Equal("1200", width);
+        Assert.Equal("ЦО", type);
     }
 
     [Fact]

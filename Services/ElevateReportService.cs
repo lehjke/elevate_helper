@@ -2755,7 +2755,6 @@ public sealed class ElevateReportService : IElevateReportService
 
     private static readonly (int OpenKey, int CloseKey, string Width, string Type)[] DoorTimingRules =
     [
-        (21, 35, "650", "ТО"),
         (21, 37, "700", "ТО"),
         (22, 39, "750", "ТО"),
         (23, 41, "800", "ТО"),
@@ -2796,18 +2795,9 @@ public sealed class ElevateReportService : IElevateReportService
         (22, 36, "1350", "ЦО"),
         (22, 37, "1400", "ЦО"),
         (22, 38, "1450", "ЦО"),
-        (22, 39, "1500", "ЦО"),
         (23, 40, "1550", "ЦО"),
-        (23, 41, "1600", "ЦО"),
         (24, 42, "1650", "ЦО"),
-        (24, 43, "1700", "ЦО"),
         (25, 44, "1750", "ЦО"),
-        (25, 45, "1800", "ЦО"),
-    ];
-
-    private static readonly (int OpenKey, int CloseKey)[] RemovedDoorTimingRules =
-    [
-        (20, 33),
     ];
 
     internal static (string Width, string Type) ResolveDoorInfo(
@@ -2826,8 +2816,8 @@ public sealed class ElevateReportService : IElevateReportService
         return matches.Count switch
         {
             0 => ("-", "-"),
-            1 => CanUseSingleDoorMatch(matches[0].Type, openKey, closeKey, doorPreOpening) ? matches[0] : ("-", "-"),
-            _ => ResolveAmbiguousDoorInfo(matches, doorPreOpening),
+            1 => matches[0],
+            _ => ("-", "-"),
         };
     }
 
@@ -2838,10 +2828,8 @@ public sealed class ElevateReportService : IElevateReportService
     {
         double doorOpenTime = ParseDoubleFlexible(doorOpenTimeText);
         double doorCloseTime = ParseDoubleFlexible(doorCloseTimeText);
-        bool hasDoorPreOpening = !string.IsNullOrWhiteSpace(doorPreOpeningText);
-        double? doorPreOpening = hasDoorPreOpening ? ParseDoubleFlexible(doorPreOpeningText) : null;
 
-        return ResolveDoorInfo(doorOpenTime, doorCloseTime, doorPreOpening);
+        return ResolveDoorInfo(doorOpenTime, doorCloseTime);
     }
 
     private static (string Width, string Type) ResolveReportedDoorInfo(ElevatorDataModel elevatorData, int index)
@@ -2856,62 +2844,13 @@ public sealed class ElevateReportService : IElevateReportService
 
         double dOpen = ParseDoubleFlexible(elevatorData.Spec[index, 6]);
         double dClose = ParseDoubleFlexible(elevatorData.Spec[index, 7]);
-        double? doorPreOpening = double.IsNaN(elevatorData.DoorPreOpening[index])
-            ? null
-            : elevatorData.DoorPreOpening[index];
 
-        return ResolveDoorInfo(dOpen, dClose, doorPreOpening);
+        return ResolveDoorInfo(dOpen, dClose);
     }
 
     private static int BuildDoorTimingKey(double value)
     {
         return (int)Math.Round(value * 10d, MidpointRounding.AwayFromZero);
-    }
-
-    private static (string Width, string Type) ResolveAmbiguousDoorInfo(
-        List<(string Width, string Type)> matches,
-        double? doorPreOpening)
-    {
-        if (doorPreOpening is not null)
-        {
-            string preferredType = ResolveDoorTypeByPreOpening(doorPreOpening.Value);
-
-            (string Width, string Type) exactMatch = matches.FirstOrDefault(match =>
-                string.Equals(match.Type, preferredType, StringComparison.Ordinal));
-
-            if (!string.IsNullOrWhiteSpace(exactMatch.Width))
-            {
-                return exactMatch;
-            }
-        }
-
-        return ("-", "-");
-    }
-
-    private static bool DoorTypeMatchesPreOpening(string doorType, double? doorPreOpening)
-    {
-        return doorPreOpening is null ||
-               string.Equals(doorType, ResolveDoorTypeByPreOpening(doorPreOpening.Value), StringComparison.Ordinal);
-    }
-
-    private static bool CanUseSingleDoorMatch(string doorType, int openKey, int closeKey, double? doorPreOpening)
-    {
-        if (doorPreOpening is null && HasRemovedDoorTimingRule(openKey, closeKey))
-        {
-            return false;
-        }
-
-        return DoorTypeMatchesPreOpening(doorType, doorPreOpening);
-    }
-
-    private static bool HasRemovedDoorTimingRule(int openKey, int closeKey)
-    {
-        return RemovedDoorTimingRules.Any(rule => rule.OpenKey == openKey && rule.CloseKey == closeKey);
-    }
-
-    private static string ResolveDoorTypeByPreOpening(double doorPreOpening)
-    {
-        return doorPreOpening > 0.01d ? "ЦО" : "ТО";
     }
 
     private static void SortOneBased(double[] arr)
