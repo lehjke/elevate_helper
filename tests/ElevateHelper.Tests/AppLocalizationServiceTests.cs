@@ -40,6 +40,20 @@ public sealed class AppLocalizationServiceTests
         Assert.Equal("\u0414\u0438\u0430\u043b\u043e\u0433 Run Batch \u043d\u0435 \u043e\u0442\u043a\u0440\u044b\u043b\u0441\u044f.", actual);
     }
 
+    [Fact]
+    public void TranslateRuntimeMessage_Russian_LocalizesResultFileRecoveryFailure()
+    {
+        AppLocalizationService service = new(persistSelection: false);
+        service.SetLanguage(AppLanguage.Russian);
+
+        string actual = service.TranslateRuntimeMessage(
+            "Elevate could not open a results file after 4 attempts.");
+
+        Assert.Equal(
+            "Elevate \u043d\u0435 \u0441\u043c\u043e\u0433 \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u0444\u0430\u0439\u043b \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u043e\u0432 \u043f\u043e\u0441\u043b\u0435 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0445 \u043f\u0435\u0440\u0435\u0437\u0430\u043f\u0443\u0441\u043a\u043e\u0432 \u0440\u0430\u0441\u0447\u0435\u0442\u0430.",
+            actual);
+    }
+
     [Theory]
     [InlineData(AppLanguage.English)]
     [InlineData(AppLanguage.Russian)]

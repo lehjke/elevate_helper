@@ -13,9 +13,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private const int DialogNoControlId = 7;
     private const int DialogFolderEditControlId = 14148;
     private const uint WmCommand = 0x0111;
-    private const uint WmClose = 0x0010;
     private const uint WmSetText = 0x000C;
     private const uint BmClick = 0x00F5;
+    private const int ShowWindowHide = 0;
     private static readonly SemaphoreSlim BatchSubmissionLock = new(1, 1);
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan WindowPollDelay = TimeSpan.FromMilliseconds(200);
@@ -23,8 +23,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static readonly TimeSpan DialogCloseTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan BatchStartTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CompletedOutputsSettleDelay = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan DesignWindowAppearTimeout = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan ProcessStopGracePeriod = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan ResultFileOpenRestartDelay = TimeSpan.FromSeconds(1);
+    private const int MaxResultFileOpenRestarts = 3;
 
     private readonly IElevateIntegrationService integrationService;
 
@@ -67,7 +68,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         CancellationToken cancellationToken = default)
     {
         string morningPath = Path.Combine(path, "morning");
-        Task morningTask = LaunchAndSubmitPathIfNeededAsync(morningPath, morningProgress, cancellationToken);
+        Task morningTask = LaunchScenarioAsync(morningPath, morningProgress, cancellationToken);
 
         if (!includeLunchPeak)
         {
@@ -76,9 +77,29 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
 
         string lunchPath = Path.Combine(path, "lunch");
-        Task lunchTask = LaunchAndSubmitPathIfNeededAsync(lunchPath, lunchProgress, cancellationToken);
+        Task lunchTask = LaunchScenarioAsync(lunchPath, lunchProgress, cancellationToken);
 
         await Task.WhenAll(morningTask, lunchTask);
+    }
+
+    private async Task LaunchScenarioAsync(
+        string path,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await LaunchAndSubmitPathIfNeededAsync(path, progress, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            ReportScenarioFailure(progress, path, ex.Message);
+            throw;
+        }
     }
 
     private async Task LaunchAndSubmitPathIfNeededAsync(
@@ -112,8 +133,48 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 integrationInfo.ExecutablePath);
         }
 
+        ResultFileBaseline resultBaseline = CaptureResultFileBaseline(path);
+        int resultFileOpenRestarts = 0;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                await LaunchBatchAttemptAsync(
+                    integrationInfo.ExecutablePath,
+                    path,
+                    progressContext,
+                    resultBaseline,
+                    progress,
+                    cancellationToken);
+                return;
+            }
+            catch (ElevateResultFileOpenException ex)
+            {
+                if (resultFileOpenRestarts >= MaxResultFileOpenRestarts)
+                {
+                    throw new InvalidOperationException(
+                        $"Elevate could not open a results file after {resultFileOpenRestarts + 1} attempts.",
+                        ex);
+                }
+
+                resultFileOpenRestarts++;
+                await Task.Delay(ResultFileOpenRestartDelay, cancellationToken);
+            }
+        }
+    }
+
+    private static async Task LaunchBatchAttemptAsync(
+        string executablePath,
+        string path,
+        ProgressContext progressContext,
+        ResultFileBaseline resultBaseline,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken)
+    {
         Process? process = null;
-        ResultFileBaseline? resultBaseline = null;
         bool submissionLockAcquired = false;
         CancellationTokenRegistration stopRegistration = default;
         ProcessStopRequest? stopRequest = null;
@@ -127,8 +188,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
                 process = Process.Start(new ProcessStartInfo
                 {
-                    FileName = integrationInfo.ExecutablePath,
+                    FileName = executablePath,
                     UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
                 });
 
                 if (process is null)
@@ -151,7 +213,6 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 }
 
                 await Task.Delay(StartupDelay, cancellationToken);
-                resultBaseline = CaptureResultFileBaseline(path);
                 await SubmitBatchFolderAsync(process, path, progressContext, resultBaseline, cancellationToken);
             }
             finally
@@ -166,7 +227,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 process,
                 path,
                 progressContext,
-                resultBaseline ?? new ResultFileBaseline(DateTimeOffset.UtcNow, new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase)),
+                resultBaseline,
                 progress,
                 cancellationToken);
         }
@@ -178,7 +239,37 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 await pendingStopTask;
             }
 
+            ForceTerminateProcess(process);
             process?.Dispose();
+        }
+    }
+
+    private static void ForceTerminateProcess(Process? process)
+    {
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            process.Refresh();
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            process.Kill(entireProcessTree: true);
+            _ = process.WaitForExit((int)ProcessStopGracePeriod.TotalMilliseconds);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+        catch (NotSupportedException)
+        {
         }
     }
 
@@ -340,12 +431,15 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             throw new InvalidOperationException("Elevate main window did not appear.");
         }
 
+        _ = ShowWindow(windowHandle, ShowWindowHide);
+
         if (!PostMessage(windowHandle, WmCommand, (IntPtr)RunBatchCommandId, IntPtr.Zero))
         {
             throw new InvalidOperationException("Unable to open the Elevate Run Batch dialog.");
         }
 
         IntPtr dialogHandle = await WaitForRunBatchDialogAsync(process.Id, cancellationToken);
+        _ = ShowWindow(dialogHandle, ShowWindowHide);
         IntPtr editHandle = GetDlgItem(dialogHandle, DialogFolderEditControlId);
         IntPtr okHandle = GetDlgItem(dialogHandle, DialogOkControlId);
 
@@ -418,6 +512,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             cancellationToken.ThrowIfCancellationRequested();
 
             process.Refresh();
+            ThrowIfResultFileOpenFailed(process.Id);
             ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
             if (observation.HasStarted)
             {
@@ -453,6 +548,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         {
             cancellationToken.ThrowIfCancellationRequested();
             process.Refresh();
+            ThrowIfResultFileOpenFailed(process.Id);
 
             ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
             hasStarted |= observation.HasStarted;
@@ -484,10 +580,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             if (outputsComplete)
             {
                 completedOutputsSince ??= DateTimeOffset.UtcNow;
-                if (observation.DesignVisible ||
-                    DateTimeOffset.UtcNow - completedOutputsSince >= CompletedOutputsSettleDelay)
+                if (DateTimeOffset.UtcNow - completedOutputsSince >= CompletedOutputsSettleDelay)
                 {
-                    await CloseDesignWindowsAfterCompletionAsync(process, cancellationToken);
+                    ForceTerminateProcess(process);
                     ReportProgress(
                         progress,
                         progressContext,
@@ -563,6 +658,26 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             source,
             windowTitle,
             isFinal));
+    }
+
+    private static void ReportScenarioFailure(
+        IProgress<ElevateProgressInfo>? progress,
+        string path,
+        string message)
+    {
+        if (progress is null || !TryBuildProgressContext(path, out ProgressContext context))
+        {
+            return;
+        }
+
+        progress.Report(new ElevateProgressInfo(
+            context.ProjectPrefix,
+            context.Scenario,
+            0,
+            context.Total,
+            "error",
+            IsFinal: true,
+            ErrorMessage: message));
     }
 
     private static string GetScenarioFromPath(string path)
@@ -940,11 +1055,6 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 return true;
             }
 
-            if (!IsWindowVisible(windowHandle))
-            {
-                return true;
-            }
-
             string windowClass = GetWindowClass(windowHandle);
             if (!windowClass.Equals("#32770", StringComparison.Ordinal))
             {
@@ -1008,11 +1118,6 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
         EnumWindows((windowHandle, _) =>
         {
-            if (!IsWindowVisible(windowHandle))
-            {
-                return true;
-            }
-
             GetWindowThreadProcessId(windowHandle, out uint windowProcessId);
             if (windowProcessId != (uint)processId)
             {
@@ -1037,73 +1142,6 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }, IntPtr.Zero);
 
         return titles;
-    }
-
-    private static async Task CloseDesignWindowsAfterCompletionAsync(
-        Process process,
-        CancellationToken cancellationToken)
-    {
-        DateTimeOffset deadline = DateTimeOffset.UtcNow + DesignWindowAppearTimeout;
-        bool observedDesignWindow = false;
-
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            process.Refresh();
-            if (process.HasExited)
-            {
-                return;
-            }
-
-            List<IntPtr> designWindows = GetProcessWindowHandles(process.Id, IsDesignWindowHandle);
-            if (designWindows.Count > 0)
-            {
-                observedDesignWindow = true;
-                CloseDesignWindowHandles(process.Id, designWindows);
-            }
-            else if (observedDesignWindow)
-            {
-                TryClickNoOnSaveConfirmationDialogs(process.Id);
-            }
-            else
-            {
-                TryClickNoOnSaveConfirmationDialogs(process.Id);
-            }
-
-            await Task.Delay(WindowPollDelay, cancellationToken);
-        }
-    }
-
-    private static void CloseDesignWindows(int processId)
-    {
-        DateTimeOffset deadline = DateTimeOffset.UtcNow + DialogCloseTimeout;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            List<IntPtr> designWindows = GetProcessWindowHandles(processId, IsDesignWindowHandle);
-            if (designWindows.Count == 0)
-            {
-                return;
-            }
-
-            CloseDesignWindowHandles(processId, designWindows);
-            Thread.Sleep(WindowPollDelay);
-        }
-    }
-
-    private static void CloseDesignWindowHandles(int processId, IReadOnlyCollection<IntPtr> designWindows)
-    {
-        foreach (IntPtr windowHandle in designWindows)
-        {
-            _ = PostMessage(windowHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
-        }
-
-        TryClickNoOnSaveConfirmationDialogs(processId);
-    }
-
-    private static bool IsDesignWindowHandle(IntPtr windowHandle)
-    {
-        return IsDesignWindowTitle(GetWindowTitle(windowHandle));
     }
 
     private static bool TryClickNoOnSaveConfirmationDialogs(int processId)
@@ -1135,6 +1173,34 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
         IReadOnlyList<string> childTexts = GetChildWindowTexts(windowHandle);
         return IsSaveConfirmationDialogText(GetWindowTitle(windowHandle), childTexts);
+    }
+
+    private static void ThrowIfResultFileOpenFailed(int processId)
+    {
+        if (GetProcessWindowHandles(processId, IsResultFileOpenErrorDialogHandle).Count > 0)
+        {
+            throw new ElevateResultFileOpenException();
+        }
+    }
+
+    private static bool IsResultFileOpenErrorDialogHandle(IntPtr windowHandle)
+    {
+        if (!GetWindowClass(windowHandle).Equals("#32770", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return IsResultFileOpenErrorDialogText(
+            GetWindowTitle(windowHandle),
+            GetChildWindowTexts(windowHandle));
+    }
+
+    internal static bool IsResultFileOpenErrorDialogText(string? title, IEnumerable<string> childTexts)
+    {
+        string searchText = BuildDialogSearchText(title, childTexts);
+        return searchText.Contains(
+            "could not open results file",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     internal static bool IsSaveConfirmationDialogText(string? title, IEnumerable<string> childTexts)
@@ -1253,11 +1319,6 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
         EnumWindows((windowHandle, _) =>
         {
-            if (!IsWindowVisible(windowHandle))
-            {
-                return true;
-            }
-
             GetWindowThreadProcessId(windowHandle, out uint windowProcessId);
             if (windowProcessId != (uint)processId)
             {
@@ -1312,11 +1373,11 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
+    private static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindow(IntPtr hWnd);
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -1346,7 +1407,10 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         bool HasBatchResults,
         bool HasStarted)
     {
-        public bool DesignVisible => !string.IsNullOrWhiteSpace(DesignWindowTitle);
+    }
+
+    private sealed class ElevateResultFileOpenException : Exception
+    {
     }
 
     internal sealed record ResultFileBaseline(

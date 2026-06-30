@@ -104,6 +104,21 @@ public sealed class ElevateLauncherServiceTests
     }
 
     [Theory]
+    [InlineData("Elevate", "Could not open results file. Try again?", true)]
+    [InlineData("Elevate", "COULD NOT OPEN RESULTS FILE", true)]
+    [InlineData("Elevate", "Could not open project file. Try again?", false)]
+    [InlineData("Elevate", "Сохранить изменения в Design 1?", false)]
+    public void IsResultFileOpenErrorDialogText_MatchesOnlyResultOpenFailure(
+        string title,
+        string message,
+        bool expected)
+    {
+        bool actual = ElevateLauncherService.IsResultFileOpenErrorDialogText(title, [message]);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("Probe 02", "Probe", true, 2)]
     [InlineData("Elevate - [Probe 09.elvx]", "Probe", true, 9)]
     [InlineData("Design 1", "Probe", false, 0)]

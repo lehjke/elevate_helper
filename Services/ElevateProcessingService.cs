@@ -230,6 +230,36 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         }
     }
 
+    public async Task<ProcessingResult> RunExistingScenarioAsync(
+        string scenarioPath,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioPath))
+        {
+            return ProcessingResult.Fail("Path to Elevate files is empty.");
+        }
+
+        if (!Directory.Exists(scenarioPath))
+        {
+            return ProcessingResult.Fail($"Path does not exist: {scenarioPath}");
+        }
+
+        try
+        {
+            await launcherService.LaunchResidenceAsync(scenarioPath, progress, cancellationToken);
+            return ProcessingResult.Ok();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return ProcessingResult.Fail(ex.Message, ex);
+        }
+    }
+
     public void ModifyHandlingCapacity(string xmlFilePath, int newCapacity)
     {
         XDocument xmlDocument = LoadXml(xmlFilePath);

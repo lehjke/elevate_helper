@@ -653,6 +653,93 @@ public sealed partial class MainPage : Page
             rerunExistingBatch: true);
     }
 
+    private void OnRetryScenarioButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: ScenarioProgressViewModel scenario } ||
+            !scenario.CanRetry)
+        {
+            return;
+        }
+
+        if (!TryEnsureIntegrationForLaunch())
+        {
+            return;
+        }
+
+        JobProgressViewModel job = scenario.Job;
+        string scenarioFolderName = scenario.ScenarioKind == JobScenarioKind.Lunch
+            ? "lunch"
+            : "morning";
+        string scenarioPath = NormalizeProcessingFolder(
+            Path.Combine(job.JobPath, scenarioFolderName));
+
+        if (!TryRegisterProcessingFolder(scenarioPath))
+        {
+            SetStatus(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    Text.RunFolderBusyMessage,
+                    scenarioPath),
+                InfoBarSeverity.Warning);
+            return;
+        }
+
+        _ = RetryScenarioAsync(job, scenario, scenarioPath);
+    }
+
+    private async Task RetryScenarioAsync(
+        JobProgressViewModel job,
+        ScenarioProgressViewModel scenario,
+        string scenarioPath)
+    {
+        job.MarkScenarioRetryRunning(scenario, localizationService);
+        RefreshJobsSummary();
+        SetStatus(localizationService.FormatRunStarted($"{job.Title}: {scenario.Label}"), InfoBarSeverity.Informational);
+
+        try
+        {
+            Progress<ElevateProgressInfo> progress = new(update => HandleProgressUpdate(job, update));
+            ProcessingResult result = await processingService.RunExistingScenarioAsync(
+                scenarioPath,
+                progress);
+
+            if (!result.Success)
+            {
+                string message = FormatResultMessage(result);
+                job.MarkScenarioFailed(scenario, message, localizationService);
+                if (job.PrimaryRunFinished)
+                {
+                    job.MarkFailed(message);
+                }
+
+                SetStatus(message, InfoBarSeverity.Error);
+                return;
+            }
+
+            job.MarkScenarioCompleted(scenario, localizationService);
+            if (job.PrimaryRunFinished && job.AllScenariosCompleted)
+            {
+                await FinalizeRecoveredJobAsync(job);
+            }
+        }
+        catch (Exception ex)
+        {
+            string message = BuildExceptionMessage(ex);
+            job.MarkScenarioFailed(scenario, message, localizationService);
+            if (job.PrimaryRunFinished)
+            {
+                job.MarkFailed(message);
+            }
+
+            SetStatus(message, InfoBarSeverity.Error);
+        }
+        finally
+        {
+            UnregisterProcessingFolder(scenarioPath);
+            RefreshJobsSummary();
+        }
+    }
+
     private void OnStopJobButtonClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: JobProgressViewModel job } || !job.CanStop)
@@ -761,11 +848,6 @@ public sealed partial class MainPage : Page
         EnglishLanguageSelectionPill.Opacity = isEnglish ? 1 : 0;
         RussianLanguageSelectionBackground.Opacity = isEnglish ? 0 : 1;
         RussianLanguageSelectionPill.Opacity = isEnglish ? 0 : 1;
-    }
-
-    private void OnBetaFeaturesCheckBoxChanged(object sender, RoutedEventArgs e)
-    {
-        UpdateBetaFeatureVisibility();
     }
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
@@ -1660,6 +1742,7 @@ public sealed partial class MainPage : Page
             ProcessingResult result = rerunExistingBatch
                 ? await InvokeExistingBatchAsync(job, path, buildingType, includeLunchPeak, stopSource.Token)
                 : await InvokeProcessingAsync(job, path, buildingType, includeLunchPeak, stopSource.Token);
+            job.MarkPrimaryRunFinished();
             if (job.StopRequested)
             {
                 await CompleteStoppedJobAsync(job, autoGenerateReport, reportOutputRoot);
@@ -1668,7 +1751,18 @@ public sealed partial class MainPage : Page
 
             if (!result.Success)
             {
-                ApplyProcessingResult(job, result);
+                if (job.SupportsScenarioRetry && job.AllScenariosCompleted)
+                {
+                    await FinalizeRecoveredJobAsync(job);
+                }
+                else if (job.SupportsScenarioRetry && job.HasRunningScenarios)
+                {
+                    job.MarkScenarioRecoveryPending(localizationService);
+                }
+                else
+                {
+                    ApplyProcessingResult(job, result);
+                }
             }
             else if (autoGenerateReport)
             {
@@ -1681,10 +1775,12 @@ public sealed partial class MainPage : Page
         }
         catch (OperationCanceledException) when (job.StopRequested)
         {
+            job.MarkPrimaryRunFinished();
             await CompleteStoppedJobAsync(job, autoGenerateReport, reportOutputRoot);
         }
         catch (Exception ex)
         {
+            job.MarkPrimaryRunFinished();
             string message = BuildExceptionMessage(ex);
             job.MarkFailed(message);
             SetStatus(message, InfoBarSeverity.Error);
@@ -1758,6 +1854,23 @@ public sealed partial class MainPage : Page
     private async Task GenerateReportForCompletedJobAsync(JobProgressViewModel job, string? outputFolder)
     {
         await GenerateReportForCompletedJobAsync(job, outputFolder, preserveStoppedStatus: false);
+    }
+
+    private async Task FinalizeRecoveredJobAsync(JobProgressViewModel job)
+    {
+        if (!job.TryBeginCompletion())
+        {
+            return;
+        }
+
+        if (job.AutoGenerateReport)
+        {
+            await GenerateReportForCompletedJobAsync(job, job.ReportOutputRoot);
+            return;
+        }
+
+        job.MarkCompleted(localizationService);
+        SetStatus(localizationService.FormatRunCompleted(job.Title), InfoBarSeverity.Success);
     }
 
     private async Task GenerateReportForCompletedJobAsync(
@@ -1891,7 +2004,20 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        job.UpdateProgress(update.Scenario, update.Completed, update.Total, localizationService);
+        if (!string.IsNullOrWhiteSpace(update.ErrorMessage))
+        {
+            string message = localizationService.TranslateRuntimeMessage(update.ErrorMessage);
+            job.MarkScenarioFailed(update.Scenario, message, localizationService);
+            RefreshJobsSummary();
+            return;
+        }
+
+        job.UpdateProgress(
+            update.Scenario,
+            update.Completed,
+            update.Total,
+            update.IsFinal,
+            localizationService);
         UpdateJobScenarioMetrics(job, update.Scenario);
     }
 
@@ -2102,11 +2228,6 @@ public sealed partial class MainPage : Page
         ReportButton.Visibility = isOffice ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void UpdateBetaFeatureVisibility()
-    {
-        UpdateProjectInputModeVisibility();
-    }
-
     private void RefreshProjectInputMode()
     {
         ProjectInputMode newMode = DetectProjectInputMode(PathTextBox.Text);
@@ -2141,16 +2262,8 @@ public sealed partial class MainPage : Page
                 return ProjectInputMode.Standard;
             }
 
-            if (!Directory
-                .EnumerateDirectories(path)
-                .Select(Path.GetFileName)
-                .Any(IsKnownProjectBatchTypeFolder))
-            {
-                return ProjectInputMode.Standard;
-            }
-
             ProjectBatchDiscoveryResult discoveryResult = projectBatchDiscoveryService.Discover(path);
-            return discoveryResult.Jobs.Count > 0
+            return discoveryResult.Jobs.Count > 0 || discoveryResult.UnknownElvxFiles.Count > 0
                 ? ProjectInputMode.ProjectBatch
                 : ProjectInputMode.Standard;
         }
@@ -2158,15 +2271,6 @@ public sealed partial class MainPage : Page
         {
             return ProjectInputMode.Standard;
         }
-    }
-
-    private static bool IsKnownProjectBatchTypeFolder(string? folderName)
-    {
-        return folderName is not null &&
-               (folderName.Equals("Office", StringComparison.OrdinalIgnoreCase) ||
-                folderName.Equals("Res", StringComparison.OrdinalIgnoreCase) ||
-                folderName.Equals("Residence", StringComparison.OrdinalIgnoreCase) ||
-                folderName.Equals("Hotel", StringComparison.OrdinalIgnoreCase));
     }
 
     private void SyncProjectBatchPathFromMainPath()
@@ -2455,6 +2559,8 @@ public sealed partial class MainPage : Page
         private bool isFinished;
         private bool reportActionEnabled = true;
         private bool stopRequested;
+        private bool primaryRunFinished;
+        private bool completionStarted;
         private CancellationTokenSource? stopSource;
 
         public JobProgressViewModel(
@@ -2484,8 +2590,8 @@ public sealed partial class MainPage : Page
             bool isOffice = buildingType == BuildingType.Office;
             if (isOffice && includeLunchPeak)
             {
-                morningScenario = new ScenarioProgressViewModel(JobScenarioKind.Morning);
-                lunchScenario = new ScenarioProgressViewModel(JobScenarioKind.Lunch);
+                morningScenario = new ScenarioProgressViewModel(this, JobScenarioKind.Morning);
+                lunchScenario = new ScenarioProgressViewModel(this, JobScenarioKind.Lunch);
                 Scenarios = new ObservableCollection<ScenarioProgressViewModel>
                 {
                     morningScenario,
@@ -2494,7 +2600,7 @@ public sealed partial class MainPage : Page
             }
             else if (isOffice)
             {
-                primaryScenario = new ScenarioProgressViewModel(JobScenarioKind.Morning);
+                primaryScenario = new ScenarioProgressViewModel(this, JobScenarioKind.Morning);
                 Scenarios = new ObservableCollection<ScenarioProgressViewModel>
                 {
                     primaryScenario!,
@@ -2502,7 +2608,7 @@ public sealed partial class MainPage : Page
             }
             else
             {
-                primaryScenario = new ScenarioProgressViewModel(JobScenarioKind.Progress);
+                primaryScenario = new ScenarioProgressViewModel(this, JobScenarioKind.Progress);
                 Scenarios = new ObservableCollection<ScenarioProgressViewModel>
                 {
                     primaryScenario!,
@@ -2566,6 +2672,14 @@ public sealed partial class MainPage : Page
         public BuildingType BuildingType => buildingType;
 
         public bool IncludeLunchPeak => includeLunchPeak;
+
+        public bool SupportsScenarioRetry => morningScenario is not null && lunchScenario is not null;
+
+        public bool PrimaryRunFinished => primaryRunFinished;
+
+        public bool AllScenariosCompleted => Scenarios.All(scenario => scenario.IsCompleted);
+
+        public bool HasRunningScenarios => Scenarios.Any(scenario => scenario.IsRunning);
 
         public bool AutoGenerateReport => !string.IsNullOrWhiteSpace(reportOutputRoot);
 
@@ -2717,6 +2831,8 @@ public sealed partial class MainPage : Page
         public void MarkRunning(AppLocalizationService localizationService)
         {
             isFinished = false;
+            primaryRunFinished = false;
+            completionStarted = false;
             SetFailureMessage(null);
             stopRequested = false;
             stateKind = JobStateKind.Running;
@@ -2757,7 +2873,80 @@ public sealed partial class MainPage : Page
             NotifyReportActionStateChanged();
         }
 
-        public void UpdateProgress(string? scenario, int completed, int total, AppLocalizationService localizationService)
+        public void MarkPrimaryRunFinished()
+        {
+            primaryRunFinished = true;
+        }
+
+        public bool TryBeginCompletion()
+        {
+            if (completionStarted)
+            {
+                return false;
+            }
+
+            completionStarted = true;
+            return true;
+        }
+
+        public void MarkScenarioFailed(
+            string? scenario,
+            string message,
+            AppLocalizationService localizationService)
+        {
+            MarkScenarioFailed(ResolveScenario(scenario), message, localizationService);
+        }
+
+        public void MarkScenarioFailed(
+            ScenarioProgressViewModel scenario,
+            string message,
+            AppLocalizationService localizationService)
+        {
+            scenario.MarkFailed(message);
+            activeScenarioKind = scenario.ScenarioKind;
+            StatusText = $"{scenario.Label}: {localizationService.CurrentText.OperationFailedMessage}";
+        }
+
+        public void MarkScenarioRetryRunning(
+            ScenarioProgressViewModel scenario,
+            AppLocalizationService localizationService)
+        {
+            completionStarted = false;
+            isFinished = false;
+            SetFailureMessage(null);
+            scenario.MarkRetrying();
+            activeScenarioKind = scenario.ScenarioKind;
+            stateKind = JobStateKind.Running;
+            IsRunning = true;
+            StatusText = $"{scenario.Label}: {localizationService.GetJobStateLabel(JobStateKind.Running)}";
+            NotifyReportActionStateChanged();
+        }
+
+        public void MarkScenarioCompleted(
+            ScenarioProgressViewModel scenario,
+            AppLocalizationService localizationService)
+        {
+            scenario.MarkCompleted();
+            activeScenarioKind = scenario.ScenarioKind;
+            StatusText = $"{scenario.Label}: {localizationService.GetJobStateLabel(JobStateKind.Completed)}";
+        }
+
+        public void MarkScenarioRecoveryPending(AppLocalizationService localizationService)
+        {
+            isFinished = false;
+            SetFailureMessage(null);
+            stateKind = JobStateKind.Running;
+            IsRunning = true;
+            StatusText = localizationService.GetJobStateLabel(JobStateKind.Running);
+            NotifyReportActionStateChanged();
+        }
+
+        public void UpdateProgress(
+            string? scenario,
+            int completed,
+            int total,
+            bool isFinal,
+            AppLocalizationService localizationService)
         {
             if (isFinished)
             {
@@ -2766,7 +2955,7 @@ public sealed partial class MainPage : Page
 
             ScenarioProgressViewModel target = ResolveScenario(scenario);
             activeScenarioKind = target.ScenarioKind;
-            target.Update(completed, total);
+            target.Update(completed, total, isFinal);
             if (stopRequested)
             {
                 stateKind = JobStateKind.Stopping;
@@ -2829,13 +3018,13 @@ public sealed partial class MainPage : Page
                     StatusText = localizationService.GetJobStateLabel(JobStateKind.Stopping);
                     break;
                 case JobStateKind.Running:
-                {
-                    ScenarioProgressViewModel activeScenario = ResolveScenario(activeScenarioKind);
-                    StatusText = activeScenario.Total > 0 || activeScenario.Completed > 0
-                        ? $"{activeScenario.Label}: {activeScenario.Completed}/{activeScenario.Total}"
-                        : localizationService.GetJobStateLabel(JobStateKind.Running);
-                    break;
-                }
+                    {
+                        ScenarioProgressViewModel activeScenario = ResolveScenario(activeScenarioKind);
+                        StatusText = activeScenario.Total > 0 || activeScenario.Completed > 0
+                            ? $"{activeScenario.Label}: {activeScenario.Completed}/{activeScenario.Total}"
+                            : localizationService.GetJobStateLabel(JobStateKind.Running);
+                        break;
+                    }
                 default:
                     StatusText = localizationService.GetJobStateLabel(JobStateKind.Queued);
                     break;
@@ -2952,6 +3141,7 @@ public sealed partial class MainPage : Page
 
     public sealed class ScenarioProgressViewModel : INotifyPropertyChanged
     {
+        private readonly JobProgressViewModel job;
         private readonly JobScenarioKind scenarioKind;
         private string label;
         private int completed;
@@ -2961,9 +3151,16 @@ public sealed partial class MainPage : Page
         private bool isIndeterminate = true;
         private string progressText = "0/0";
         private string metricsText = string.Empty;
+        private string failureMessage = string.Empty;
+        private string retryButtonText = string.Empty;
+        private bool isRunning;
+        private bool isCompleted;
 
-        public ScenarioProgressViewModel(JobScenarioKind scenarioKind)
+        public ScenarioProgressViewModel(
+            JobProgressViewModel job,
+            JobScenarioKind scenarioKind)
         {
+            this.job = job;
             this.scenarioKind = scenarioKind;
             label = string.Empty;
             maximum = 1;
@@ -2972,6 +3169,83 @@ public sealed partial class MainPage : Page
         public event PropertyChangedEventHandler? PropertyChanged;
 
         public JobScenarioKind ScenarioKind => scenarioKind;
+
+        public JobProgressViewModel Job => job;
+
+        public bool IsRunning
+        {
+            get => isRunning;
+            private set
+            {
+                if (isRunning == value)
+                {
+                    return;
+                }
+
+                isRunning = value;
+                OnPropertyChanged(nameof(IsRunning));
+                NotifyRetryStateChanged();
+            }
+        }
+
+        public bool IsCompleted
+        {
+            get => isCompleted;
+            private set
+            {
+                if (isCompleted == value)
+                {
+                    return;
+                }
+
+                isCompleted = value;
+                OnPropertyChanged(nameof(IsCompleted));
+            }
+        }
+
+        public string FailureMessage
+        {
+            get => failureMessage;
+            private set
+            {
+                if (failureMessage == value)
+                {
+                    return;
+                }
+
+                failureMessage = value;
+                OnPropertyChanged(nameof(FailureMessage));
+                OnPropertyChanged(nameof(FailureMessageVisibility));
+                NotifyRetryStateChanged();
+            }
+        }
+
+        public Visibility FailureMessageVisibility => string.IsNullOrWhiteSpace(FailureMessage)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        public bool CanRetry => scenarioKind is JobScenarioKind.Morning or JobScenarioKind.Lunch &&
+                                !IsRunning &&
+                                !string.IsNullOrWhiteSpace(FailureMessage);
+
+        public Visibility RetryButtonVisibility => CanRetry
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        public string RetryButtonText
+        {
+            get => retryButtonText;
+            private set
+            {
+                if (retryButtonText == value)
+                {
+                    return;
+                }
+
+                retryButtonText = value;
+                OnPropertyChanged(nameof(RetryButtonText));
+            }
+        }
 
         public string Label
         {
@@ -3098,7 +3372,7 @@ public sealed partial class MainPage : Page
             }
         }
 
-        public void Update(int completed, int total)
+        public void Update(int completed, int total, bool isFinal)
         {
             Completed = Math.Max(0, completed);
             Total = Math.Max(0, total);
@@ -3106,11 +3380,52 @@ public sealed partial class MainPage : Page
             Value = Total > 0 ? Math.Min(Completed, Total) : 0;
             IsIndeterminate = Total <= 0;
             ProgressText = $"{Completed}/{Total}";
+            FailureMessage = string.Empty;
+            IsCompleted = isFinal;
+            IsRunning = !isFinal;
+        }
+
+        public void MarkFailed(string message)
+        {
+            FailureMessage = message;
+            IsCompleted = false;
+            IsRunning = false;
+        }
+
+        public void MarkRetrying()
+        {
+            FailureMessage = string.Empty;
+            IsCompleted = false;
+            IsRunning = true;
+            Completed = 0;
+            Value = 0;
+            ProgressText = $"0/{Total}";
+            IsIndeterminate = Total <= 0;
+        }
+
+        public void MarkCompleted()
+        {
+            FailureMessage = string.Empty;
+            IsCompleted = true;
+            IsRunning = false;
+            if (Total > 0)
+            {
+                Completed = Total;
+                Value = Total;
+                ProgressText = $"{Total}/{Total}";
+            }
         }
 
         public void ApplyLocalization(AppLocalizationService localizationService)
         {
             Label = localizationService.GetScenarioLabel(scenarioKind);
+            RetryButtonText = localizationService.CurrentText.ProjectBatchRetryButton;
+        }
+
+        private void NotifyRetryStateChanged()
+        {
+            OnPropertyChanged(nameof(CanRetry));
+            OnPropertyChanged(nameof(RetryButtonVisibility));
         }
 
         private void OnPropertyChanged(string propertyName)

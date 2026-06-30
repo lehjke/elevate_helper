@@ -96,4 +96,17 @@ public interface IElevateProcessingService
     {
         return RunAsync(path, buildingType, includeLunchPeak, morningProgress, lunchProgress, cancellationToken);
     }
+
+    Task<ProcessingResult> RunExistingScenarioAsync(
+        string scenarioPath,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return RunAsync(
+            scenarioPath,
+            BuildingType.Office,
+            includeLunchPeak: false,
+            progress,
+            cancellationToken);
+    }
 }

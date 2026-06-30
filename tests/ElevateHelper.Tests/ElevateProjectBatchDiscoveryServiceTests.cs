@@ -80,6 +80,60 @@ public sealed class ElevateProjectBatchDiscoveryServiceTests
         Assert.Equal([unknown], result.UnknownElvxFiles);
     }
 
+    [Theory]
+    [InlineData("1", BuildingType.Office, "Office")]
+    [InlineData("2", BuildingType.Hotel, "Hotel")]
+    [InlineData("3", BuildingType.Residence, "Res")]
+    public void Discover_InfersBuildingTypeForArbitraryFolders(
+        string buildingTypeCode,
+        BuildingType expectedBuildingType,
+        string expectedTypeFolderName)
+    {
+        using BatchDiscoveryWorkspace workspace = new();
+        string source = workspace.CreateTypedElvx(
+            Path.Combine("Any name", "Group A"),
+            "project.elvx",
+            buildingTypeCode);
+
+        ProjectBatchDiscoveryResult result = new ElevateProjectBatchDiscoveryService().Discover(workspace.RootPath);
+
+        ProjectBatchJob job = Assert.Single(result.Jobs);
+        Assert.Equal(expectedBuildingType, job.BuildingType);
+        Assert.Equal(expectedTypeFolderName, job.BuildingTypeFolderName);
+        Assert.Equal(Path.Combine("Any name", "Group A"), job.GroupName);
+        Assert.Equal(source, job.ElvxPath);
+        Assert.Empty(result.UnknownElvxFiles);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void Discover_AcceptsSingleFileDirectlyInsideKnownTypeFolder()
+    {
+        using BatchDiscoveryWorkspace workspace = new();
+        string source = workspace.CreateElvx("Office", "project.elvx");
+
+        ProjectBatchDiscoveryResult result = new ElevateProjectBatchDiscoveryService().Discover(workspace.RootPath);
+
+        ProjectBatchJob job = Assert.Single(result.Jobs);
+        Assert.Equal(BuildingType.Office, job.BuildingType);
+        Assert.Equal(source, job.ElvxPath);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void Discover_SkipsArbitraryFolderWithMultipleSourceFiles()
+    {
+        using BatchDiscoveryWorkspace workspace = new();
+        _ = workspace.CreateTypedElvx("Custom", "one.elvx", "1");
+        _ = workspace.CreateTypedElvx("Custom", "two.elvx", "1");
+
+        ProjectBatchDiscoveryResult result = new ElevateProjectBatchDiscoveryService().Discover(workspace.RootPath);
+
+        Assert.Empty(result.Jobs);
+        Assert.Empty(result.UnknownElvxFiles);
+        Assert.Single(result.Warnings);
+    }
+
     private sealed class BatchDiscoveryWorkspace : IDisposable
     {
         public string RootPath { get; } = Path.Combine(
@@ -98,6 +152,17 @@ public sealed class ElevateProjectBatchDiscoveryServiceTests
             Directory.CreateDirectory(folder);
             string filePath = Path.Combine(folder, fileName);
             File.WriteAllText(filePath, "<ElevateDocument />");
+            return filePath;
+        }
+
+        public string CreateTypedElvx(string relativeFolder, string fileName, string buildingType)
+        {
+            string folder = Path.Combine(RootPath, relativeFolder);
+            Directory.CreateDirectory(folder);
+            string filePath = Path.Combine(folder, fileName);
+            File.WriteAllText(
+                filePath,
+                $"<ElevateDocument><BuildingData BuildingType=\"{buildingType}\" /></ElevateDocument>");
             return filePath;
         }
 

@@ -507,6 +507,26 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunExistingScenarioAsync_RunsOnlySelectedScenarioFolder()
+    {
+        using TestWorkspace workspace = new();
+        string morningPath = System.IO.Path.Combine(workspace.Path, "morning");
+        Directory.CreateDirectory(morningPath);
+        _ = workspace.CreateSampleElvx(System.IO.Path.Combine("morning", "Project01.elvx"));
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunExistingScenarioAsync(
+            morningPath,
+            progress: null);
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal([morningPath], launcher.ResidenceCalls);
+        Assert.Empty(launcher.OfficeCalls);
+    }
+
+    [Fact]
     public async Task RunAsync_InvalidPath_ReturnsFailResult()
     {
         ElevateProcessingService service = new(new FakeLauncherService());

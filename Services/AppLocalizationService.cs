@@ -34,7 +34,7 @@ public sealed class AppLocalizationService
         OpenEditorWindowButton: "Create / edit ELVX",
         EditorWindowHint: "Open the ELVX editor in a separate window. It uses the current working folder and building type from the main screen.",
         ProjectBatchTitle: "Project batch mode",
-        ProjectBatchHint: "Select a project root with Office, Res, and Hotel folders. Each group folder must contain one .elvx file.",
+        ProjectBatchHint: "Select a project root. Each calculation folder must contain one .elvx file; its building type is read from the file.",
         ProjectBatchPathHeader: "Project root",
         ProjectBatchPathPlaceholder: @"C:\Elevate\Project",
         ProjectBatchParallelRunsHeader: "Parallel runs",
@@ -48,7 +48,7 @@ public sealed class AppLocalizationService
         ProjectBatchWarningsFormat: "{0} project scan warning(s).",
         ProjectBatchOfficeScenarioStatusFormat: "Office: {0}.",
         ProjectBatchUnknownTitle: "Select building types",
-        ProjectBatchUnknownHint: "These .elvx files are outside Office, Res, or Hotel. Select a building type to include them in the run.",
+        ProjectBatchUnknownHint: "The building type could not be read from these .elvx files. Select a type to include them in the run.",
         ProjectBatchUnknownPrimaryButton: "Include selected",
         ProjectBatchUnknownSecondaryButton: "Skip",
         ProjectBatchUnknownCloseButton: "Cancel",
@@ -244,7 +244,7 @@ public sealed class AppLocalizationService
         OpenEditorWindowButton: "Создать / изменить ELVX",
         EditorWindowHint: "Откройте редактор ELVX в отдельном окне. Он использует текущую рабочую папку и тип здания с главного экрана.",
         ProjectBatchTitle: "Пакетный запуск проекта",
-        ProjectBatchHint: "Выберите корень проекта с папками Office, Res и Hotel. В каждой папке группы должен быть один .elvx-файл.",
+        ProjectBatchHint: "Выберите корень проекта. В каждой папке расчета должен быть один .elvx-файл; тип здания определяется из файла.",
         ProjectBatchPathHeader: "Корень проекта",
         ProjectBatchPathPlaceholder: @"C:\Elevate\Проект",
         ProjectBatchParallelRunsHeader: "Параллельных расчетов",
@@ -258,7 +258,7 @@ public sealed class AppLocalizationService
         ProjectBatchWarningsFormat: "Предупреждений при сканировании проекта: {0}.",
         ProjectBatchOfficeScenarioStatusFormat: "Office: {0}.",
         ProjectBatchUnknownTitle: "Выбор типов здания",
-        ProjectBatchUnknownHint: "Эти .elvx-файлы находятся вне Office, Res или Hotel. Выберите тип здания, чтобы включить их в запуск.",
+        ProjectBatchUnknownHint: "В этих .elvx-файлах не удалось определить тип здания. Выберите тип, чтобы включить их в запуск.",
         ProjectBatchUnknownPrimaryButton: "Включить выбранные",
         ProjectBatchUnknownSecondaryButton: "Пропустить",
         ProjectBatchUnknownCloseButton: "Отмена",
@@ -634,6 +634,12 @@ public sealed class AppLocalizationService
         if (message.Equals("Elevate exited before batch processing completed.", StringComparison.Ordinal))
         {
             return "Elevate завершился до окончания batch-расчета.";
+        }
+
+        if (message.StartsWith("Elevate could not open a results file after ", StringComparison.Ordinal) &&
+            message.EndsWith(" attempts.", StringComparison.Ordinal))
+        {
+            return "Elevate не смог открыть файл результатов после автоматических перезапусков расчета.";
         }
 
         if (message.StartsWith("An exception of type ", StringComparison.Ordinal) &&

@@ -7,7 +7,8 @@ public sealed record ElevateProgressInfo(
     int Total,
     string Source,
     string? WindowTitle = null,
-    bool IsFinal = false)
+    bool IsFinal = false,
+    string? ErrorMessage = null)
 {
     public double Percentage => Total <= 0
         ? 0

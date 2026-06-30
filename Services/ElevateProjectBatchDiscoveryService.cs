@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
 
 namespace ElevateHelperWinUI.Services;
@@ -43,13 +44,41 @@ public sealed class ElevateProjectBatchDiscoveryService
             AddBuildingTypeJobs(normalizedRoot, typeDirectory, typeFolderName, buildingType, jobs, warnings);
         }
 
-        List<string> unknownElvxFiles = Directory
+        List<string> unclassifiedElvxFiles = Directory
             .EnumerateFiles(normalizedRoot, "*.elvx", SearchOption.AllDirectories)
             .Where(file => !IsUnderAnyDirectory(file, knownTypeDirectories))
             .Where(file => !IsGeneratedOrScenarioFile(file))
             .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
             .Select(Path.GetFullPath)
             .ToList();
+
+        List<string> unknownElvxFiles = [];
+        foreach (IGrouping<string, string> folderGroup in unclassifiedElvxFiles.GroupBy(
+                     file => Path.GetDirectoryName(file) ?? normalizedRoot,
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            List<string> folderFiles = folderGroup
+                .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            string workingFolder = NormalizeDirectoryPath(folderGroup.Key);
+
+            if (folderFiles.Count > 1)
+            {
+                warnings.Add(new ProjectBatchWarning(
+                    workingFolder,
+                    $"Folder '{GetRelativeGroupName(normalizedRoot, workingFolder)}' contains more than one source .elvx file and was skipped."));
+                continue;
+            }
+
+            string elvxPath = folderFiles[0];
+            if (!TryReadBuildingType(elvxPath, out BuildingType buildingType))
+            {
+                unknownElvxFiles.Add(elvxPath);
+                continue;
+            }
+
+            jobs.Add(CreateDiscoveredJob(normalizedRoot, workingFolder, elvxPath, buildingType));
+        }
 
         return new ProjectBatchDiscoveryResult(jobs, unknownElvxFiles, warnings);
     }
@@ -63,11 +92,22 @@ public sealed class ElevateProjectBatchDiscoveryService
         List<ProjectBatchWarning> warnings)
     {
         IReadOnlyList<string> directFiles = GetSourceElvxFiles(typeDirectory);
-        if (directFiles.Count > 0)
+        if (directFiles.Count == 1)
+        {
+            jobs.Add(new ProjectBatchJob(
+                projectRoot,
+                typeFolderName,
+                typeFolderName,
+                NormalizeDirectoryPath(typeDirectory),
+                directFiles[0],
+                buildingType,
+                IsManualBuildingType: false));
+        }
+        else if (directFiles.Count > 1)
         {
             warnings.Add(new ProjectBatchWarning(
                 typeDirectory,
-                $"Building type folder '{typeFolderName}' contains .elvx files directly. Put each file into its own group folder."));
+                $"Building type folder '{typeFolderName}' contains more than one source .elvx file directly and was skipped."));
         }
 
         foreach (string groupDirectory in Directory.EnumerateDirectories(typeDirectory).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
@@ -99,6 +139,83 @@ public sealed class ElevateProjectBatchDiscoveryService
                 groupFiles[0],
                 buildingType,
                 IsManualBuildingType: false));
+        }
+    }
+
+    private static ProjectBatchJob CreateDiscoveredJob(
+        string projectRoot,
+        string workingFolder,
+        string elvxPath,
+        BuildingType buildingType)
+    {
+        return new ProjectBatchJob(
+            projectRoot,
+            GetBuildingTypeFolderName(buildingType),
+            GetRelativeGroupName(projectRoot, workingFolder),
+            workingFolder,
+            elvxPath,
+            buildingType,
+            IsManualBuildingType: false);
+    }
+
+    private static string GetBuildingTypeFolderName(BuildingType buildingType)
+    {
+        return buildingType switch
+        {
+            BuildingType.Office => "Office",
+            BuildingType.Residence => "Res",
+            BuildingType.Hotel => "Hotel",
+            _ => "Unknown",
+        };
+    }
+
+    private static string GetRelativeGroupName(string projectRoot, string workingFolder)
+    {
+        string relativePath = Path.GetRelativePath(projectRoot, workingFolder);
+        return relativePath.Equals(".", StringComparison.Ordinal)
+            ? Path.GetFileName(projectRoot)
+            : relativePath;
+    }
+
+    internal static bool TryReadBuildingType(string elvxPath, out BuildingType buildingType)
+    {
+        buildingType = default;
+
+        try
+        {
+            XDocument document = XDocument.Load(elvxPath, LoadOptions.None);
+            string? rawValue = (string?)document.Root?
+                .Element("BuildingData")?
+                .Attribute("BuildingType");
+
+            switch (rawValue?.Trim())
+            {
+                case "1":
+                    buildingType = BuildingType.Office;
+                    return true;
+                case "2":
+                    buildingType = BuildingType.Hotel;
+                    return true;
+                case "3":
+                    buildingType = BuildingType.Residence;
+                    return true;
+                case string value when value.Equals("Office", StringComparison.OrdinalIgnoreCase):
+                    buildingType = BuildingType.Office;
+                    return true;
+                case string value when value.Equals("Hotel", StringComparison.OrdinalIgnoreCase):
+                    buildingType = BuildingType.Hotel;
+                    return true;
+                case string value when value.Equals("Residential", StringComparison.OrdinalIgnoreCase) ||
+                                       value.Equals("Residence", StringComparison.OrdinalIgnoreCase):
+                    buildingType = BuildingType.Residence;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        {
+            return false;
         }
     }
 
