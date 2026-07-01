@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -16,6 +17,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private const uint WmSetText = 0x000C;
     private const uint BmClick = 0x00F5;
     private const int ShowWindowHide = 0;
+    private const int ShowWindowNoActivate = 8;
     private static readonly SemaphoreSlim BatchSubmissionLock = new(1, 1);
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan WindowPollDelay = TimeSpan.FromMilliseconds(200);
@@ -29,6 +31,8 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private const int MaxResultFileOpenRestarts = 3;
 
     private readonly IElevateIntegrationService integrationService;
+    private readonly ConcurrentDictionary<int, ConcurrentDictionary<IntPtr, byte>> hiddenWindowsByProcess = new();
+    private volatile bool hideWindows = true;
 
     public ElevateLauncherService()
         : this(new ElevateIntegrationService())
@@ -38,6 +42,11 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     public ElevateLauncherService(IElevateIntegrationService integrationService)
     {
         this.integrationService = integrationService;
+    }
+
+    public void SetWindowsHidden(bool hidden)
+    {
+        hideWindows = hidden;
     }
 
     public Task LaunchResidenceAsync(string path, CancellationToken cancellationToken = default)
@@ -167,7 +176,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
     }
 
-    private static async Task LaunchBatchAttemptAsync(
+    private async Task LaunchBatchAttemptAsync(
         string executablePath,
         string path,
         ProgressContext progressContext,
@@ -218,7 +227,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                     throw new InvalidOperationException("Elevate main window did not appear.");
                 }
 
-                _ = ShowWindow(mainWindowHandle, ShowWindowHide);
+                ApplyWindowVisibility(process.Id, mainWindowHandle);
                 await Task.Delay(StartupDelay, cancellationToken);
                 await SubmitBatchFolderAsync(
                     process,
@@ -253,6 +262,11 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             }
 
             ForceTerminateProcess(process);
+            if (process is not null)
+            {
+                hiddenWindowsByProcess.TryRemove(process.Id, out _);
+            }
+
             process?.Dispose();
         }
     }
@@ -431,7 +445,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                CountCompletedCsvFiles(path, progressContext.ElvxBaseNames, baseline: null) >= requiredTotal;
     }
 
-    private static async Task SubmitBatchFolderAsync(
+    private async Task SubmitBatchFolderAsync(
         Process process,
         IntPtr windowHandle,
         string path,
@@ -445,7 +459,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
 
         IntPtr dialogHandle = await WaitForRunBatchDialogAsync(process.Id, cancellationToken);
-        _ = ShowWindow(dialogHandle, ShowWindowHide);
+        ApplyWindowVisibility(process.Id, dialogHandle);
         IntPtr editHandle = GetDlgItem(dialogHandle, DialogFolderEditControlId);
         IntPtr okHandle = GetDlgItem(dialogHandle, DialogOkControlId);
 
@@ -505,7 +519,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         throw new InvalidOperationException("Run Batch dialog did not close after folder submission.");
     }
 
-    private static async Task WaitForBatchStartAsync(
+    private async Task WaitForBatchStartAsync(
         Process process,
         string path,
         ProgressContext progressContext,
@@ -519,6 +533,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
             process.Refresh();
             ThrowIfResultFileOpenFailed(process.Id);
+            ApplyProcessWindowVisibility(process.Id);
             ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
             if (observation.HasStarted)
             {
@@ -536,7 +551,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         throw new InvalidOperationException("Run Batch was submitted but calculation did not start.");
     }
 
-    private static async Task MonitorProgressAsync(
+    private async Task MonitorProgressAsync(
         Process process,
         string path,
         ProgressContext progressContext,
@@ -555,6 +570,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             cancellationToken.ThrowIfCancellationRequested();
             process.Refresh();
             ThrowIfResultFileOpenFailed(process.Id);
+            ApplyProcessWindowVisibility(process.Id);
 
             ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
             hasStarted |= observation.HasStarted;
@@ -1082,6 +1098,41 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         return mainWindowHandle;
     }
 
+    private void ApplyProcessWindowVisibility(int processId)
+    {
+        EnumWindows((windowHandle, _) =>
+        {
+            GetWindowThreadProcessId(windowHandle, out uint windowProcessId);
+            if (windowProcessId == (uint)processId)
+            {
+                ApplyWindowVisibility(processId, windowHandle);
+            }
+
+            return true;
+        }, IntPtr.Zero);
+    }
+
+    private void ApplyWindowVisibility(int processId, IntPtr windowHandle)
+    {
+        bool isVisible = IsWindowVisible(windowHandle);
+        if (hideWindows && isVisible)
+        {
+            _ = ShowWindow(windowHandle, ShowWindowHide);
+            ConcurrentDictionary<IntPtr, byte> hiddenWindows =
+                hiddenWindowsByProcess.GetOrAdd(processId, _ => new ConcurrentDictionary<IntPtr, byte>());
+            hiddenWindows.TryAdd(windowHandle, 0);
+        }
+        else if (!hideWindows &&
+                 hiddenWindowsByProcess.TryGetValue(processId, out ConcurrentDictionary<IntPtr, byte>? hiddenWindows) &&
+                 hiddenWindows.TryRemove(windowHandle, out _))
+        {
+            if (!isVisible)
+            {
+                _ = ShowWindow(windowHandle, ShowWindowNoActivate);
+            }
+        }
+    }
+
     private static IntPtr FindRunBatchDialog(int processId)
     {
         IntPtr dialogHandle = IntPtr.Zero;
@@ -1413,6 +1464,10 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -21,6 +21,17 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public void SetElevateWindowsHidden_ForwardsModeToLauncher()
+    {
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        service.SetElevateWindowsHidden(hidden: false);
+
+        Assert.False(launcher.WindowsHidden);
+    }
+
+    [Fact]
     public void ModifyHandlingCapacity_UpdatesXmlValues()
     {
         using TestWorkspace workspace = new();
@@ -565,7 +576,14 @@ public sealed class ElevateProcessingServiceTests
         public List<string> ResidenceCalls { get; } = [];
         public List<(string Path, bool IncludeLunchPeak)> OfficeCalls { get; } = [];
 
+        public bool WindowsHidden { get; private set; } = true;
+
         public bool WaitForResidenceCancellation { get; init; }
+
+        public void SetWindowsHidden(bool hidden)
+        {
+            WindowsHidden = hidden;
+        }
 
         public Task LaunchResidenceAsync(string path, CancellationToken cancellationToken = default)
         {

@@ -4,6 +4,10 @@ namespace ElevateHelperWinUI.Services;
 
 public interface IElevateProcessingService
 {
+    void SetElevateWindowsHidden(bool hidden)
+    {
+    }
+
     int GetDefaultCopies(BuildingType buildingType);
 
     IReadOnlyList<ElevateRunManifest> GetRunHistory(string path);

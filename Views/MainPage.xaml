@@ -150,6 +150,24 @@
                             </Grid>
                         </Button>
 
+                        <StackPanel
+                            Grid.Column="4"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <TextBlock
+                                Style="{StaticResource ToolbarLabelStyle}"
+                                Text="{x:Bind Text.ElevateHiddenModeLabel, Mode=OneTime}" />
+                            <ToggleSwitch
+                                x:Name="HideElevateWindowsToggle"
+                                MinWidth="52"
+                                AutomationProperties.Name="{x:Bind Text.ElevateHiddenModeLabel, Mode=OneTime}"
+                                IsOn="True"
+                                OffContent=""
+                                OnContent=""
+                                Toggled="OnHideElevateWindowsToggleChanged" />
+                        </StackPanel>
+
                     </Grid>
                 </Border>
 

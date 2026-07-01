@@ -4,6 +4,10 @@ namespace ElevateHelperWinUI.Services;
 
 public interface IElevateLauncherService
 {
+    void SetWindowsHidden(bool hidden)
+    {
+    }
+
     Task LaunchResidenceAsync(string path, CancellationToken cancellationToken = default);
 
     Task LaunchResidenceAsync(

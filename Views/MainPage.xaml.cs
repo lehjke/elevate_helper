@@ -43,6 +43,7 @@ public sealed partial class MainPage : Page
     {
         this.InitializeComponent();
         localizationService.LanguageChanged += OnLanguageChanged;
+        processingService.SetElevateWindowsHidden(HideElevateWindowsToggle.IsOn);
 
         UpdateLanguageSelector();
         OfficeRadioButton.IsChecked = true;
@@ -836,6 +837,11 @@ public sealed partial class MainPage : Page
         }
 
         LanguageFlyout.Hide();
+    }
+
+    private void OnHideElevateWindowsToggleChanged(object sender, RoutedEventArgs e)
+    {
+        processingService.SetElevateWindowsHidden(HideElevateWindowsToggle.IsOn);
     }
 
     private void UpdateLanguageSelector()

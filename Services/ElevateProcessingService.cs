@@ -24,6 +24,11 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         workflowRunner = new ElevateWorkflowRunner(runManifestService);
     }
 
+    public void SetElevateWindowsHidden(bool hidden)
+    {
+        launcherService.SetWindowsHidden(hidden);
+    }
+
     public int GetDefaultCopies(BuildingType buildingType)
     {
         return buildingType switch
