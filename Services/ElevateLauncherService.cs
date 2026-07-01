@@ -21,6 +21,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static readonly TimeSpan WindowPollDelay = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan ProgressPollDelay = TimeSpan.FromMilliseconds(600);
     private static readonly TimeSpan DialogCloseTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MainWindowAppearTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan BatchStartTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CompletedOutputsSettleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProcessStopGracePeriod = TimeSpan.FromSeconds(8);
@@ -190,7 +191,6 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 {
                     FileName = executablePath,
                     UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
                 });
 
                 if (process is null)
@@ -212,8 +212,21 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                     // Some startup modes do not support WaitForInputIdle.
                 }
 
+                IntPtr mainWindowHandle = await WaitForMainWindowAsync(process, cancellationToken);
+                if (mainWindowHandle == IntPtr.Zero)
+                {
+                    throw new InvalidOperationException("Elevate main window did not appear.");
+                }
+
+                _ = ShowWindow(mainWindowHandle, ShowWindowHide);
                 await Task.Delay(StartupDelay, cancellationToken);
-                await SubmitBatchFolderAsync(process, path, progressContext, resultBaseline, cancellationToken);
+                await SubmitBatchFolderAsync(
+                    process,
+                    mainWindowHandle,
+                    path,
+                    progressContext,
+                    resultBaseline,
+                    cancellationToken);
             }
             finally
             {
@@ -420,19 +433,12 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
     private static async Task SubmitBatchFolderAsync(
         Process process,
+        IntPtr windowHandle,
         string path,
         ProgressContext progressContext,
         ResultFileBaseline resultBaseline,
         CancellationToken cancellationToken)
     {
-        IntPtr windowHandle = await WaitForMainWindowAsync(process, cancellationToken);
-        if (windowHandle == IntPtr.Zero)
-        {
-            throw new InvalidOperationException("Elevate main window did not appear.");
-        }
-
-        _ = ShowWindow(windowHandle, ShowWindowHide);
-
         if (!PostMessage(windowHandle, WmCommand, (IntPtr)RunBatchCommandId, IntPtr.Zero))
         {
             throw new InvalidOperationException("Unable to open the Elevate Run Batch dialog.");
@@ -1028,19 +1034,52 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         Process process,
         CancellationToken cancellationToken)
     {
-        for (int attempt = 0; attempt < 25; attempt++)
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + MainWindowAppearTimeout;
+        while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
             process.Refresh();
-            if (process.MainWindowHandle != IntPtr.Zero)
+            if (process.HasExited)
             {
-                return process.MainWindowHandle;
+                return IntPtr.Zero;
+            }
+
+            IntPtr windowHandle = process.MainWindowHandle;
+            if (windowHandle == IntPtr.Zero)
+            {
+                windowHandle = FindProcessMainWindow(process.Id);
+            }
+
+            if (windowHandle != IntPtr.Zero)
+            {
+                return windowHandle;
             }
 
             await Task.Delay(WindowPollDelay, cancellationToken);
         }
 
         return IntPtr.Zero;
+    }
+
+    private static IntPtr FindProcessMainWindow(int processId)
+    {
+        IntPtr mainWindowHandle = IntPtr.Zero;
+
+        EnumWindows((windowHandle, _) =>
+        {
+            GetWindowThreadProcessId(windowHandle, out uint windowProcessId);
+            if (windowProcessId != (uint)processId ||
+                GetWindowClass(windowHandle).Equals("#32770", StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(GetWindowTitle(windowHandle)))
+            {
+                return true;
+            }
+
+            mainWindowHandle = windowHandle;
+            return false;
+        }, IntPtr.Zero);
+
+        return mainWindowHandle;
     }
 
     private static IntPtr FindRunBatchDialog(int processId)
