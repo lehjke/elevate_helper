@@ -11,6 +11,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
     private readonly IElevateLauncherService launcherService;
     private readonly ElevateRunManifestService runManifestService;
     private readonly ElevateWorkflowRunner workflowRunner;
+    private readonly ElevateScenarioStateService scenarioStateService;
 
     public ElevateProcessingService()
         : this(new ElevateLauncherService())
@@ -22,11 +23,17 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         this.launcherService = launcherService;
         runManifestService = new ElevateRunManifestService();
         workflowRunner = new ElevateWorkflowRunner(runManifestService);
+        scenarioStateService = new ElevateScenarioStateService();
     }
 
     public void SetElevateWindowsHidden(bool hidden)
     {
         launcherService.SetWindowsHidden(hidden);
+    }
+
+    public Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        return launcherService.ShutdownAsync(cancellationToken);
     }
 
     public int GetDefaultCopies(BuildingType buildingType)
@@ -176,8 +183,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             return ProcessingResult.Fail("Last Elevate run is not failed.");
         }
 
-        return await RunAsync(
-            latestRun.CopiesCount,
+        return await RunExistingBatchAsync(
             path,
             latestRun.BuildingType,
             latestRun.IncludeLunchPeak,
@@ -186,7 +192,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             cancellationToken);
     }
 
-    public async Task<ProcessingResult> RunExistingBatchAsync(
+    public Task<ProcessingResult> RunExistingBatchAsync(
         string path,
         BuildingType buildingType,
         bool includeLunchPeak,
@@ -196,43 +202,62 @@ public sealed class ElevateProcessingService : IElevateProcessingService
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            return ProcessingResult.Fail("Path to Elevate files is empty.");
+            return Task.FromResult(ProcessingResult.Fail("Path to Elevate files is empty."));
         }
 
         if (!Directory.Exists(path))
         {
-            return ProcessingResult.Fail($"Path does not exist: {path}");
+            return Task.FromResult(ProcessingResult.Fail($"Path does not exist: {path}"));
         }
 
-        try
+        if (buildingType is not (BuildingType.Office or BuildingType.Residence or BuildingType.Hotel))
         {
-            if (buildingType == BuildingType.Office)
-            {
-                await launcherService.LaunchOfficeAsync(
-                    path,
-                    includeLunchPeak,
-                    morningProgress,
-                    lunchProgress,
-                    cancellationToken);
-                return ProcessingResult.Ok();
-            }
+            return Task.FromResult(ProcessingResult.Fail($"Unknown building type: {buildingType}"));
+        }
 
-            if (buildingType is BuildingType.Residence or BuildingType.Hotel)
-            {
-                await launcherService.LaunchResidenceAsync(path, morningProgress, cancellationToken);
-                return ProcessingResult.Ok();
-            }
+        int copiesCount = ResolveExistingCopiesCount(path, buildingType);
+        ElevateWorkflowRunRequest request = new(path, buildingType, includeLunchPeak, copiesCount);
+        IReadOnlyList<ElevateWorkflowStep> steps =
+        [
+            new(
+                ElevateRunManifestStepNames.ValidateInputs,
+                "validate existing batch files",
+                _ => Task.FromResult(
+                    ValidateExistingBatch(path, buildingType, includeLunchPeak, copiesCount))),
+            new(
+                ElevateRunManifestStepNames.RetryExistingBatch,
+                "run existing Elevate batch",
+                async token =>
+                {
+                    if (buildingType == BuildingType.Office)
+                    {
+                        await launcherService.LaunchExistingOfficeAsync(
+                            path,
+                            includeLunchPeak,
+                            morningProgress,
+                            lunchProgress,
+                            token);
+                    }
+                    else
+                    {
+                        await launcherService.LaunchExistingResidenceAsync(path, morningProgress, token);
+                    }
 
-            return ProcessingResult.Fail($"Unknown building type: {buildingType}");
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return ProcessingResult.Fail(ex.Message, ex);
-        }
+                    return ElevateWorkflowStepResult.Completed();
+                }),
+            new(
+                ElevateRunManifestStepNames.CollectArtifacts,
+                "collect retry artifacts",
+                _ =>
+                {
+                    CollectAreas(path, buildingType, includeLunchPeak);
+                    return Task.FromResult(
+                        ElevateWorkflowStepResult.Completed(
+                            CollectRunArtifacts(path, buildingType, includeLunchPeak).ToList()));
+                }),
+        ];
+
+        return workflowRunner.RunAsync(request, steps, cancellationToken);
     }
 
     public async Task<ProcessingResult> RunExistingScenarioAsync(
@@ -252,7 +277,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 
         try
         {
-            await launcherService.LaunchResidenceAsync(scenarioPath, progress, cancellationToken);
+            await launcherService.LaunchExistingResidenceAsync(scenarioPath, progress, cancellationToken);
             return ProcessingResult.Ok();
         }
         catch (OperationCanceledException)
@@ -263,6 +288,65 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         {
             return ProcessingResult.Fail(ex.Message, ex);
         }
+    }
+
+    public void RecordReportOutcome(string path, bool success, string? message = null)
+    {
+        runManifestService.RecordExternalStep(
+            path,
+            ElevateRunManifestStepNames.GenerateReport,
+            success,
+            message);
+    }
+
+    private int ResolveExistingCopiesCount(string path, BuildingType buildingType)
+    {
+        ElevateRunManifest? latestRun = runManifestService.GetLatest(path);
+        if (latestRun?.CopiesCount > 0)
+        {
+            return latestRun.CopiesCount;
+        }
+
+        string filesPath = buildingType == BuildingType.Office
+            ? Path.Combine(path, "morning")
+            : path;
+        int existingFiles = Directory.Exists(filesPath)
+            ? Directory.EnumerateFiles(filesPath, "*.elvx", SearchOption.TopDirectoryOnly).Count()
+            : 0;
+        return existingFiles > 0 ? existingFiles : GetDefaultCopies(buildingType);
+    }
+
+    private static ElevateWorkflowStepResult ValidateExistingBatch(
+        string path,
+        BuildingType buildingType,
+        bool includeLunchPeak,
+        int copiesCount)
+    {
+        IEnumerable<string> requiredFolders = buildingType == BuildingType.Office
+            ? includeLunchPeak
+                ? [Path.Combine(path, "morning"), Path.Combine(path, "lunch")]
+                : [Path.Combine(path, "morning")]
+            : [path];
+
+        foreach (string requiredFolder in requiredFolders)
+        {
+            if (!Directory.Exists(requiredFolder))
+            {
+                return ElevateWorkflowStepResult.Failed(
+                    $"Existing batch files were not found in '{requiredFolder}'.");
+            }
+
+            int existingCopies = Directory
+                .EnumerateFiles(requiredFolder, "*.elvx", SearchOption.TopDirectoryOnly)
+                .Count();
+            if (existingCopies != copiesCount)
+            {
+                return ElevateWorkflowStepResult.Failed(
+                    $"Existing batch in '{requiredFolder}' contains {existingCopies} .elvx files; expected {copiesCount}.");
+            }
+        }
+
+        return ElevateWorkflowStepResult.Completed();
     }
 
     public void ModifyHandlingCapacity(string xmlFilePath, int newCapacity)
@@ -597,9 +681,10 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 string newFileName = BuildCopyFileName(baseFileName, i);
-                generatedCopies.Add(newFileName);
                 string newFilePath = Path.Combine(path, newFileName);
                 EnsureCopyTargetDoesNotExist(newFilePath);
+                generatedCopies.Add(newFileName);
+                SaveTrackedGeneratedCopies(path, generatedCopies);
                 File.Copy(
                     residenceBaseFilePath,
                     newFilePath,
@@ -607,7 +692,6 @@ public sealed class ElevateProcessingService : IElevateProcessingService
                 ModifyHandlingCapacity(newFilePath, i);
             }
 
-            SaveTrackedGeneratedCopies(path, generatedCopies);
             await launcherService.LaunchResidenceAsync(path, morningProgress, cancellationToken);
             return;
         }
@@ -655,12 +739,32 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         int copiesCount,
         CancellationToken cancellationToken)
     {
-        if (ElevateLauncherService.HasCompletedScenarioOutputs(scenarioPath, copiesCount))
+        ElevateScenarioFingerprint fingerprint = scenarioStateService.CreateFingerprint(
+            sourceBaseFilePath,
+            baseFileName,
+            peak,
+            copiesCount);
+        bool outputsComplete = ElevateLauncherService.HasCompletedScenarioOutputs(
+            scenarioPath,
+            copiesCount);
+        if (scenarioStateService.IsCurrent(scenarioPath, fingerprint) && outputsComplete)
         {
             return;
         }
 
-        ResetScenarioDirectory(scenarioPath);
+        List<string> managedFiles = BuildScenarioProjectFileNames(baseFileName, copiesCount);
+        if (!scenarioStateService.HasManifest(scenarioPath) &&
+            outputsComplete &&
+            CanAdoptLegacyScenario(
+                sourceBaseFilePath,
+                scenarioPath,
+                managedFiles))
+        {
+            scenarioStateService.Save(scenarioPath, fingerprint, managedFiles);
+            return;
+        }
+
+        ResetScenarioArtifacts(scenarioPath, managedFiles);
         string scenarioBaseFilePath = Path.Combine(scenarioPath, baseFileName);
         File.Copy(sourceBaseFilePath, scenarioBaseFilePath, overwrite: true);
         ModifyBuildingTypeOffice(scenarioBaseFilePath, peak);
@@ -669,7 +773,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         for (int i = 2; i <= copiesCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string newFileName = BuildCopyFileName(baseFileName, i);
+            string newFileName = managedFiles[i - 1];
             string copyPath = Path.Combine(scenarioPath, newFileName);
 
             File.Copy(
@@ -678,6 +782,58 @@ public sealed class ElevateProcessingService : IElevateProcessingService
                 overwrite: false);
             ModifyHandlingCapacity(copyPath, i);
         }
+
+        scenarioStateService.Save(scenarioPath, fingerprint, managedFiles);
+    }
+
+    private static List<string> BuildScenarioProjectFileNames(
+        string baseFileName,
+        int copiesCount)
+    {
+        List<string> fileNames = [baseFileName];
+        for (int index = 2; index <= copiesCount; index++)
+        {
+            fileNames.Add(BuildCopyFileName(baseFileName, index));
+        }
+
+        return fileNames;
+    }
+
+    private static bool CanAdoptLegacyScenario(
+        string sourceBaseFilePath,
+        string scenarioPath,
+        IReadOnlyList<string> managedFiles)
+    {
+        DateTime sourceWriteTimeUtc = File.GetLastWriteTimeUtc(sourceBaseFilePath);
+        foreach (string fileName in managedFiles)
+        {
+            string projectPath = Path.Combine(scenarioPath, fileName);
+            if (!File.Exists(projectPath) ||
+                File.GetLastWriteTimeUtc(projectPath) < sourceWriteTimeUtc)
+            {
+                return false;
+            }
+
+            string projectStem = Path.GetFileNameWithoutExtension(fileName);
+            string csvPath = Path.Combine(scenarioPath, $"{projectStem}_elvx.csv");
+            if (!IsNonEmptyFileAtLeastAsNewAs(csvPath, sourceWriteTimeUtc))
+            {
+                return false;
+            }
+        }
+
+        return IsNonEmptyFileAtLeastAsNewAs(
+            Path.Combine(scenarioPath, "batch_results.csv"),
+            sourceWriteTimeUtc);
+    }
+
+    private static bool IsNonEmptyFileAtLeastAsNewAs(
+        string path,
+        DateTime minimumWriteTimeUtc)
+    {
+        return File.Exists(path) &&
+               new FileInfo(path).Length > 0 &&
+               File.GetLastWriteTimeUtc(path) >= minimumWriteTimeUtc;
     }
 
     private static string BuildCopyFileName(string sourceFileName, int copyIndex)
@@ -741,14 +897,51 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         return matches.Count == 1 ? matches[0] : null;
     }
 
-    private static void ResetScenarioDirectory(string path)
+    private void ResetScenarioArtifacts(
+        string path,
+        IReadOnlyCollection<string> expectedManagedFiles)
     {
-        if (Directory.Exists(path))
+        Directory.CreateDirectory(path);
+        HashSet<string> managedFileNames = scenarioStateService
+            .GetManagedFiles(path)
+            .Select(Path.GetFileName)
+            .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+            .Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        managedFileNames.UnionWith(expectedManagedFiles);
+
+        HashSet<string> managedOutputNames = new(StringComparer.OrdinalIgnoreCase)
         {
-            Directory.Delete(path, recursive: true);
+            "batch_results.csv",
+            "floor_area.csv",
+        };
+        foreach (string managedFileName in managedFileNames)
+        {
+            string fileStem = Path.GetFileNameWithoutExtension(managedFileName);
+            managedOutputNames.Add($"{fileStem}_elvx.csv");
+            managedOutputNames.Add($"{fileStem}.elvr");
         }
 
-        Directory.CreateDirectory(path);
+        foreach (string file in Directory.EnumerateFiles(path))
+        {
+            string fileName = Path.GetFileName(file);
+            if (managedFileNames.Contains(fileName) ||
+                managedOutputNames.Contains(fileName))
+            {
+                File.Delete(file);
+            }
+        }
+
+        scenarioStateService.DeleteManifest(path);
+    }
+
+    private static bool IsGeneratedOutput(string fileName)
+    {
+        string extension = Path.GetExtension(fileName);
+        return fileName.Equals("batch_results.csv", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("floor_area.csv", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".elvr", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("_elvx.csv", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void DeleteTrackedGeneratedCopies(string path)
@@ -761,13 +954,11 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 
         foreach (string fileName in File.ReadLines(manifestPath))
         {
-            string trimmedFileName = fileName.Trim();
-            if (string.IsNullOrWhiteSpace(trimmedFileName))
+            if (!TryResolveTrackedGeneratedCopyPath(path, fileName, out string candidatePath))
             {
                 continue;
             }
 
-            string candidatePath = Path.Combine(path, trimmedFileName);
             if (File.Exists(candidatePath))
             {
                 File.Delete(candidatePath);
@@ -781,15 +972,8 @@ public sealed class ElevateProcessingService : IElevateProcessingService
     {
         foreach (string file in Directory.EnumerateFiles(path))
         {
-            string extension = Path.GetExtension(file);
             string fileName = Path.GetFileName(file);
-            bool isGeneratedOutput =
-                fileName.Equals("batch_results.csv", StringComparison.OrdinalIgnoreCase) ||
-                fileName.Equals("floor_area.csv", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".elvr", StringComparison.OrdinalIgnoreCase) ||
-                fileName.EndsWith("_elvx.csv", StringComparison.OrdinalIgnoreCase);
-
-            if (isGeneratedOutput)
+            if (IsGeneratedOutput(fileName))
             {
                 File.Delete(file);
             }
@@ -800,7 +984,8 @@ public sealed class ElevateProcessingService : IElevateProcessingService
     {
         string manifestPath = GetGeneratedCopiesManifestPath(path);
         List<string> entries = fileNames
-            .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+            .Select(fileName => fileName?.Trim() ?? string.Empty)
+            .Where(fileName => TryResolveTrackedGeneratedCopyPath(path, fileName, out _))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(fileName => fileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -815,7 +1000,59 @@ public sealed class ElevateProcessingService : IElevateProcessingService
             return;
         }
 
-        File.WriteAllLines(manifestPath, entries);
+        string temporaryManifestPath = $"{manifestPath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllLines(temporaryManifestPath, entries);
+            File.Move(temporaryManifestPath, manifestPath, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(temporaryManifestPath))
+                {
+                    File.Delete(temporaryManifestPath);
+                }
+            }
+            catch
+            {
+                // Preserve the original manifest write error; stale temp files are harmless.
+            }
+        }
+    }
+
+    internal static bool TryResolveTrackedGeneratedCopyPath(
+        string projectPath,
+        string? manifestEntry,
+        out string candidatePath)
+    {
+        candidatePath = string.Empty;
+        string fileName = manifestEntry?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            fileName is "." or ".." ||
+            Path.IsPathRooted(fileName) ||
+            fileName.Contains('/') ||
+            fileName.Contains('\\') ||
+            fileName.Contains(':') ||
+            !Path.GetExtension(fileName).Equals(".elvx", StringComparison.OrdinalIgnoreCase) ||
+            fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            return false;
+        }
+
+        string normalizedProjectPath = Path.GetFullPath(projectPath);
+        string resolvedPath = Path.GetFullPath(Path.Combine(normalizedProjectPath, fileName));
+        string relativePath = Path.GetRelativePath(normalizedProjectPath, resolvedPath);
+        if (Path.IsPathRooted(relativePath) ||
+            relativePath.StartsWith("..", StringComparison.Ordinal) ||
+            !string.Equals(Path.GetFileName(relativePath), relativePath, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        candidatePath = resolvedPath;
+        return true;
     }
 
     private static string GetGeneratedCopiesManifestPath(string path)
@@ -834,8 +1071,9 @@ public sealed class ElevateProcessingService : IElevateProcessingService
 
         string prefix = baseName[..endIndex];
         string digits = baseName[endIndex..];
-        int? seedIndex = digits.Length > 0
-            ? int.Parse(digits, CultureInfo.InvariantCulture)
+        int? seedIndex = digits.Length > 0 &&
+                         int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out int parsedSeedIndex)
+            ? parsedSeedIndex
             : null;
 
         return new FileNamingScheme(prefix, digits.Length, seedIndex);

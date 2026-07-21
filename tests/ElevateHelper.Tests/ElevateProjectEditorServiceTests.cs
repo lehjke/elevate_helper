@@ -69,6 +69,7 @@ public sealed class ElevateProjectEditorServiceTests
         document.Floors[0].InterfloorHeight = 9.75;
         document.Floors[0].Population = 123;
         document.Floors[0].EntranceBiasPercent = 8.25;
+        document.Floors[1].EntranceBiasPercent = 11.75;
         document.Cars[0].CapacityKg = "1600.000000";
         document.Cars[0].DoorOpenTime = "2.100000";
 
@@ -103,6 +104,47 @@ public sealed class ElevateProjectEditorServiceTests
         Assert.NotEmpty(xDispatchFloors);
         Assert.All(xDispatchFloors, floor => Assert.Equal("False", (string?)floor.Attribute("DestinationButtons")));
         Assert.NotNull(root.Element("Results"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RejectsDuplicateFloorNames()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        ElevateProjectEditorService service = new();
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        document.Floors[1].FloorName = document.Floors[0].FloorName;
+        string outputPath = Path.Combine(workspace.RootPath, "Invalid.elvx");
+
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.False(result.Success);
+        Assert.Contains("duplicated", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RejectsEntranceBiasThatDoesNotTotalOneHundredPercent()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        ElevateProjectEditorService service = new();
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        foreach (ElevateProjectEditorFloor floor in document.Floors.Where(floor => floor.EntranceFloor))
+        {
+            floor.EntranceBiasPercent = 0d;
+        }
+
+        document.Floors.First(floor => floor.EntranceFloor).EntranceBiasPercent = 50d;
+        string outputPath = Path.Combine(workspace.RootPath, "Invalid.elvx");
+
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.False(result.Success);
+        Assert.Contains("total 100%", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
     }
 
     [Fact]
@@ -156,6 +198,7 @@ public sealed class ElevateProjectEditorServiceTests
                 DoorOpenTime = baselineCar.DoorOpenTime,
                 DoorCloseTime = baselineCar.DoorCloseTime,
                 HomeFloor = baselineCar.HomeFloor,
+                ServedFloorIndexes = [.. baselineCar.ServedFloorIndexes],
             },
             new ElevateProjectEditorCar
             {
@@ -169,6 +212,7 @@ public sealed class ElevateProjectEditorServiceTests
                 DoorOpenTime = baselineCar.DoorOpenTime,
                 DoorCloseTime = baselineCar.DoorCloseTime,
                 HomeFloor = baselineCar.HomeFloor,
+                ServedFloorIndexes = [.. baselineCar.ServedFloorIndexes],
             },
             new ElevateProjectEditorCar
             {
@@ -182,6 +226,7 @@ public sealed class ElevateProjectEditorServiceTests
                 DoorOpenTime = baselineCar.DoorOpenTime,
                 DoorCloseTime = baselineCar.DoorCloseTime,
                 HomeFloor = baselineCar.HomeFloor,
+                ServedFloorIndexes = [.. baselineCar.ServedFloorIndexes],
             },
             new ElevateProjectEditorCar
             {
@@ -195,6 +240,7 @@ public sealed class ElevateProjectEditorServiceTests
                 DoorOpenTime = baselineCar.DoorOpenTime,
                 DoorCloseTime = baselineCar.DoorCloseTime,
                 HomeFloor = baselineCar.HomeFloor,
+                ServedFloorIndexes = [.. baselineCar.ServedFloorIndexes],
             },
         ];
 
@@ -310,7 +356,7 @@ public sealed class ElevateProjectEditorServiceTests
         {
             FloorIndex = 1,
             SourceFloorName = string.Empty,
-            FloorName = "Level -2",
+            FloorName = "Level -4",
             InterfloorHeight = 3.9,
             FloorLevel = 3.9,
             Population = 0,
@@ -338,7 +384,7 @@ public sealed class ElevateProjectEditorServiceTests
         List<XElement> floors = buildingData.Elements("Floor").ToList();
         Assert.Equal(document.Floors.Count, floors.Count);
         Assert.Equal(document.Floors.Count.ToString(CultureInfo.InvariantCulture), (string?)buildingData.Attribute("NoOfFloors"));
-        Assert.Equal("Level -2", (string?)floors[0].Attribute("FloorName"));
+        Assert.Equal("Level -4", (string?)floors[0].Attribute("FloorName"));
         Assert.Equal("3.900000", (string?)floors[0].Attribute("FloorLevel"));
         Assert.Equal(originalFirstFloorName, (string?)floors[1].Attribute("FloorName"));
     }
@@ -356,7 +402,7 @@ public sealed class ElevateProjectEditorServiceTests
         {
             FloorIndex = 1,
             SourceFloorName = string.Empty,
-            FloorName = "Level -2",
+            FloorName = "Level -4",
             InterfloorHeight = 3.9,
             FloorLevel = 3.9,
             Population = 0,
@@ -397,7 +443,7 @@ public sealed class ElevateProjectEditorServiceTests
             to => string.Equals((string?)to.Attribute("FloorName"), "Lobby", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants("Floor"),
-            floor => string.Equals((string?)floor.Attribute("FloorName"), "Level -2", StringComparison.Ordinal) &&
+            floor => string.Equals((string?)floor.Attribute("FloorName"), "Level -4", StringComparison.Ordinal) &&
                      floor.Parent?.Name == "XDispatch");
 
         XElement firstCarServedFloor = root
@@ -440,7 +486,7 @@ public sealed class ElevateProjectEditorServiceTests
 
     private static string GetExampleDirectory()
     {
-        DirectoryInfo current = new(AppContext.BaseDirectory);
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
         while (current is not null)
         {
             string examplePath = Path.Combine(current.FullName, ".example");

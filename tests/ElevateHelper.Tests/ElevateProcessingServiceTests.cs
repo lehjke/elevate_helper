@@ -171,7 +171,7 @@ public sealed class ElevateProcessingServiceTests
     public async Task RunAsync_OfficeFlow_PreservesCompletedMorningWhenAddingLunch()
     {
         using TestWorkspace workspace = new();
-        _ = workspace.CreateSampleElvx("Project01.elvx");
+        string sourcePath = workspace.CreateSampleElvx("Project01.elvx");
         string morningPath = System.IO.Path.Combine(workspace.Path, "morning");
         Directory.CreateDirectory(morningPath);
         File.WriteAllText(System.IO.Path.Combine(morningPath, "Project01.elvx"), "<Project />");
@@ -181,6 +181,15 @@ public sealed class ElevateProcessingServiceTests
         File.WriteAllText(System.IO.Path.Combine(morningPath, "batch_results.csv"), "morning batch");
         string preservedFilePath = System.IO.Path.Combine(morningPath, "keep.txt");
         File.WriteAllText(preservedFilePath, "do not delete");
+        ElevateScenarioStateService scenarioStateService = new();
+        scenarioStateService.Save(
+            morningPath,
+            scenarioStateService.CreateFingerprint(
+                sourcePath,
+                "Project01.elvx",
+                "Morning",
+                copiesCount: 2),
+            ["Project01.elvx", "Project02.elvx"]);
 
         FakeLauncherService launcher = new();
         ElevateProcessingService service = new(launcher);
@@ -198,6 +207,86 @@ public sealed class ElevateProcessingServiceTests
         Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "lunch", "Project02.elvx")));
         Assert.Single(launcher.OfficeCalls);
         Assert.Equal((workspace.Path, true), launcher.OfficeCalls[0]);
+    }
+
+    [Fact]
+    public async Task RunAsync_OfficeFlow_RebuildsChangedScenarioWithoutDeletingUnknownFiles()
+    {
+        using TestWorkspace workspace = new();
+        string sourcePath = workspace.CreateSampleElvx("Project01.elvx");
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult firstRun = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+        Assert.True(firstRun.Success, firstRun.Message);
+
+        string morningPath = System.IO.Path.Combine(workspace.Path, "morning");
+        string staleCsvPath = System.IO.Path.Combine(morningPath, "Project01_elvx.csv");
+        string unrelatedProjectPath = System.IO.Path.Combine(morningPath, "Other.elvx");
+        string unrelatedCsvPath = System.IO.Path.Combine(morningPath, "Other_elvx.csv");
+        File.WriteAllText(staleCsvPath, "stale");
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "Project02_elvx.csv"), "stale");
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "batch_results.csv"), "stale");
+        File.WriteAllText(unrelatedProjectPath, "<Project />");
+        File.WriteAllText(unrelatedCsvPath, "keep");
+
+        XDocument changedSource = XDocument.Load(sourcePath);
+        changedSource.Root?
+            .Element("JobData")?
+            .SetAttributeValue("JobTitle", "Changed project");
+        changedSource.Save(sourcePath);
+
+        ProcessingResult secondRun = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+
+        Assert.True(secondRun.Success, secondRun.Message);
+        Assert.False(File.Exists(staleCsvPath));
+        Assert.True(File.Exists(unrelatedProjectPath));
+        Assert.Equal("keep", File.ReadAllText(unrelatedCsvPath));
+        string scenarioTitle = (string?)XDocument
+            .Load(System.IO.Path.Combine(morningPath, "Project01.elvx"))
+            .Root?
+            .Element("JobData")?
+            .Attribute("JobTitle") ?? string.Empty;
+        Assert.Contains("Changed project", scenarioTitle, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_OfficeFlow_RebuildsScenarioWhenManagedProjectWasEdited()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult firstRun = await service.RunAsync(
+            copiesCount: 1,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+        Assert.True(firstRun.Success, firstRun.Message);
+
+        string morningPath = System.IO.Path.Combine(workspace.Path, "morning");
+        string scenarioProjectPath = System.IO.Path.Combine(morningPath, "Project01.elvx");
+        File.AppendAllText(scenarioProjectPath, "<!-- manual edit -->");
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "Project01_elvx.csv"), "complete");
+        File.WriteAllText(System.IO.Path.Combine(morningPath, "batch_results.csv"), "complete");
+
+        ProcessingResult secondRun = await service.RunAsync(
+            copiesCount: 1,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+
+        Assert.True(secondRun.Success, secondRun.Message);
+        Assert.DoesNotContain("manual edit", File.ReadAllText(scenarioProjectPath), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -439,13 +528,83 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_ResidenceFlow_TracksCopiesCreatedBeforeLaterConflict()
+    {
+        using TestWorkspace workspace = new();
+        _ = workspace.CreateSampleElvx("Project01.elvx");
+        string conflictPath = workspace.CreateSampleElvx("Project03.elvx");
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult failedResult = await service.RunAsync(
+            copiesCount: 3,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+
+        string generatedCopyPath = System.IO.Path.Combine(workspace.Path, "Project02.elvx");
+        string generatedCopiesManifestPath = System.IO.Path.Combine(
+            workspace.Path,
+            ".elevate-helper.generated-copies.txt");
+        Assert.False(failedResult.Success);
+        Assert.True(File.Exists(generatedCopyPath));
+        Assert.Contains("Project02.elvx", File.ReadAllLines(generatedCopiesManifestPath));
+
+        File.Delete(conflictPath);
+        ProcessingResult recoveredResult = await service.RunAsync(
+            copiesCount: 3,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+
+        Assert.True(recoveredResult.Success, recoveredResult.Message);
+        Assert.True(File.Exists(generatedCopyPath));
+        Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "Project03.elvx")));
+    }
+
+    [Theory]
+    [InlineData("../outside.elvx")]
+    [InlineData("..\\outside.elvx")]
+    [InlineData("nested/outside.elvx")]
+    [InlineData("nested\\outside.elvx")]
+    [InlineData("C:\\outside.elvx")]
+    [InlineData("outside.txt")]
+    public void TryResolveTrackedGeneratedCopyPath_RejectsUnsafeEntries(string manifestEntry)
+    {
+        using TestWorkspace workspace = new();
+
+        bool resolved = ElevateProcessingService.TryResolveTrackedGeneratedCopyPath(
+            workspace.Path,
+            manifestEntry,
+            out _);
+
+        Assert.False(resolved);
+    }
+
+    [Fact]
+    public void TryResolveTrackedGeneratedCopyPath_AcceptsDirectElvxFile()
+    {
+        using TestWorkspace workspace = new();
+
+        bool resolved = ElevateProcessingService.TryResolveTrackedGeneratedCopyPath(
+            workspace.Path,
+            "Project02.elvx",
+            out string candidatePath);
+
+        Assert.True(resolved);
+        Assert.Equal(System.IO.Path.Combine(workspace.Path, "Project02.elvx"), candidatePath);
+    }
+
+    [Fact]
     public async Task RetryLastFailedRunAsync_RerunsLatestFailedManifest()
     {
         using TestWorkspace workspace = new();
         _ = workspace.CreateSampleElvx("Project01.elvx");
-        string conflictPath = workspace.CreateSampleElvx("Project02.elvx");
 
-        FakeLauncherService launcher = new();
+        FakeLauncherService launcher = new()
+        {
+            ResidenceFailuresRemaining = 1,
+        };
         ElevateProcessingService service = new(launcher);
 
         ProcessingResult failedResult = await service.RunAsync(
@@ -453,13 +612,14 @@ public sealed class ElevateProcessingServiceTests
             path: workspace.Path,
             buildingType: BuildingType.Residence,
             includeLunchPeak: true);
-        File.Delete(conflictPath);
 
         ProcessingResult retryResult = await service.RetryLastFailedRunAsync(workspace.Path);
 
         Assert.False(failedResult.Success);
         Assert.True(retryResult.Success, retryResult.Message);
-        Assert.Single(launcher.ResidenceCalls);
+        Assert.Equal(2, launcher.ResidenceCalls.Count);
+        Assert.Single(launcher.ExistingResidenceCalls);
+        Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "Project02.elvx")));
 
         ElevateRunManifest currentManifest = ReadRunManifest(workspace.Path);
         IReadOnlyList<ElevateRunManifest> history = service.GetRunHistory(workspace.Path);
@@ -513,8 +673,32 @@ public sealed class ElevateProcessingServiceTests
 
         Assert.True(result.Success, result.Message);
         Assert.Single(launcher.ResidenceCalls);
+        Assert.Single(launcher.ExistingResidenceCalls);
         Assert.True(File.Exists(generatedCopy));
         Assert.Equal("keep", File.ReadAllText(staleResult));
+    }
+
+    [Fact]
+    public async Task RunExistingBatchAsync_OfficeUsesResumeLauncher()
+    {
+        using TestWorkspace workspace = new();
+        Directory.CreateDirectory(System.IO.Path.Combine(workspace.Path, "morning"));
+        Directory.CreateDirectory(System.IO.Path.Combine(workspace.Path, "lunch"));
+        _ = workspace.CreateSampleElvx(System.IO.Path.Combine("morning", "Project01.elvx"));
+        _ = workspace.CreateSampleElvx(System.IO.Path.Combine("lunch", "Project01.elvx"));
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunExistingBatchAsync(
+            workspace.Path,
+            BuildingType.Office,
+            includeLunchPeak: true,
+            morningProgress: null,
+            lunchProgress: null);
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal([(workspace.Path, true)], launcher.ExistingOfficeCalls);
+        Assert.Equal([(workspace.Path, true)], launcher.OfficeCalls);
     }
 
     [Fact]
@@ -534,6 +718,7 @@ public sealed class ElevateProcessingServiceTests
 
         Assert.True(result.Success, result.Message);
         Assert.Equal([morningPath], launcher.ResidenceCalls);
+        Assert.Equal([morningPath], launcher.ExistingResidenceCalls);
         Assert.Empty(launcher.OfficeCalls);
     }
 
@@ -575,10 +760,14 @@ public sealed class ElevateProcessingServiceTests
     {
         public List<string> ResidenceCalls { get; } = [];
         public List<(string Path, bool IncludeLunchPeak)> OfficeCalls { get; } = [];
+        public List<string> ExistingResidenceCalls { get; } = [];
+        public List<(string Path, bool IncludeLunchPeak)> ExistingOfficeCalls { get; } = [];
 
         public bool WindowsHidden { get; private set; } = true;
 
         public bool WaitForResidenceCancellation { get; init; }
+
+        public int ResidenceFailuresRemaining { get; set; }
 
         public void SetWindowsHidden(bool hidden)
         {
@@ -588,6 +777,12 @@ public sealed class ElevateProcessingServiceTests
         public Task LaunchResidenceAsync(string path, CancellationToken cancellationToken = default)
         {
             ResidenceCalls.Add(path);
+            if (ResidenceFailuresRemaining > 0)
+            {
+                ResidenceFailuresRemaining--;
+                throw new InvalidOperationException("Simulated Elevate launch failure.");
+            }
+
             return WaitForResidenceCancellation
                 ? WaitForCancellationAsync(cancellationToken)
                 : Task.CompletedTask;
@@ -600,6 +795,26 @@ public sealed class ElevateProcessingServiceTests
         {
             OfficeCalls.Add((path, includeLunchPeak));
             return Task.CompletedTask;
+        }
+
+        public Task LaunchExistingResidenceAsync(
+            string path,
+            IProgress<ElevateProgressInfo>? progress,
+            CancellationToken cancellationToken = default)
+        {
+            ExistingResidenceCalls.Add(path);
+            return LaunchResidenceAsync(path, cancellationToken);
+        }
+
+        public Task LaunchExistingOfficeAsync(
+            string path,
+            bool includeLunchPeak,
+            IProgress<ElevateProgressInfo>? morningProgress,
+            IProgress<ElevateProgressInfo>? lunchProgress,
+            CancellationToken cancellationToken = default)
+        {
+            ExistingOfficeCalls.Add((path, includeLunchPeak));
+            return LaunchOfficeAsync(path, includeLunchPeak, cancellationToken);
         }
 
         private static async Task WaitForCancellationAsync(CancellationToken cancellationToken)

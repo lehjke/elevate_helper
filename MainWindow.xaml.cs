@@ -9,6 +9,8 @@ public sealed partial class MainWindow : Window
     private const int PreferredWidth = 1100;
     private const int PreferredHeight = 900;
     private const int WorkAreaMargin = 80;
+    private bool closeAllowed;
+    private bool shutdownInProgress;
 
     public MainWindow()
     {
@@ -16,6 +18,37 @@ public sealed partial class MainWindow : Window
         this.Title = "Elevate Helper";
         ConfigureWindowIcon();
         ConfigureWindowSize();
+        AppWindow.Closing += OnAppWindowClosing;
+    }
+
+    private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (closeAllowed)
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        if (shutdownInProgress)
+        {
+            return;
+        }
+
+        shutdownInProgress = true;
+        try
+        {
+            await MainPageContent.ShutdownAsync();
+        }
+        catch
+        {
+            // Closing must still complete after best-effort process and COM cleanup.
+        }
+        finally
+        {
+            closeAllowed = true;
+            shutdownInProgress = false;
+            Close();
+        }
     }
 
     private void ConfigureWindowIcon()

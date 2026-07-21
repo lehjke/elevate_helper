@@ -65,6 +65,12 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             return Task.FromResult(ProcessingResult.Fail("Output path is empty."));
         }
 
+        string? validationError = ValidateDocument(document);
+        if (!string.IsNullOrWhiteSpace(validationError))
+        {
+            return Task.FromResult(ProcessingResult.Fail(validationError));
+        }
+
         string basePath = ResolveBasePath(document);
         XDocument xDocument = LoadDocument(basePath);
 
@@ -79,6 +85,92 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
 
         document.SourcePath = outputPath;
         return Task.FromResult(ProcessingResult.Ok("ELVX saved: " + outputPath));
+    }
+
+    internal static string? ValidateDocument(ElevateProjectEditorDocument document)
+    {
+        if (document.Floors.Count == 0)
+        {
+            return "Building table must contain at least one floor.";
+        }
+
+        HashSet<string> floorNames = new(StringComparer.OrdinalIgnoreCase);
+        double entranceBiasTotal = 0d;
+        int entranceFloorCount = 0;
+
+        for (int index = 0; index < document.Floors.Count; index++)
+        {
+            ElevateProjectEditorFloor floor = document.Floors[index];
+            string floorName = floor.FloorName.Trim();
+            if (string.IsNullOrWhiteSpace(floorName))
+            {
+                return $"Floor {index + 1} must have a name.";
+            }
+
+            if (!floorNames.Add(floorName))
+            {
+                return $"Floor name '{floorName}' is duplicated.";
+            }
+
+            if (!double.IsFinite(floor.InterfloorHeight) || floor.InterfloorHeight < 0d)
+            {
+                return $"Floor '{floorName}' has an invalid interfloor height.";
+            }
+
+            if (!double.IsFinite(floor.Population) || floor.Population < 0d)
+            {
+                return $"Floor '{floorName}' has an invalid population.";
+            }
+
+            if (!double.IsFinite(floor.EntranceBiasPercent) ||
+                floor.EntranceBiasPercent < 0d ||
+                floor.EntranceBiasPercent > 100d)
+            {
+                return $"Floor '{floorName}' has an entrance bias outside 0-100%.";
+            }
+
+            if (floor.EntranceFloor)
+            {
+                entranceFloorCount++;
+                entranceBiasTotal += floor.EntranceBiasPercent;
+            }
+            else if (Math.Abs(floor.EntranceBiasPercent) > 0.01d)
+            {
+                return $"Non-entrance floor '{floorName}' must have a 0% entrance bias.";
+            }
+        }
+
+        if (entranceFloorCount == 0)
+        {
+            return "At least one entrance floor is required.";
+        }
+
+        if (Math.Abs(entranceBiasTotal - 100d) > 0.01d)
+        {
+            return $"Entrance floor bias must total 100%, but it totals {entranceBiasTotal:0.##}%.";
+        }
+
+        if (document.Cars.Count == 0)
+        {
+            return "Lift group must contain at least one elevator.";
+        }
+
+        for (int index = 0; index < document.Cars.Count; index++)
+        {
+            ElevateProjectEditorCar car = document.Cars[index];
+            if (car.ServedFloorIndexes.Count == 0)
+            {
+                return $"Elevator {index + 1} must serve at least one floor.";
+            }
+
+            if (car.ServedFloorIndexes.Any(floorIndex =>
+                    floorIndex < 1 || floorIndex > document.Floors.Count))
+            {
+                return $"Elevator {index + 1} contains an invalid served floor.";
+            }
+        }
+
+        return null;
     }
 
     public string SuggestFileName(ElevateProjectEditorDocument document)
@@ -525,18 +617,11 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
 
         carElement.Elements().Remove();
 
-        List<int> servedFloorIndexes = car.ServedFloorIndexes.Count > 0
-            ? car.ServedFloorIndexes
-                .Where(floorIndex => floorIndex >= 1 && floorIndex <= floors.Count)
-                .Distinct()
-                .OrderBy(floorIndex => floorIndex)
-                .ToList()
-            : Enumerable.Range(1, floors.Count).ToList();
-
-        if (servedFloorIndexes.Count == 0)
-        {
-            servedFloorIndexes = Enumerable.Range(1, floors.Count).ToList();
-        }
+        List<int> servedFloorIndexes = car.ServedFloorIndexes
+            .Where(floorIndex => floorIndex >= 1 && floorIndex <= floors.Count)
+            .Distinct()
+            .OrderBy(floorIndex => floorIndex)
+            .ToList();
 
         foreach (int floorIndex in servedFloorIndexes)
         {

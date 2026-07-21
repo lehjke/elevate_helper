@@ -1,6 +1,8 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
@@ -29,6 +31,18 @@ public sealed class ElevateReportService : IElevateReportService
     private const int MeteorBlue = 10 + (39 * 256) + (81 * 65536);
     private static readonly TimeSpan ExcelQuitGracePeriod = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ExcelKillGracePeriod = TimeSpan.FromSeconds(2);
+    private static readonly ConcurrentDictionary<int, byte> OwnedExcelProcessIds = new();
+
+    public Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (int processId in OwnedExcelProcessIds.Keys.ToArray())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            TryTerminateOwnedExcelProcess(processId);
+        }
+
+        return Task.CompletedTask;
+    }
 
     public async Task<ProcessingResult> PrintReportAsync(
         string path,
@@ -160,7 +174,7 @@ public sealed class ElevateReportService : IElevateReportService
         }
         catch (OperationCanceledException)
         {
-            return ProcessingResult.Fail("Report generation was canceled.");
+            throw;
         }
         catch (Exception ex)
         {
@@ -191,6 +205,10 @@ public sealed class ElevateReportService : IElevateReportService
         HashSet<int> existingExcelProcessIds = CaptureExcelProcessIds();
         int? excelProcessId = null;
         bool ownsExcelProcess = false;
+        GeneratedReportPaths outputPaths = default;
+        string? temporaryExcelPath = null;
+        string? temporaryPdfPath = null;
+        bool generationSucceeded = false;
 
         try
         {
@@ -212,6 +230,10 @@ public sealed class ElevateReportService : IElevateReportService
             excelProcessId = TryGetExcelProcessId(excelApp);
             ownsExcelProcess = excelProcessId.HasValue &&
                                !existingExcelProcessIds.Contains(excelProcessId.Value);
+            if (ownsExcelProcess && excelProcessId.HasValue)
+            {
+                OwnedExcelProcessIds.TryAdd(excelProcessId.Value, 0);
+            }
 
             workbooks = excelApp.Workbooks;
             workbook = workbooks.Open(templatePath);
@@ -228,16 +250,19 @@ public sealed class ElevateReportService : IElevateReportService
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            GeneratedReportPaths outputPaths = BuildOutputPaths(outputFolder, jobData[1], jobData[2], fileNameSuffix);
+            Directory.CreateDirectory(outputFolder);
+            outputPaths = BuildOutputPaths(outputFolder, jobData[1], jobData[2], fileNameSuffix);
+            temporaryExcelPath = BuildTemporaryOutputPath(outputPaths.ExcelPath);
+            temporaryPdfPath = BuildTemporaryOutputPath(outputPaths.PdfPath);
 
             workbook.Sheets(SheetAssessment).Activate();
-            TryDeleteFile(outputPaths.ExcelPath);
-            TryDeleteFile(outputPaths.PdfPath);
-            workbook.SaveAs(outputPaths.ExcelPath, XlOpenXmlWorkbook);
+            workbook.SaveAs(temporaryExcelPath, XlOpenXmlWorkbook);
+            cancellationToken.ThrowIfCancellationRequested();
             workbook.Save();
-            workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, outputPaths.PdfPath, Type.Missing, true, false);
-
-            return outputPaths;
+            cancellationToken.ThrowIfCancellationRequested();
+            workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, temporaryPdfPath, Type.Missing, true, false);
+            cancellationToken.ThrowIfCancellationRequested();
+            generationSucceeded = true;
         }
         finally
         {
@@ -283,7 +308,35 @@ public sealed class ElevateReportService : IElevateReportService
             excelApp = null;
             excel = null;
             ForceComCleanup();
-            EnsureOwnedExcelProcessExited(excelProcessId, ownsExcelProcess);
+            if (EnsureOwnedExcelProcessExited(excelProcessId, ownsExcelProcess) &&
+                excelProcessId.HasValue)
+            {
+                OwnedExcelProcessIds.TryRemove(excelProcessId.Value, out _);
+            }
+
+            if (!generationSucceeded)
+            {
+                TryDeleteTemporaryFile(temporaryExcelPath);
+                TryDeleteTemporaryFile(temporaryPdfPath);
+            }
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            GeneratedReportPublisher.Publish(
+                temporaryExcelPath!,
+                outputPaths.ExcelPath,
+                temporaryPdfPath!,
+                outputPaths.PdfPath);
+            temporaryExcelPath = null;
+            temporaryPdfPath = null;
+            return outputPaths;
+        }
+        finally
+        {
+            TryDeleteTemporaryFile(temporaryExcelPath);
+            TryDeleteTemporaryFile(temporaryPdfPath);
         }
     }
 
@@ -306,6 +359,41 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         return processIds;
+    }
+
+    private static bool TryTerminateOwnedExcelProcess(int processId)
+    {
+        bool exited = false;
+        try
+        {
+            using Process process = Process.GetProcessById(processId);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                exited = process.WaitForExit((int)ExcelKillGracePeriod.TotalMilliseconds);
+            }
+            else
+            {
+                exited = true;
+            }
+        }
+        catch (ArgumentException)
+        {
+            exited = true;
+        }
+        catch (Exception ex) when (
+            ex is InvalidOperationException or
+                System.ComponentModel.Win32Exception or
+                NotSupportedException)
+        {
+        }
+
+        if (exited)
+        {
+            OwnedExcelProcessIds.TryRemove(processId, out _);
+        }
+
+        return exited;
     }
 
     private static int? TryGetExcelProcessId(dynamic excelApp)
@@ -335,11 +423,11 @@ public sealed class ElevateReportService : IElevateReportService
         GC.WaitForPendingFinalizers();
     }
 
-    private static void EnsureOwnedExcelProcessExited(int? processId, bool ownsExcelProcess)
+    private static bool EnsureOwnedExcelProcessExited(int? processId, bool ownsExcelProcess)
     {
         if (!ownsExcelProcess || processId is null)
         {
-            return;
+            return true;
         }
 
         try
@@ -347,14 +435,15 @@ public sealed class ElevateReportService : IElevateReportService
             using Process process = Process.GetProcessById(processId.Value);
             if (process.WaitForExit(ExcelQuitGracePeriod))
             {
-                return;
+                return true;
             }
 
             process.Kill(entireProcessTree: true);
-            _ = process.WaitForExit(ExcelKillGracePeriod);
+            return process.WaitForExit(ExcelKillGracePeriod);
         }
         catch (ArgumentException)
         {
+            return true;
         }
         catch (InvalidOperationException)
         {
@@ -365,6 +454,8 @@ public sealed class ElevateReportService : IElevateReportService
         catch (NotSupportedException)
         {
         }
+
+        return false;
     }
 
     [DllImport("user32.dll")]
@@ -2410,10 +2501,49 @@ public sealed class ElevateReportService : IElevateReportService
 
             return new ReportOutputTarget(
                 scenarioOutputFolder,
-                folderName.ToLowerInvariant());
+                normalizedOutputFolder is null
+                    ? folderName.ToLowerInvariant()
+                    : BuildOutputDiscriminator(
+                        Directory.GetParent(normalizedReportRoot)?.FullName ?? normalizedReportRoot,
+                        normalizedOutputFolder,
+                        folderName.ToLowerInvariant()));
         }
 
-        return new ReportOutputTarget(normalizedOutputFolder ?? normalizedReportRoot, null);
+        return new ReportOutputTarget(
+            normalizedOutputFolder ?? normalizedReportRoot,
+            normalizedOutputFolder is null
+                ? null
+                : BuildOutputDiscriminator(normalizedReportRoot, normalizedOutputFolder, scenario: null));
+    }
+
+    private static string? BuildOutputDiscriminator(
+        string groupFolder,
+        string outputFolder,
+        string? scenario)
+    {
+        string relativePath = Path.GetRelativePath(outputFolder, groupFolder);
+        bool isOutsideOutputFolder = Path.IsPathRooted(relativePath) ||
+            relativePath.Equals("..", StringComparison.Ordinal) ||
+            relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+            relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal);
+
+        if (isOutsideOutputFolder || relativePath.Equals(".", StringComparison.Ordinal))
+        {
+            return scenario;
+        }
+
+        string groupIdentity = relativePath
+            .Replace(Path.DirectorySeparatorChar.ToString(), " - ", StringComparison.Ordinal)
+            .Replace(Path.AltDirectorySeparatorChar.ToString(), " - ", StringComparison.Ordinal);
+        string normalizedIdentity = relativePath
+            .Replace(Path.DirectorySeparatorChar, '/')
+            .Replace(Path.AltDirectorySeparatorChar, '/');
+        string identityHash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(normalizedIdentity)))[..8];
+        string uniqueGroupIdentity = $"{groupIdentity} [{identityHash}]";
+        return string.IsNullOrWhiteSpace(scenario)
+            ? uniqueGroupIdentity
+            : $"{uniqueGroupIdentity} {scenario}";
     }
 
     private static bool IsOfficeScenarioFolder(string folderName)
@@ -2654,8 +2784,21 @@ public sealed class ElevateReportService : IElevateReportService
         };
     }
 
-    private static void TryDeleteFile(string path)
+    private static string BuildTemporaryOutputPath(string destinationPath)
     {
+        string directory = Path.GetDirectoryName(destinationPath)
+            ?? throw new InvalidOperationException($"Cannot resolve report output directory for {destinationPath}.");
+        string extension = Path.GetExtension(destinationPath);
+        return Path.Combine(directory, $".elevate-helper-{Guid.NewGuid():N}{extension}");
+    }
+
+    private static void TryDeleteTemporaryFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
         try
         {
             if (File.Exists(path))
@@ -2665,7 +2808,7 @@ public sealed class ElevateReportService : IElevateReportService
         }
         catch
         {
-            // Ignore stale output cleanup errors and let Excel surface a save error if needed.
+            // Best-effort cleanup for an incomplete temporary report.
         }
     }
 

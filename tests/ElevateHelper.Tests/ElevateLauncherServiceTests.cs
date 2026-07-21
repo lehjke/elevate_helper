@@ -230,6 +230,24 @@ public sealed class ElevateLauncherServiceTests
     }
 
     [Fact]
+    public void CountCompletedResultFiles_ResumeBaselineIncludesExistingOutputs()
+    {
+        using LauncherTestWorkspace workspace = new();
+        string existingCsvPath = Path.Combine(workspace.RootPath, "Probe 01_elvx.csv");
+        File.WriteAllText(existingCsvPath, "done");
+        ElevateLauncherService.ResultFileBaseline resumeBaseline = new(
+            DateTimeOffset.UtcNow,
+            new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase));
+
+        int actual = ElevateLauncherService.CountCompletedResultFiles(
+            workspace.RootPath,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Probe 01" },
+            resumeBaseline);
+
+        Assert.Equal(1, actual);
+    }
+
+    [Fact]
     public void CountCompletedCsvFiles_IgnoresElvrUntilCsvExists()
     {
         using LauncherTestWorkspace workspace = new();
@@ -288,6 +306,40 @@ public sealed class ElevateLauncherServiceTests
         bool actual = ElevateLauncherService.HasCompletedScenarioOutputs(workspace.RootPath, expectedTotal: 2);
 
         Assert.False(actual);
+    }
+
+    [Theory]
+    [InlineData("Probe 01_elvx.csv")]
+    [InlineData("batch_results.csv")]
+    public void HasCompletedScenarioOutputs_ReturnsFalseForEmptyRequiredOutput(string emptyFileName)
+    {
+        using LauncherTestWorkspace workspace = new();
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 01.elvx"), "<Project />");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "Probe 01_elvx.csv"), "done");
+        File.WriteAllText(Path.Combine(workspace.RootPath, "batch_results.csv"), "done");
+        File.WriteAllText(Path.Combine(workspace.RootPath, emptyFileName), string.Empty);
+
+        bool actual = ElevateLauncherService.HasCompletedScenarioOutputs(workspace.RootPath);
+
+        Assert.False(actual);
+    }
+
+    [Fact]
+    public void ProgressStallWatchdog_ResetsOnlyWhenObservableProgressChanges()
+    {
+        TimeSpan timeout = TimeSpan.FromMinutes(5);
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
+        ElevateLauncherService.ProgressStallWatchdog watchdog = new(timeout);
+        ElevateLauncherService.ProgressActivity initial = new(1, 0, 0, false);
+
+        watchdog.Observe(initial, startedAt);
+
+        Assert.False(watchdog.IsStalled(startedAt + timeout - TimeSpan.FromSeconds(1)));
+        Assert.True(watchdog.IsStalled(startedAt + timeout));
+
+        watchdog.Observe(initial with { CompletedCsvFiles = 1 }, startedAt + timeout);
+
+        Assert.False(watchdog.IsStalled(startedAt + timeout + TimeSpan.FromMinutes(4)));
     }
 
     private sealed class LauncherTestWorkspace : IDisposable

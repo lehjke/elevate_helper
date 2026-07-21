@@ -119,7 +119,15 @@ public sealed class AppUpdateService
             Arguments = BuildSilentInstallerArguments(),
             UseShellExecute = true,
         };
-        _ = Process.Start(startInfo);
+        using Process installerProcess = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("The update installer could not be started.");
+        await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        installerProcess.Refresh();
+        if (installerProcess.HasExited && installerProcess.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"The update installer exited with code {installerProcess.ExitCode}.");
+        }
 
         return installerPath;
     }

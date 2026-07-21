@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -30,6 +30,7 @@
     <Compile Include="../../Models/ElevateIntegrationInfo.cs" Link="Source/Models/ElevateIntegrationInfo.cs" />
     <Compile Include="../../Models/ElevateProgressInfo.cs" Link="Source/Models/ElevateProgressInfo.cs" />
     <Compile Include="../../Models/ElevateResultMetrics.cs" Link="Source/Models/ElevateResultMetrics.cs" />
+    <Compile Include="../../Models/PersistedJobSnapshot.cs" Link="Source/Models/PersistedJobSnapshot.cs" />
     <Compile Include="../../Models/ProcessingResult.cs" Link="Source/Models/ProcessingResult.cs" />
     <Compile Include="../../Services/AppLocalizationService.cs" Link="Source/Services/AppLocalizationService.cs" />
     <Compile Include="../../Services/AppUpdateService.cs" Link="Source/Services/AppUpdateService.cs" />
@@ -41,12 +42,16 @@
     <Compile Include="../../Services/ElevateLauncherService.cs" Link="Source/Services/ElevateLauncherService.cs" />
     <Compile Include="../../Services/LiftGroupRulesService.cs" Link="Source/Services/LiftGroupRulesService.cs" />
     <Compile Include="../../Services/IElevateReportService.cs" Link="Source/Services/IElevateReportService.cs" />
+    <Compile Include="../../Services/GeneratedReportPublisher.cs" Link="Source/Services/GeneratedReportPublisher.cs" />
     <Compile Include="../../Services/ElevateReportService.cs" Link="Source/Services/ElevateReportService.cs" />
     <Compile Include="../../Services/IElevateProcessingService.cs" Link="Source/Services/IElevateProcessingService.cs" />
     <Compile Include="../../Services/ElevateRunManifestService.cs" Link="Source/Services/ElevateRunManifestService.cs" />
     <Compile Include="../../Services/ElevateWorkflowRunner.cs" Link="Source/Services/ElevateWorkflowRunner.cs" />
     <Compile Include="../../Services/ElevateProcessingService.cs" Link="Source/Services/ElevateProcessingService.cs" />
+    <Compile Include="../../Services/ElevateScenarioStateService.cs" Link="Source/Services/ElevateScenarioStateService.cs" />
     <Compile Include="../../Services/ElevateProjectBatchDiscoveryService.cs" Link="Source/Services/ElevateProjectBatchDiscoveryService.cs" />
+    <Compile Include="../../Services/ProcessingFolderLeaseRegistry.cs" Link="Source/Services/ProcessingFolderLeaseRegistry.cs" />
+    <Compile Include="../../Services/JobQueuePersistenceService.cs" Link="Source/Services/JobQueuePersistenceService.cs" />
     <Compile Include="../../Services/ElevateResultMetricsService.cs" Link="Source/Services/ElevateResultMetricsService.cs" />
   </ItemGroup>
 

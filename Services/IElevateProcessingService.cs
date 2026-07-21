@@ -8,9 +8,18 @@ public interface IElevateProcessingService
     {
     }
 
+    Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
     int GetDefaultCopies(BuildingType buildingType);
 
     IReadOnlyList<ElevateRunManifest> GetRunHistory(string path);
+
+    void RecordReportOutcome(string path, bool success, string? message = null)
+    {
+    }
 
     Task<ProcessingResult> RunAsync(
         string path,

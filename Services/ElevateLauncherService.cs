@@ -25,13 +25,16 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static readonly TimeSpan DialogCloseTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MainWindowAppearTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan BatchStartTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BatchProgressStallTimeout = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan CompletedOutputsSettleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProcessStopGracePeriod = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan ResultFileOpenRestartDelay = TimeSpan.FromSeconds(1);
     private const int MaxResultFileOpenRestarts = 3;
+    private const int MaxBatchStallRestarts = 1;
 
     private readonly IElevateIntegrationService integrationService;
     private readonly ConcurrentDictionary<int, ConcurrentDictionary<IntPtr, byte>> hiddenWindowsByProcess = new();
+    private readonly ConcurrentDictionary<int, Process> activeProcesses = new();
     private volatile bool hideWindows = true;
 
     public ElevateLauncherService()
@@ -49,6 +52,17 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         hideWindows = hidden;
     }
 
+    public Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (Process process in activeProcesses.Values.ToArray())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ForceTerminateProcess(process);
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task LaunchResidenceAsync(string path, CancellationToken cancellationToken = default)
     {
         return LaunchResidenceAsync(path, progress: null, cancellationToken);
@@ -59,7 +73,15 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         IProgress<ElevateProgressInfo>? progress,
         CancellationToken cancellationToken = default)
     {
-        return LaunchAndSubmitPathAsync(path, progress, cancellationToken);
+        return LaunchAndSubmitPathAsync(path, progress, includeExistingResults: false, cancellationToken);
+    }
+
+    public Task LaunchExistingResidenceAsync(
+        string path,
+        IProgress<ElevateProgressInfo>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return LaunchAndSubmitPathIfNeededAsync(path, progress, includeExistingResults: true, cancellationToken);
     }
 
     public Task LaunchOfficeAsync(
@@ -77,8 +99,45 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         IProgress<ElevateProgressInfo>? lunchProgress,
         CancellationToken cancellationToken = default)
     {
+        await LaunchOfficeCoreAsync(
+            path,
+            includeLunchPeak,
+            morningProgress,
+            lunchProgress,
+            includeExistingResults: false,
+            cancellationToken);
+    }
+
+    public async Task LaunchExistingOfficeAsync(
+        string path,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
+        CancellationToken cancellationToken = default)
+    {
+        await LaunchOfficeCoreAsync(
+            path,
+            includeLunchPeak,
+            morningProgress,
+            lunchProgress,
+            includeExistingResults: true,
+            cancellationToken);
+    }
+
+    private async Task LaunchOfficeCoreAsync(
+        string path,
+        bool includeLunchPeak,
+        IProgress<ElevateProgressInfo>? morningProgress,
+        IProgress<ElevateProgressInfo>? lunchProgress,
+        bool includeExistingResults,
+        CancellationToken cancellationToken)
+    {
         string morningPath = Path.Combine(path, "morning");
-        Task morningTask = LaunchScenarioAsync(morningPath, morningProgress, cancellationToken);
+        Task morningTask = LaunchScenarioAsync(
+            morningPath,
+            morningProgress,
+            includeExistingResults,
+            cancellationToken);
 
         if (!includeLunchPeak)
         {
@@ -87,7 +146,11 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
 
         string lunchPath = Path.Combine(path, "lunch");
-        Task lunchTask = LaunchScenarioAsync(lunchPath, lunchProgress, cancellationToken);
+        Task lunchTask = LaunchScenarioAsync(
+            lunchPath,
+            lunchProgress,
+            includeExistingResults,
+            cancellationToken);
 
         await Task.WhenAll(morningTask, lunchTask);
     }
@@ -95,11 +158,12 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private async Task LaunchScenarioAsync(
         string path,
         IProgress<ElevateProgressInfo>? progress,
+        bool includeExistingResults,
         CancellationToken cancellationToken)
     {
         try
         {
-            await LaunchAndSubmitPathIfNeededAsync(path, progress, cancellationToken);
+            await LaunchAndSubmitPathIfNeededAsync(path, progress, includeExistingResults, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -115,6 +179,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private async Task LaunchAndSubmitPathIfNeededAsync(
         string path,
         IProgress<ElevateProgressInfo>? progress,
+        bool includeExistingResults,
         CancellationToken cancellationToken)
     {
         if (TryBuildProgressContext(path, out ProgressContext progressContext) &&
@@ -124,12 +189,13 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             return;
         }
 
-        await LaunchAndSubmitPathAsync(path, progress, cancellationToken);
+        await LaunchAndSubmitPathAsync(path, progress, includeExistingResults, cancellationToken);
     }
 
     private async Task LaunchAndSubmitPathAsync(
         string path,
         IProgress<ElevateProgressInfo>? progress,
+        bool includeExistingResults,
         CancellationToken cancellationToken)
     {
         ProgressContext progressContext = BuildProgressContext(path);
@@ -143,12 +209,16 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 integrationInfo.ExecutablePath);
         }
 
-        ResultFileBaseline resultBaseline = CaptureResultFileBaseline(path);
+        ResultFileBaseline completionBaseline = CaptureResultFileBaseline(path, includeExistingResults);
         int resultFileOpenRestarts = 0;
+        int stallRestarts = 0;
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ResultFileBaseline attemptStartBaseline = CaptureResultFileBaseline(
+                path,
+                includeExistingResults: false);
 
             try
             {
@@ -156,7 +226,8 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                     integrationInfo.ExecutablePath,
                     path,
                     progressContext,
-                    resultBaseline,
+                    completionBaseline,
+                    attemptStartBaseline,
                     progress,
                     cancellationToken);
                 return;
@@ -173,6 +244,11 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 resultFileOpenRestarts++;
                 await Task.Delay(ResultFileOpenRestartDelay, cancellationToken);
             }
+            catch (ElevateBatchStalledException) when (stallRestarts < MaxBatchStallRestarts)
+            {
+                stallRestarts++;
+                await Task.Delay(ResultFileOpenRestartDelay, cancellationToken);
+            }
         }
     }
 
@@ -180,7 +256,8 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         string executablePath,
         string path,
         ProgressContext progressContext,
-        ResultFileBaseline resultBaseline,
+        ResultFileBaseline completionBaseline,
+        ResultFileBaseline attemptStartBaseline,
         IProgress<ElevateProgressInfo>? progress,
         CancellationToken cancellationToken)
     {
@@ -207,6 +284,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                     throw new InvalidOperationException("Unable to start Elevate.exe.");
                 }
 
+                activeProcesses[process.Id] = process;
                 stopRequest = new ProcessStopRequest(process);
                 stopRegistration = cancellationToken.Register(
                     static state => ((ProcessStopRequest)state!).Start(),
@@ -234,7 +312,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                     mainWindowHandle,
                     path,
                     progressContext,
-                    resultBaseline,
+                    attemptStartBaseline,
                     cancellationToken);
             }
             finally
@@ -249,7 +327,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 process,
                 path,
                 progressContext,
-                resultBaseline,
+                completionBaseline,
                 progress,
                 cancellationToken);
         }
@@ -264,6 +342,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             ForceTerminateProcess(process);
             if (process is not null)
             {
+                activeProcesses.TryRemove(process.Id, out _);
                 hiddenWindowsByProcess.TryRemove(process.Id, out _);
             }
 
@@ -562,8 +641,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         int observedMaximum = 0;
         int observedCompletedCsvFiles = 0;
         string? observedTitle = null;
-        bool hasStarted = false;
+        bool hasStarted = true;
         DateTimeOffset? completedOutputsSince = null;
+        ProgressStallWatchdog watchdog = new(BatchProgressStallTimeout);
 
         while (true)
         {
@@ -574,6 +654,20 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
             ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
             hasStarted |= observation.HasStarted;
+            DateTimeOffset observedAt = DateTimeOffset.UtcNow;
+            watchdog.Observe(
+                new ProgressActivity(
+                    observation.HighestWindowNumber,
+                    observation.CompletedFiles,
+                    observation.CompletedCsvFiles,
+                    observation.HasBatchResults),
+                observedAt);
+            if (hasStarted && watchdog.IsStalled(observedAt))
+            {
+                throw new ElevateBatchStalledException(
+                    $"Elevate produced no observable progress for {BatchProgressStallTimeout.TotalMinutes:0} minutes.");
+            }
+
             observedMaximum = Math.Max(observedMaximum, observation.HighestWindowNumber);
             observedCompletedCsvFiles = Math.Max(observedCompletedCsvFiles, observation.CompletedCsvFiles);
 
@@ -750,7 +844,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
         foreach (string file in Directory.EnumerateFiles(path))
         {
-            if (!IsTrackableResultFile(file, includeElvr) || !IsFreshResultFile(file, baseline))
+            if (!IsTrackableResultFile(file, includeElvr) ||
+                new FileInfo(file).Length == 0 ||
+                !IsFreshResultFile(file, baseline))
             {
                 continue;
             }
@@ -766,9 +862,14 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         return completed.Count;
     }
 
-    private static ResultFileBaseline CaptureResultFileBaseline(string path)
+    private static ResultFileBaseline CaptureResultFileBaseline(string path, bool includeExistingResults)
     {
         Dictionary<string, DateTime> existingFiles = new(StringComparer.OrdinalIgnoreCase);
+
+        if (includeExistingResults)
+        {
+            return new ResultFileBaseline(DateTimeOffset.UtcNow, existingFiles);
+        }
 
         foreach (string file in Directory.EnumerateFiles(path))
         {
@@ -805,7 +906,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static bool HasFreshBatchResults(string path, ResultFileBaseline? baseline)
     {
         string batchResultsPath = Path.Combine(path, "batch_results.csv");
-        return File.Exists(batchResultsPath) && IsFreshResultFile(batchResultsPath, baseline);
+        return File.Exists(batchResultsPath) &&
+               new FileInfo(batchResultsPath).Length > 0 &&
+               IsFreshResultFile(batchResultsPath, baseline);
     }
 
     private static bool IsFreshResultFile(string file, ResultFileBaseline? baseline)
@@ -1506,6 +1609,54 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private sealed class ElevateResultFileOpenException : Exception
     {
     }
+
+    private sealed class ElevateBatchStalledException : Exception
+    {
+        public ElevateBatchStalledException(string message)
+            : base(message)
+        {
+        }
+    }
+
+    internal sealed class ProgressStallWatchdog
+    {
+        private readonly TimeSpan timeout;
+        private ProgressActivity? lastActivity;
+        private DateTimeOffset lastChangeAtUtc;
+
+        public ProgressStallWatchdog(TimeSpan timeout)
+        {
+            if (timeout <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(timeout));
+            }
+
+            this.timeout = timeout;
+        }
+
+        public void Observe(ProgressActivity activity, DateTimeOffset observedAtUtc)
+        {
+            if (lastActivity == activity)
+            {
+                return;
+            }
+
+            lastActivity = activity;
+            lastChangeAtUtc = observedAtUtc;
+        }
+
+        public bool IsStalled(DateTimeOffset observedAtUtc)
+        {
+            return lastActivity is not null &&
+                   observedAtUtc - lastChangeAtUtc >= timeout;
+        }
+    }
+
+    internal sealed record ProgressActivity(
+        int HighestWindowNumber,
+        int CompletedFiles,
+        int CompletedCsvFiles,
+        bool HasBatchResults);
 
     internal sealed record ResultFileBaseline(
         DateTimeOffset CapturedAtUtc,

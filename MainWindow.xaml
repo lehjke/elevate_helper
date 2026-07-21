@@ -7,5 +7,5 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:views="using:ElevateHelperWinUI.Views"
     mc:Ignorable="d">
-    <views:MainPage />
+    <views:MainPage x:Name="MainPageContent" />
 </Window>

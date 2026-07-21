@@ -204,6 +204,143 @@ public sealed class ElevateReportServiceTests
         Assert.Equal("morning", outputTarget.FileNameSuffix);
     }
 
+    [Fact]
+    public void ResolveReportOutputTarget_AddsBatchGroupPathToFileNameSuffix()
+    {
+        using ReportTestWorkspace workspace = new();
+        string scenarioPath = workspace.CreateDirectory(Path.Combine("Office", "G1", "morning"));
+
+        ElevateReportService.ReportOutputTarget outputTarget =
+            ElevateReportService.ResolveReportOutputTarget(scenarioPath, workspace.RootPath);
+
+        Assert.Equal(workspace.RootPath, outputTarget.OutputFolder);
+        Assert.Matches(
+            "^Office - G1 \\[[0-9A-F]{8}\\] morning$",
+            outputTarget.FileNameSuffix);
+    }
+
+    [Fact]
+    public void ResolveReportOutputTarget_AddsNonOfficeBatchGroupPathToFileNameSuffix()
+    {
+        using ReportTestWorkspace workspace = new();
+        string groupPath = workspace.CreateDirectory(Path.Combine("Res", "G2"));
+
+        ElevateReportService.ReportOutputTarget outputTarget =
+            ElevateReportService.ResolveReportOutputTarget(groupPath, workspace.RootPath);
+
+        Assert.Equal(workspace.RootPath, outputTarget.OutputFolder);
+        Assert.Matches(
+            "^Res - G2 \\[[0-9A-F]{8}\\]$",
+            outputTarget.FileNameSuffix);
+    }
+
+    [Fact]
+    public void ResolveReportOutputTarget_DistinguishesPathsThatHaveSameReadableDiscriminator()
+    {
+        using ReportTestWorkspace workspace = new();
+        string nestedGroupPath = workspace.CreateDirectory(Path.Combine("Office", "A", "B"));
+        string flatGroupPath = workspace.CreateDirectory(Path.Combine("Office", "A - B"));
+
+        string? nestedSuffix = ElevateReportService
+            .ResolveReportOutputTarget(nestedGroupPath, workspace.RootPath)
+            .FileNameSuffix;
+        string? flatSuffix = ElevateReportService
+            .ResolveReportOutputTarget(flatGroupPath, workspace.RootPath)
+            .FileNameSuffix;
+
+        Assert.NotEqual(nestedSuffix, flatSuffix);
+        Assert.StartsWith("Office - A - B", nestedSuffix, StringComparison.Ordinal);
+        Assert.StartsWith("Office - A - B", flatSuffix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PublishGeneratedReports_ReplacesPairOnlyWhenBothTemporaryFilesExist()
+    {
+        using ReportTestWorkspace workspace = new();
+        string destinationExcelPath = Path.Combine(workspace.RootPath, "report.xlsx");
+        string destinationPdfPath = Path.Combine(workspace.RootPath, "report.pdf");
+        string temporaryExcelPath = Path.Combine(workspace.RootPath, "temporary.xlsx");
+        string temporaryPdfPath = Path.Combine(workspace.RootPath, "temporary.pdf");
+        File.WriteAllText(destinationExcelPath, "old excel");
+        File.WriteAllText(destinationPdfPath, "old pdf");
+        File.WriteAllText(temporaryExcelPath, "new excel");
+
+        Assert.Throws<FileNotFoundException>(() =>
+            GeneratedReportPublisher.Publish(
+                temporaryExcelPath,
+                destinationExcelPath,
+                temporaryPdfPath,
+                destinationPdfPath));
+        Assert.Equal("old excel", File.ReadAllText(destinationExcelPath));
+        Assert.Equal("old pdf", File.ReadAllText(destinationPdfPath));
+
+        File.WriteAllText(temporaryPdfPath, "new pdf");
+        GeneratedReportPublisher.Publish(
+            temporaryExcelPath,
+            destinationExcelPath,
+            temporaryPdfPath,
+            destinationPdfPath);
+
+        Assert.Equal("new excel", File.ReadAllText(destinationExcelPath));
+        Assert.Equal("new pdf", File.ReadAllText(destinationPdfPath));
+        Assert.False(File.Exists(temporaryExcelPath));
+        Assert.False(File.Exists(temporaryPdfPath));
+    }
+
+    [Fact]
+    public void PublishGeneratedReports_RestoresExcelWhenPdfPublicationFails()
+    {
+        using ReportTestWorkspace workspace = new();
+        string destinationExcelPath = Path.Combine(workspace.RootPath, "report.xlsx");
+        string invalidPdfDestination = workspace.CreateDirectory("report.pdf");
+        string temporaryExcelPath = Path.Combine(workspace.RootPath, "temporary.xlsx");
+        string temporaryPdfPath = Path.Combine(workspace.RootPath, "temporary.pdf");
+        File.WriteAllText(destinationExcelPath, "old excel");
+        File.WriteAllText(temporaryExcelPath, "new excel");
+        File.WriteAllText(temporaryPdfPath, "new pdf");
+
+        Assert.ThrowsAny<IOException>(() =>
+            GeneratedReportPublisher.Publish(
+                temporaryExcelPath,
+                destinationExcelPath,
+                temporaryPdfPath,
+                invalidPdfDestination));
+
+        Assert.Equal("old excel", File.ReadAllText(destinationExcelPath));
+        Assert.True(File.Exists(temporaryPdfPath));
+    }
+
+    [Fact]
+    public void PublishGeneratedReports_RecoversInterruptedPairBeforePublishing()
+    {
+        using ReportTestWorkspace workspace = new();
+        string destinationExcelPath = Path.Combine(workspace.RootPath, "report.xlsx");
+        string destinationPdfPath = Path.Combine(workspace.RootPath, "report.pdf");
+        string temporaryExcelPath = Path.Combine(workspace.RootPath, "temporary.xlsx");
+        string temporaryPdfPath = Path.Combine(workspace.RootPath, "temporary.pdf");
+        const string transactionId = "0123456789abcdef0123456789abcdef";
+        string excelBackupPath =
+            $"{destinationExcelPath}.elevate-helper-{transactionId}.bak";
+        string pdfBackupPath =
+            $"{destinationPdfPath}.elevate-helper-{transactionId}.bak";
+
+        File.WriteAllText(excelBackupPath, "old excel");
+        File.WriteAllText(pdfBackupPath, "old pdf");
+        File.WriteAllText(destinationExcelPath, "partial new excel");
+        File.WriteAllText(temporaryExcelPath, "new excel");
+        File.WriteAllText(temporaryPdfPath, "new pdf");
+
+        GeneratedReportPublisher.Publish(
+            temporaryExcelPath,
+            destinationExcelPath,
+            temporaryPdfPath,
+            destinationPdfPath);
+
+        Assert.Equal("new excel", File.ReadAllText(destinationExcelPath));
+        Assert.Equal("new pdf", File.ReadAllText(destinationPdfPath));
+        Assert.Empty(Directory.EnumerateFiles(workspace.RootPath, "*.bak"));
+    }
+
     [Theory]
     [InlineData("$B$2:$H$49", 53, "$B$2:$H$53")]
     [InlineData("$2:$15", 19, "$2:$19")]

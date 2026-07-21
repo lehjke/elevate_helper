@@ -6,6 +6,13 @@ namespace ElevateHelperWinUI.Services;
 public sealed class ElevateProjectBatchDiscoveryService
 {
     private const string GeneratedCopiesManifestFileName = ".elevate-helper.generated-copies.txt";
+    private static readonly EnumerationOptions RecursiveEnumerationOptions = new()
+    {
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+        MatchCasing = MatchCasing.CaseInsensitive,
+    };
 
     private static readonly Dictionary<string, BuildingType> KnownBuildingTypeFolders = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -45,9 +52,9 @@ public sealed class ElevateProjectBatchDiscoveryService
         }
 
         List<string> unclassifiedElvxFiles = Directory
-            .EnumerateFiles(normalizedRoot, "*.elvx", SearchOption.AllDirectories)
+            .EnumerateFiles(normalizedRoot, "*.elvx", RecursiveEnumerationOptions)
             .Where(file => !IsUnderAnyDirectory(file, knownTypeDirectories))
-            .Where(file => !IsGeneratedOrScenarioFile(file))
+            .Where(file => !IsGeneratedOrScenarioFile(file, normalizedRoot))
             .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
             .Select(Path.GetFullPath)
             .ToList();
@@ -91,53 +98,61 @@ public sealed class ElevateProjectBatchDiscoveryService
         List<ProjectBatchJob> jobs,
         List<ProjectBatchWarning> warnings)
     {
-        IReadOnlyList<string> directFiles = GetSourceElvxFiles(typeDirectory);
-        if (directFiles.Count == 1)
-        {
-            jobs.Add(new ProjectBatchJob(
-                projectRoot,
-                typeFolderName,
-                typeFolderName,
-                NormalizeDirectoryPath(typeDirectory),
-                directFiles[0],
-                buildingType,
-                IsManualBuildingType: false));
-        }
-        else if (directFiles.Count > 1)
-        {
-            warnings.Add(new ProjectBatchWarning(
-                typeDirectory,
-                $"Building type folder '{typeFolderName}' contains more than one source .elvx file directly and was skipped."));
-        }
+        IEnumerable<IGrouping<string, string>> folderGroups = Directory
+            .EnumerateFiles(typeDirectory, "*.elvx", RecursiveEnumerationOptions)
+            .Where(file => !IsGeneratedOrScenarioFile(file, projectRoot))
+            .Select(Path.GetFullPath)
+            .GroupBy(
+                file => NormalizeDirectoryPath(Path.GetDirectoryName(file) ?? typeDirectory),
+                StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
 
-        foreach (string groupDirectory in Directory.EnumerateDirectories(typeDirectory).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (IGrouping<string, string> folderGroup in folderGroups)
         {
-            string groupName = Path.GetFileName(groupDirectory);
-            IReadOnlyList<string> groupFiles = GetSourceElvxFiles(groupDirectory);
-
-            if (groupFiles.Count == 0)
-            {
-                warnings.Add(new ProjectBatchWarning(
-                    groupDirectory,
-                    $"Group '{typeFolderName}/{groupName}' does not contain an .elvx file and was skipped."));
-                continue;
-            }
+            string workingFolder = folderGroup.Key;
+            List<string> groupFiles = folderGroup
+                .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            string relativeGroupName = Path.GetRelativePath(typeDirectory, workingFolder);
+            string groupName = relativeGroupName.Equals(".", StringComparison.Ordinal)
+                ? typeFolderName
+                : relativeGroupName;
 
             if (groupFiles.Count > 1)
             {
                 warnings.Add(new ProjectBatchWarning(
-                    groupDirectory,
+                    workingFolder,
                     $"Group '{typeFolderName}/{groupName}' contains more than one source .elvx file and was skipped."));
                 continue;
             }
 
+            BuildingType resolvedBuildingType = buildingType;
+            string resolvedTypeFolderName = typeFolderName;
+            if (TryReadBuildingType(groupFiles[0], out BuildingType fileBuildingType))
+            {
+                resolvedBuildingType = fileBuildingType;
+                resolvedTypeFolderName = GetBuildingTypeFolderName(fileBuildingType);
+                if (fileBuildingType != buildingType)
+                {
+                    warnings.Add(new ProjectBatchWarning(
+                        groupFiles[0],
+                        $"File building type is '{resolvedTypeFolderName}', but it is stored under '{typeFolderName}'. The value from the .elvx file will be used."));
+                }
+            }
+            else
+            {
+                warnings.Add(new ProjectBatchWarning(
+                    groupFiles[0],
+                    $"Could not read BuildingType from '{Path.GetFileName(groupFiles[0])}'. Folder type '{typeFolderName}' will be used."));
+            }
+
             jobs.Add(new ProjectBatchJob(
                 projectRoot,
-                typeFolderName,
+                resolvedTypeFolderName,
                 groupName,
-                NormalizeDirectoryPath(groupDirectory),
+                workingFolder,
                 groupFiles[0],
-                buildingType,
+                resolvedBuildingType,
                 IsManualBuildingType: false));
         }
     }
@@ -236,17 +251,6 @@ public sealed class ElevateProjectBatchDiscoveryService
             IsManualBuildingType: true);
     }
 
-    private static IReadOnlyList<string> GetSourceElvxFiles(string directory)
-    {
-        HashSet<string> generatedCopies = LoadTrackedGeneratedCopies(directory);
-        return Directory
-            .EnumerateFiles(directory, "*.elvx", SearchOption.TopDirectoryOnly)
-            .Where(file => !generatedCopies.Contains(Path.GetFileName(file)))
-            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
-            .Select(Path.GetFullPath)
-            .ToList();
-    }
-
     private static HashSet<string> LoadTrackedGeneratedCopies(string directory)
     {
         HashSet<string> generatedCopies = new(StringComparer.OrdinalIgnoreCase);
@@ -258,29 +262,36 @@ public sealed class ElevateProjectBatchDiscoveryService
 
         foreach (string line in File.ReadLines(manifestPath))
         {
-            string fileName = Path.GetFileName(line.Trim());
-            if (!string.IsNullOrWhiteSpace(fileName))
+            if (ElevateProcessingService.TryResolveTrackedGeneratedCopyPath(
+                    directory,
+                    line,
+                    out string generatedCopyPath))
             {
-                generatedCopies.Add(fileName);
+                generatedCopies.Add(Path.GetFileName(generatedCopyPath));
             }
         }
 
         return generatedCopies;
     }
 
-    private static bool IsGeneratedOrScenarioFile(string filePath)
+    private static bool IsGeneratedOrScenarioFile(string filePath, string projectRoot)
     {
         if (IsTrackedGeneratedCopy(filePath))
         {
             return true;
         }
 
+        string normalizedRoot = NormalizeDirectoryPath(projectRoot);
         string? directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
-        while (!string.IsNullOrWhiteSpace(directory))
+        while (!string.IsNullOrWhiteSpace(directory) && IsDirectoryInsideRoot(directory, normalizedRoot))
         {
-            string folderName = Path.GetFileName(directory);
-            if (folderName.Equals("morning", StringComparison.OrdinalIgnoreCase) ||
-                folderName.Equals("lunch", StringComparison.OrdinalIgnoreCase))
+            if (NormalizeDirectoryPath(directory).Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (File.Exists(Path.Combine(directory, ElevateScenarioStateService.ManifestFileName)) ||
+                IsLegacyScenarioDirectory(directory))
             {
                 return true;
             }
@@ -289,6 +300,38 @@ public sealed class ElevateProjectBatchDiscoveryService
         }
 
         return false;
+    }
+
+    private static bool IsLegacyScenarioDirectory(string directory)
+    {
+        string folderName = Path.GetFileName(directory);
+        if (!folderName.Equals("morning", StringComparison.OrdinalIgnoreCase) &&
+            !folderName.Equals("lunch", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string? parentDirectory = Directory.GetParent(directory)?.FullName;
+        if (string.IsNullOrWhiteSpace(parentDirectory) ||
+            !Directory.EnumerateFiles(parentDirectory, "*.elvx", SearchOption.TopDirectoryOnly).Any())
+        {
+            return false;
+        }
+
+        return File.Exists(Path.Combine(directory, "batch_results.csv")) ||
+               File.Exists(Path.Combine(directory, "floor_area.csv")) ||
+               Directory.EnumerateFiles(directory, "*_elvx.csv", SearchOption.TopDirectoryOnly).Any() ||
+               Directory.EnumerateFiles(directory, "*.elvr", SearchOption.TopDirectoryOnly).Any();
+    }
+
+    private static bool IsDirectoryInsideRoot(string directory, string projectRoot)
+    {
+        string normalizedDirectory = NormalizeDirectoryPath(directory);
+        string relativePath = Path.GetRelativePath(projectRoot, normalizedDirectory);
+        return !Path.IsPathRooted(relativePath) &&
+               !relativePath.Equals("..", StringComparison.Ordinal) &&
+               !relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+               !relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal);
     }
 
     private static bool IsTrackedGeneratedCopy(string filePath)

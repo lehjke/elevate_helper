@@ -68,6 +68,22 @@ public sealed class ElevateProjectBatchDiscoveryServiceTests
     }
 
     [Fact]
+    public void Discover_DoesNotTrustUnsafeGeneratedCopyManifestEntries()
+    {
+        using BatchDiscoveryWorkspace workspace = new();
+        string source = workspace.CreateElvx(Path.Combine("Res", "G1"), "Project01.elvx");
+        workspace.WriteFile(
+            Path.Combine("Res", "G1", ".elevate-helper.generated-copies.txt"),
+            "../Project01.elvx");
+
+        ProjectBatchDiscoveryResult result = new ElevateProjectBatchDiscoveryService().Discover(workspace.RootPath);
+
+        ProjectBatchJob job = Assert.Single(result.Jobs);
+        Assert.Equal(source, job.ElvxPath);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
     public void Discover_ReturnsUnknownFilesOutsideKnownBuildingFolders()
     {
         using BatchDiscoveryWorkspace workspace = new();
@@ -121,6 +137,24 @@ public sealed class ElevateProjectBatchDiscoveryServiceTests
     }
 
     [Fact]
+    public void Discover_FindsDeeplyNestedGroupInsideKnownTypeFolder()
+    {
+        using BatchDiscoveryWorkspace workspace = new();
+        string source = workspace.CreateElvx(
+            Path.Combine("Office", "Tower A", "G1"),
+            "project.elvx");
+
+        ProjectBatchDiscoveryResult result = new ElevateProjectBatchDiscoveryService().Discover(workspace.RootPath);
+
+        ProjectBatchJob job = Assert.Single(result.Jobs);
+        Assert.Equal(BuildingType.Office, job.BuildingType);
+        Assert.Equal(Path.Combine("Tower A", "G1"), job.GroupName);
+        Assert.Equal(source, job.ElvxPath);
+        Assert.Empty(result.UnknownElvxFiles);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
     public void Discover_SkipsArbitraryFolderWithMultipleSourceFiles()
     {
         using BatchDiscoveryWorkspace workspace = new();
@@ -151,7 +185,21 @@ public sealed class ElevateProjectBatchDiscoveryServiceTests
             string folder = Path.Combine(RootPath, relativeFolder);
             Directory.CreateDirectory(folder);
             string filePath = Path.Combine(folder, fileName);
-            File.WriteAllText(filePath, "<ElevateDocument />");
+            string? buildingType = relativeFolder
+                .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .FirstOrDefault()?
+                .ToUpperInvariant() switch
+            {
+                "OFFICE" => "1",
+                "HOTEL" => "2",
+                "RES" or "RESIDENCE" => "3",
+                _ => null,
+            };
+            File.WriteAllText(
+                filePath,
+                buildingType is null
+                    ? "<ElevateDocument />"
+                    : $"<ElevateDocument><BuildingData BuildingType=\"{buildingType}\" /></ElevateDocument>");
             return filePath;
         }
 

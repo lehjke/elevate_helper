@@ -548,10 +548,14 @@ public sealed class AppLocalizationService
         AppTextCatalog text = CurrentText;
         return stateKind switch
         {
+            JobStateKind.Preparing => text.RunningStatus,
             JobStateKind.Running => text.RunningStatus,
+            JobStateKind.Reporting => text.ProjectBatchGeneratingReports,
             JobStateKind.Stopping => text.StoppingStatus,
             JobStateKind.Completed => text.CompletedStatus,
             JobStateKind.Stopped => text.StoppedStatus,
+            JobStateKind.ReportFailed => text.OperationFailedMessage,
+            JobStateKind.Failed => text.OperationFailedMessage,
             _ => text.QueuedStatus,
         };
     }
@@ -1015,8 +1019,12 @@ public enum JobScenarioKind
 public enum JobStateKind
 {
     Queued,
+    Preparing,
     Running,
+    Reporting,
     Stopping,
     Completed,
     Stopped,
+    ReportFailed,
+    Failed,
 }

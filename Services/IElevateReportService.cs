@@ -4,6 +4,11 @@ namespace ElevateHelperWinUI.Services;
 
 public interface IElevateReportService
 {
+    Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
     Task<ProcessingResult> PrintReportAsync(
         string path,
         BuildingType buildingType,

@@ -10,6 +10,8 @@ public sealed class ElevateRunManifest
 
     public DateTimeOffset StartedAtUtc { get; set; }
 
+    public DateTimeOffset UpdatedAtUtc { get; set; }
+
     public DateTimeOffset? CompletedAtUtc { get; set; }
 
     public string Status { get; set; } = ElevateRunManifestStatus.Running;
@@ -65,7 +67,9 @@ public static class ElevateRunManifestStepNames
 {
     public const string ValidateInputs = "Validate inputs";
     public const string PrepareAndRunElevate = "Prepare scenarios and run Elevate";
+    public const string RetryExistingBatch = "Retry existing Elevate batch";
     public const string CollectArtifacts = "Collect artifacts";
+    public const string GenerateReport = "Generate report";
 }
 
 public static class ElevateRunManifestArtifactKinds

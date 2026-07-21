@@ -191,6 +191,16 @@ if ($Test) {
         $artifactsPath,
         '--no-restore'
     )
+
+    $installedRuntimes = & $dotnetPath --list-runtimes
+    $hasNet8Runtime = $installedRuntimes |
+        Where-Object { $_ -match '^Microsoft\.NETCore\.App 8\.' } |
+        Select-Object -First 1
+    if (-not $hasNet8Runtime) {
+        Write-Host "Microsoft.NETCore.App 8.x is not installed; running tests on net10.0 only."
+        $testArgs += @('--framework', 'net10.0')
+    }
+
     Invoke-DotNet -Arguments $testArgs
 }
 

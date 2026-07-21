@@ -104,6 +104,30 @@ internal sealed class ElevateRunManifestService
         Save(manifest);
     }
 
+    public void RecordExternalStep(
+        string workingFolder,
+        string name,
+        bool success,
+        string? message)
+    {
+        ElevateRunManifest? manifest = GetLatest(workingFolder);
+        if (manifest is null)
+        {
+            return;
+        }
+
+        DateTimeOffset completedAtUtc = DateTimeOffset.UtcNow;
+        manifest.Steps.Add(new ElevateRunManifestStep
+        {
+            Name = name,
+            Status = success ? ElevateRunManifestStatus.Completed : ElevateRunManifestStatus.Failed,
+            StartedAtUtc = completedAtUtc,
+            CompletedAtUtc = completedAtUtc,
+            ErrorMessage = success ? null : message,
+        });
+        Save(manifest);
+    }
+
     public static string GetManifestPath(string workingFolder)
     {
         return Path.Combine(workingFolder, ManifestFileName);
@@ -121,7 +145,21 @@ internal sealed class ElevateRunManifestService
 
     public ElevateRunManifest? GetLatest(string workingFolder)
     {
-        return ReadManifest(GetManifestPath(workingFolder)) ?? GetHistory(workingFolder).FirstOrDefault();
+        ElevateRunManifest? current = ReadManifest(GetManifestPath(workingFolder));
+        ElevateRunManifest? history = GetHistory(workingFolder).FirstOrDefault();
+        if (current is null)
+        {
+            return history;
+        }
+
+        if (history is null)
+        {
+            return current;
+        }
+
+        return GetManifestTimestamp(history) > GetManifestTimestamp(current)
+            ? history
+            : current;
     }
 
     public IReadOnlyList<ElevateRunManifest> GetHistory(string workingFolder)
@@ -137,7 +175,7 @@ internal sealed class ElevateRunManifestService
             .Select(ReadManifest)
             .Where(manifest => manifest is not null)
             .Cast<ElevateRunManifest>()
-            .OrderByDescending(manifest => manifest.StartedAtUtc)
+            .OrderByDescending(GetManifestTimestamp)
             .ThenByDescending(manifest => manifest.RunId, StringComparer.Ordinal)
             .ToList();
     }
@@ -146,20 +184,58 @@ internal sealed class ElevateRunManifestService
     {
         try
         {
+            manifest.UpdatedAtUtc = DateTimeOffset.UtcNow;
             string manifestPath = GetManifestPath(manifest.WorkingFolder);
             string json = JsonSerializer.Serialize(manifest, JsonOptions);
-            File.WriteAllText(manifestPath, json);
 
             if (!string.IsNullOrWhiteSpace(manifest.RunId))
             {
                 string historyPath = GetHistoryFolderPath(manifest.WorkingFolder);
                 Directory.CreateDirectory(historyPath);
-                File.WriteAllText(GetHistoryManifestPath(manifest.WorkingFolder, manifest.RunId), json);
+                WriteAtomic(GetHistoryManifestPath(manifest.WorkingFolder, manifest.RunId), json);
             }
+
+            WriteAtomic(manifestPath, json);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
             // The manifest is diagnostic state; processing should not fail only because it could not be written.
+        }
+    }
+
+    private static DateTimeOffset GetManifestTimestamp(ElevateRunManifest manifest)
+    {
+        return manifest.UpdatedAtUtc != default
+            ? manifest.UpdatedAtUtc
+            : manifest.CompletedAtUtc ?? manifest.StartedAtUtc;
+    }
+
+    private static void WriteAtomic(string path, string content)
+    {
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        string temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(temporaryPath, content);
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
         }
     }
 
