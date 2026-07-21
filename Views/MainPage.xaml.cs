@@ -3061,7 +3061,7 @@ public sealed partial class MainPage : Page
 
         public string? ReportOutputRoot => reportOutputRoot;
 
-        public PersistedJobSnapshot CreatePersistenceSnapshot()
+        internal PersistedJobSnapshot CreatePersistenceSnapshot()
         {
             return new PersistedJobSnapshot(
                 path,
