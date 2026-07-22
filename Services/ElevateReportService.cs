@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
@@ -157,7 +156,6 @@ public sealed class ElevateReportService : IElevateReportService
                 templatePath,
                 outputTarget.OutputFolder,
                 path,
-                outputTarget.FileNameSuffix,
                 mainData.AWT,
                 mainData.ATTD,
                 ais,
@@ -186,7 +184,6 @@ public sealed class ElevateReportService : IElevateReportService
         string templatePath,
         string outputFolder,
         string xmlFolder,
-        string? fileNameSuffix,
         double[] awt,
         double[] attd,
         double[] ais,
@@ -251,7 +248,7 @@ public sealed class ElevateReportService : IElevateReportService
             cancellationToken.ThrowIfCancellationRequested();
 
             Directory.CreateDirectory(outputFolder);
-            outputPaths = BuildOutputPaths(outputFolder, jobData[1], jobData[2], fileNameSuffix);
+            outputPaths = BuildOutputPaths(outputFolder, jobData[1], jobData[2]);
             temporaryExcelPath = BuildTemporaryOutputPath(outputPaths.ExcelPath);
             temporaryPdfPath = BuildTemporaryOutputPath(outputPaths.PdfPath);
 
@@ -2496,54 +2493,13 @@ public sealed class ElevateReportService : IElevateReportService
             string? scenarioOutputFolder = normalizedOutputFolder ?? Directory.GetParent(normalizedReportRoot)?.FullName;
             if (string.IsNullOrWhiteSpace(scenarioOutputFolder))
             {
-                return new ReportOutputTarget(normalizedReportRoot, folderName.ToLowerInvariant());
+                return new ReportOutputTarget(normalizedReportRoot);
             }
 
-            return new ReportOutputTarget(
-                scenarioOutputFolder,
-                normalizedOutputFolder is null
-                    ? folderName.ToLowerInvariant()
-                    : BuildOutputDiscriminator(
-                        Directory.GetParent(normalizedReportRoot)?.FullName ?? normalizedReportRoot,
-                        normalizedOutputFolder,
-                        folderName.ToLowerInvariant()));
+            return new ReportOutputTarget(scenarioOutputFolder);
         }
 
-        return new ReportOutputTarget(
-            normalizedOutputFolder ?? normalizedReportRoot,
-            normalizedOutputFolder is null
-                ? null
-                : BuildOutputDiscriminator(normalizedReportRoot, normalizedOutputFolder, scenario: null));
-    }
-
-    private static string? BuildOutputDiscriminator(
-        string groupFolder,
-        string outputFolder,
-        string? scenario)
-    {
-        string relativePath = Path.GetRelativePath(outputFolder, groupFolder);
-        bool isOutsideOutputFolder = Path.IsPathRooted(relativePath) ||
-            relativePath.Equals("..", StringComparison.Ordinal) ||
-            relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
-            relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal);
-
-        if (isOutsideOutputFolder || relativePath.Equals(".", StringComparison.Ordinal))
-        {
-            return scenario;
-        }
-
-        string groupIdentity = relativePath
-            .Replace(Path.DirectorySeparatorChar.ToString(), " - ", StringComparison.Ordinal)
-            .Replace(Path.AltDirectorySeparatorChar.ToString(), " - ", StringComparison.Ordinal);
-        string normalizedIdentity = relativePath
-            .Replace(Path.DirectorySeparatorChar, '/')
-            .Replace(Path.AltDirectorySeparatorChar, '/');
-        string identityHash = Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(normalizedIdentity)))[..8];
-        string uniqueGroupIdentity = $"{groupIdentity} [{identityHash}]";
-        return string.IsNullOrWhiteSpace(scenario)
-            ? uniqueGroupIdentity
-            : $"{uniqueGroupIdentity} {scenario}";
+        return new ReportOutputTarget(normalizedOutputFolder ?? normalizedReportRoot);
     }
 
     private static bool IsOfficeScenarioFolder(string folderName)
@@ -2555,12 +2511,9 @@ public sealed class ElevateReportService : IElevateReportService
     internal static GeneratedReportPaths BuildOutputPaths(
         string outputFolder,
         string projectName,
-        string buildingName,
-        string? fileNameSuffix = null)
+        string revision)
     {
-        string baseName = string.IsNullOrWhiteSpace(fileNameSuffix)
-            ? $"{projectName} {buildingName}"
-            : $"{projectName} {buildingName} {fileNameSuffix}";
+        string baseName = $"{projectName.Trim()} {revision.Trim()}".Trim();
         string sanitizedBaseName = SanitizeFileName(baseName);
         return new GeneratedReportPaths(
             Path.Combine(outputFolder, $"{sanitizedBaseName}.xlsx"),
@@ -3640,7 +3593,7 @@ public sealed class ElevateReportService : IElevateReportService
             : $"{sourceStem}{step.ToString(CultureInfo.InvariantCulture)}";
     }
 
-    internal readonly record struct ReportOutputTarget(string OutputFolder, string? FileNameSuffix);
+    internal readonly record struct ReportOutputTarget(string OutputFolder);
 
     internal readonly record struct GeneratedReportPaths(string ExcelPath, string PdfPath);
 

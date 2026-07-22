@@ -139,15 +139,21 @@ public sealed class ElevateReportServiceTests
         Assert.Equal(Path.Combine(outputFolder, "Project_ 1 Tower_A.pdf"), outputPaths.PdfPath);
     }
 
-    [Fact]
-    public void BuildOutputPaths_AddsScenarioSuffixWhenProvided()
+    [Theory]
+    [InlineData("Кожуховский. Группа 1 (утренний пик)", "R00", "Кожуховский. Группа 1 (утренний пик) R00")]
+    [InlineData("Кожуховский. Группа 1 (обеденный пик)", "R07", "Кожуховский. Группа 1 (обеденный пик) R07")]
+    [InlineData("Жилой комплекс", "R12", "Жилой комплекс R12")]
+    public void BuildOutputPaths_UsesObjectPeakAndRevisionOnly(
+        string projectName,
+        string revision,
+        string expectedBaseName)
     {
         string outputFolder = Path.Combine("C:\\", "Reports");
         ElevateReportService.GeneratedReportPaths outputPaths =
-            ElevateReportService.BuildOutputPaths(outputFolder, "Project", "Tower", "morning");
+            ElevateReportService.BuildOutputPaths(outputFolder, projectName, revision);
 
-        Assert.Equal(Path.Combine(outputFolder, "Project Tower morning.xlsx"), outputPaths.ExcelPath);
-        Assert.Equal(Path.Combine(outputFolder, "Project Tower morning.pdf"), outputPaths.PdfPath);
+        Assert.Equal(Path.Combine(outputFolder, $"{expectedBaseName}.xlsx"), outputPaths.ExcelPath);
+        Assert.Equal(Path.Combine(outputFolder, $"{expectedBaseName}.pdf"), outputPaths.PdfPath);
     }
 
     [Fact]
@@ -174,7 +180,6 @@ public sealed class ElevateReportServiceTests
             ElevateReportService.ResolveReportOutputTarget(scenarioPath);
 
         Assert.Equal(workspace.RootPath, outputTarget.OutputFolder);
-        Assert.Equal(scenarioFolder.ToLowerInvariant(), outputTarget.FileNameSuffix);
     }
 
     [Fact]
@@ -187,7 +192,6 @@ public sealed class ElevateReportServiceTests
             ElevateReportService.ResolveReportOutputTarget(projectPath);
 
         Assert.Equal(projectPath, outputTarget.OutputFolder);
-        Assert.Null(outputTarget.FileNameSuffix);
     }
 
     [Fact]
@@ -201,11 +205,10 @@ public sealed class ElevateReportServiceTests
             ElevateReportService.ResolveReportOutputTarget(scenarioPath, outputFolder);
 
         Assert.Equal(outputFolder, outputTarget.OutputFolder);
-        Assert.Equal("morning", outputTarget.FileNameSuffix);
     }
 
     [Fact]
-    public void ResolveReportOutputTarget_AddsBatchGroupPathToFileNameSuffix()
+    public void ResolveReportOutputTarget_UsesProjectRootForOfficeBatchGroup()
     {
         using ReportTestWorkspace workspace = new();
         string scenarioPath = workspace.CreateDirectory(Path.Combine("Office", "G1", "morning"));
@@ -214,13 +217,10 @@ public sealed class ElevateReportServiceTests
             ElevateReportService.ResolveReportOutputTarget(scenarioPath, workspace.RootPath);
 
         Assert.Equal(workspace.RootPath, outputTarget.OutputFolder);
-        Assert.Matches(
-            "^Office - G1 \\[[0-9A-F]{8}\\] morning$",
-            outputTarget.FileNameSuffix);
     }
 
     [Fact]
-    public void ResolveReportOutputTarget_AddsNonOfficeBatchGroupPathToFileNameSuffix()
+    public void ResolveReportOutputTarget_UsesProjectRootForNonOfficeBatchGroup()
     {
         using ReportTestWorkspace workspace = new();
         string groupPath = workspace.CreateDirectory(Path.Combine("Res", "G2"));
@@ -229,28 +229,29 @@ public sealed class ElevateReportServiceTests
             ElevateReportService.ResolveReportOutputTarget(groupPath, workspace.RootPath);
 
         Assert.Equal(workspace.RootPath, outputTarget.OutputFolder);
-        Assert.Matches(
-            "^Res - G2 \\[[0-9A-F]{8}\\]$",
-            outputTarget.FileNameSuffix);
     }
 
-    [Fact]
-    public void ResolveReportOutputTarget_DistinguishesPathsThatHaveSameReadableDiscriminator()
+    [Theory]
+    [InlineData("Office/G1/morning", "Кожуховский. Группа 1 (утренний пик)", "R00")]
+    [InlineData("Office/G1/lunch", "Кожуховский. Группа 1 (обеденный пик)", "R07")]
+    [InlineData("Res/G2", "Жилой комплекс. Группа 2", "R12")]
+    public void BatchReportOutput_UsesJobMetadataWithoutFolderDiscriminator(
+        string relativeReportPath,
+        string projectName,
+        string revision)
     {
         using ReportTestWorkspace workspace = new();
-        string nestedGroupPath = workspace.CreateDirectory(Path.Combine("Office", "A", "B"));
-        string flatGroupPath = workspace.CreateDirectory(Path.Combine("Office", "A - B"));
+        string reportPath = workspace.CreateDirectory(
+            relativeReportPath.Replace('/', Path.DirectorySeparatorChar));
 
-        string? nestedSuffix = ElevateReportService
-            .ResolveReportOutputTarget(nestedGroupPath, workspace.RootPath)
-            .FileNameSuffix;
-        string? flatSuffix = ElevateReportService
-            .ResolveReportOutputTarget(flatGroupPath, workspace.RootPath)
-            .FileNameSuffix;
+        ElevateReportService.ReportOutputTarget outputTarget =
+            ElevateReportService.ResolveReportOutputTarget(reportPath, workspace.RootPath);
+        ElevateReportService.GeneratedReportPaths outputPaths =
+            ElevateReportService.BuildOutputPaths(outputTarget.OutputFolder, projectName, revision);
+        string expectedBaseName = $"{projectName} {revision}";
 
-        Assert.NotEqual(nestedSuffix, flatSuffix);
-        Assert.StartsWith("Office - A - B", nestedSuffix, StringComparison.Ordinal);
-        Assert.StartsWith("Office - A - B", flatSuffix, StringComparison.Ordinal);
+        Assert.Equal(Path.Combine(workspace.RootPath, $"{expectedBaseName}.xlsx"), outputPaths.ExcelPath);
+        Assert.Equal(Path.Combine(workspace.RootPath, $"{expectedBaseName}.pdf"), outputPaths.PdfPath);
     }
 
     [Fact]
