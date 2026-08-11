@@ -32,15 +32,13 @@ public sealed class ElevateReportService : IElevateReportService
     private static readonly TimeSpan ExcelKillGracePeriod = TimeSpan.FromSeconds(2);
     private static readonly ConcurrentDictionary<int, byte> OwnedExcelProcessIds = new();
 
-    public Task ShutdownAsync(CancellationToken cancellationToken = default)
+    public async Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
         foreach (int processId in OwnedExcelProcessIds.Keys.ToArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            TryTerminateOwnedExcelProcess(processId);
+            _ = await TryTerminateOwnedExcelProcessAsync(processId, cancellationToken).ConfigureAwait(false);
         }
-
-        return Task.CompletedTask;
     }
 
     public async Task<ProcessingResult> PrintReportAsync(
@@ -358,7 +356,9 @@ public sealed class ElevateReportService : IElevateReportService
         return processIds;
     }
 
-    private static bool TryTerminateOwnedExcelProcess(int processId)
+    private static async Task<bool> TryTerminateOwnedExcelProcessAsync(
+        int processId,
+        CancellationToken cancellationToken)
     {
         bool exited = false;
         try
@@ -367,7 +367,17 @@ public sealed class ElevateReportService : IElevateReportService
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
-                exited = process.WaitForExit((int)ExcelKillGracePeriod.TotalMilliseconds);
+                using CancellationTokenSource waitTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                waitTimeout.CancelAfter(ExcelKillGracePeriod);
+                try
+                {
+                    await process.WaitForExitAsync(waitTimeout.Token).ConfigureAwait(false);
+                    exited = process.HasExited;
+                }
+                catch (OperationCanceledException)
+                {
+                    exited = process.HasExited;
+                }
             }
             else
             {

@@ -7,9 +7,54 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="F5" Invoked="OnRunKeyboardAcceleratorInvoked" />
+        <KeyboardAccelerator Key="S" Modifiers="Control,Shift" Invoked="OnStopAllKeyboardAcceleratorInvoked" />
+    </Page.KeyboardAccelerators>
+
     <Grid
         Padding="20"
         Background="{ThemeResource IosPageBackgroundBrush}">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="ResponsiveLayoutStates">
+                <VisualState x:Name="NarrowLayout">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="MainContentScrollViewer.VerticalScrollMode" Value="Auto" />
+                        <Setter Target="MainContentScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+                        <Setter Target="MainContentGrid.ColumnSpacing" Value="0" />
+                        <Setter Target="MainContentGrid.RowSpacing" Value="16" />
+                        <Setter Target="MainContentFirstRow.Height" Value="Auto" />
+                        <Setter Target="MainContentSecondRow.Height" Value="Auto" />
+                        <Setter Target="RightColumnDefinition.Width" Value="0" />
+                        <Setter Target="QueueCard.(Grid.Column)" Value="0" />
+                        <Setter Target="QueueCard.(Grid.Row)" Value="1" />
+                        <Setter Target="ToolbarLanguageColumn.Width" Value="132" />
+                        <Setter Target="ToolbarSecondRow.Height" Value="Auto" />
+                        <Setter Target="ToolbarGrid.RowSpacing" Value="10" />
+                        <Setter Target="LanguageLabelTextBlock.Visibility" Value="Collapsed" />
+                        <Setter Target="HideElevateWindowsLabelTextBlock.Visibility" Value="Collapsed" />
+                        <Setter Target="LanguageFlyoutButton.(Grid.Row)" Value="1" />
+                        <Setter Target="LanguageFlyoutButton.(Grid.Column)" Value="0" />
+                        <Setter Target="LanguageFlyoutButton.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="LanguageFlyoutButton.Width" Value="132" />
+                        <Setter Target="LanguageFlyoutButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="HideElevateWindowsStackPanel.(Grid.Row)" Value="1" />
+                        <Setter Target="HideElevateWindowsStackPanel.(Grid.Column)" Value="3" />
+                        <Setter Target="HideElevateWindowsStackPanel.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="HideElevateWindowsStackPanel.HorizontalAlignment" Value="Right" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="WideLayout">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="960" />
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
         <Grid
             MaxWidth="1040"
             HorizontalAlignment="Center"
@@ -23,21 +68,27 @@
                     Grid.Row="0"
                     Style="{StaticResource ToolbarCardStyle}">
                     <Grid
+                        x:Name="ToolbarGrid"
                         MinHeight="38"
                         ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition x:Name="ToolbarLanguageColumn" Width="170" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition x:Name="ToolbarSecondRow" Height="0" />
+                        </Grid.RowDefinitions>
 
                         <Image
                             Grid.Column="0"
                             Width="28"
                             Height="28"
                             VerticalAlignment="Center"
+                            AutomationProperties.AccessibilityView="Raw"
                             Source="ms-appx:///Assets/AppIcon.png" />
 
                         <StackPanel
@@ -47,6 +98,7 @@
                             Spacing="8">
                             <TextBlock
                                 VerticalAlignment="Center"
+                                AutomationProperties.HeadingLevel="Level1"
                                 FontSize="19"
                                 FontWeight="SemiBold"
                                 Text="{x:Bind Text.AppTitle, Mode=OneTime}" />
@@ -59,6 +111,7 @@
                         </StackPanel>
 
                         <TextBlock
+                            x:Name="LanguageLabelTextBlock"
                             Grid.Column="2"
                             Style="{StaticResource ToolbarLabelStyle}"
                             Text="{x:Bind Text.LanguageLabel, Mode=OneTime}" />
@@ -66,6 +119,7 @@
                         <Button
                             x:Name="LanguageFlyoutButton"
                             Grid.Column="3"
+                            AccessKey="G"
                             Style="{StaticResource ToolbarLanguageButtonStyle}">
                             <Button.Flyout>
                                 <Flyout
@@ -146,21 +200,25 @@
                                     VerticalAlignment="Center"
                                     FontFamily="Segoe MDL2 Assets"
                                     FontSize="10"
-                                    Glyph="&#xE70D;" />
+                                    Glyph="&#xE70D;"
+                                    IsTextScaleFactorEnabled="False" />
                             </Grid>
                         </Button>
 
                         <StackPanel
+                            x:Name="HideElevateWindowsStackPanel"
                             Grid.Column="4"
                             VerticalAlignment="Center"
                             Orientation="Horizontal"
                             Spacing="8">
                             <TextBlock
+                                x:Name="HideElevateWindowsLabelTextBlock"
                                 Style="{StaticResource ToolbarLabelStyle}"
                                 Text="{x:Bind Text.ElevateHiddenModeLabel, Mode=OneTime}" />
                             <ToggleSwitch
                                 x:Name="HideElevateWindowsToggle"
                                 MinWidth="52"
+                                MinHeight="40"
                                 AutomationProperties.Name="{x:Bind Text.ElevateHiddenModeLabel, Mode=OneTime}"
                                 IsOn="True"
                                 OffContent=""
@@ -171,17 +229,31 @@
                     </Grid>
                 </Border>
 
-                <Grid
+                <ScrollViewer
+                    x:Name="MainContentScrollViewer"
                     Grid.Row="1"
-                    HorizontalAlignment="Center"
+                    HorizontalContentAlignment="Stretch"
+                    HorizontalScrollBarVisibility="Disabled"
+                    HorizontalScrollMode="Disabled"
+                    VerticalContentAlignment="Stretch"
+                    VerticalScrollBarVisibility="Disabled"
+                    VerticalScrollMode="Disabled">
+                <Grid
+                    x:Name="MainContentGrid"
+                    HorizontalAlignment="Stretch"
                     ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="456" />
-                        <ColumnDefinition Width="456" />
+                        <ColumnDefinition x:Name="LeftColumnDefinition" Width="*" />
+                        <ColumnDefinition x:Name="RightColumnDefinition" Width="*" />
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition x:Name="MainContentFirstRow" Height="*" />
+                        <RowDefinition x:Name="MainContentSecondRow" Height="0" />
+                    </Grid.RowDefinitions>
 
                     <Border
                         x:Name="LeftColumnClipBorder"
+                        Grid.Row="0"
                         Grid.Column="0"
                         Style="{StaticResource ColumnClipStyle}">
                         <ScrollViewer
@@ -192,9 +264,9 @@
                                     <StackPanel Spacing="8">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                                <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Folder" />
+                                                <FontIcon Glyph="&#xE8B7;" Style="{StaticResource SectionIconStyle}" />
                                             </Border>
-                                            <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.FolderTitle, Mode=OneTime}" />
+                                            <TextBlock AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.FolderTitle, Mode=OneTime}" />
                                         </StackPanel>
 
                                         <TextBlock
@@ -218,10 +290,46 @@
                                             <Button
                                                 Grid.Column="1"
                                                 Margin="0,29,0,0"
+                                                AccessKey="B"
                                                 Click="OnBrowseFolderButtonClick"
                                                 Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
                                                 Style="{StaticResource ActionButtonStyle}" />
                                         </Grid>
+
+                                        <StackPanel Spacing="6">
+                                            <TextBlock
+                                                x:Name="ProjectModeTitleTextBlock"
+                                                FontWeight="SemiBold" />
+
+                                            <Border Style="{StaticResource SegmentedContainerStyle}">
+                                                <Grid ColumnSpacing="3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <RadioButton
+                                                        x:Name="SingleProjectModeButton"
+                                                        Grid.Column="0"
+                                                        AccessKey="O"
+                                                        Click="OnSingleProjectModeButtonClick"
+                                                        GroupName="ProcessingMode"
+                                                        Style="{StaticResource SegmentedButtonStyle}" />
+                                                    <RadioButton
+                                                        x:Name="ProjectBatchModeButton"
+                                                        Grid.Column="1"
+                                                        AccessKey="A"
+                                                        Click="OnProjectBatchModeButtonClick"
+                                                        GroupName="ProcessingMode"
+                                                        Style="{StaticResource SegmentedButtonStyle}" />
+                                                </Grid>
+                                            </Border>
+
+                                            <TextBlock
+                                                x:Name="ProjectModeSuggestionTextBlock"
+                                                AutomationProperties.LiveSetting="Polite"
+                                                Style="{StaticResource SectionHintStyle}" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </Border>
 
@@ -231,9 +339,9 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Home" />
+                                            <FontIcon Glyph="&#xE80F;" Style="{StaticResource SectionIconStyle}" />
                                         </Border>
-                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.BuildingTypeTitle, Mode=OneTime}" />
+                                        <TextBlock AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.BuildingTypeTitle, Mode=OneTime}" />
                                     </StackPanel>
 
                                     <TextBlock
@@ -248,27 +356,27 @@
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
 
-                                            <ToggleButton
+                                            <RadioButton
                                                 x:Name="OfficeRadioButton"
                                                 Grid.Column="0"
                                                 Checked="OnBuildingTypeRadioButtonChecked"
                                                 Content="{x:Bind Text.BuildingTypeOffice, Mode=OneTime}"
-                                                Style="{StaticResource SegmentedButtonStyle}"
-                                                Unchecked="OnBuildingTypeRadioButtonUnchecked" />
-                                            <ToggleButton
+                                                GroupName="BuildingType"
+                                                Style="{StaticResource SegmentedButtonStyle}" />
+                                            <RadioButton
                                                 x:Name="ResidenceRadioButton"
                                                 Grid.Column="1"
                                                 Checked="OnBuildingTypeRadioButtonChecked"
                                                 Content="{x:Bind Text.BuildingTypeResidence, Mode=OneTime}"
-                                                Style="{StaticResource SegmentedButtonStyle}"
-                                                Unchecked="OnBuildingTypeRadioButtonUnchecked" />
-                                            <ToggleButton
+                                                GroupName="BuildingType"
+                                                Style="{StaticResource SegmentedButtonStyle}" />
+                                            <RadioButton
                                                 x:Name="HotelRadioButton"
                                                 Grid.Column="2"
                                                 Checked="OnBuildingTypeRadioButtonChecked"
                                                 Content="{x:Bind Text.BuildingTypeHotel, Mode=OneTime}"
-                                                Style="{StaticResource SegmentedButtonStyle}"
-                                                Unchecked="OnBuildingTypeRadioButtonUnchecked" />
+                                                GroupName="BuildingType"
+                                                Style="{StaticResource SegmentedButtonStyle}" />
                                         </Grid>
                                     </Border>
                                 </StackPanel>
@@ -280,9 +388,9 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Edit" />
+                                            <FontIcon Glyph="&#xE70F;" Style="{StaticResource SectionIconStyle}" />
                                         </Border>
-                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.CalculationFileTitle, Mode=OneTime}" />
+                                        <TextBlock AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.CalculationFileTitle, Mode=OneTime}" />
                                     </StackPanel>
 
                                     <TextBlock
@@ -294,6 +402,8 @@
                                         Style="{StaticResource SectionHintStyle}" />
 
                                     <Button
+                                        x:Name="OpenEditorWindowButton"
+                                        AccessKey="E"
                                         Click="OnOpenEditorWindowClick"
                                         Content="{x:Bind Text.OpenEditorWindowButton, Mode=OneTime}"
                                         Style="{StaticResource PrimaryActionButtonStyle}" />
@@ -306,9 +416,9 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Play" />
+                                            <FontIcon Glyph="&#xE768;" Style="{StaticResource SectionIconStyle}" />
                                         </Border>
-                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ActionsTitle, Mode=OneTime}" />
+                                        <TextBlock AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ActionsTitle, Mode=OneTime}" />
                                     </StackPanel>
 
                                     <TextBlock
@@ -332,6 +442,7 @@
                                             Grid.Row="0"
                                             Grid.Column="0"
                                             Grid.ColumnSpan="2"
+                                            AccessKey="R"
                                             Click="OnRunButtonClick"
                                             Content="{x:Bind Text.RunButton, Mode=OneTime}"
                                             Style="{StaticResource PrimaryActionButtonStyle}" />
@@ -340,6 +451,7 @@
                                             Grid.Row="1"
                                             Grid.Column="0"
                                             Grid.ColumnSpan="2"
+                                            AccessKey="M"
                                             Click="OnRunMorningOnlyButtonClick"
                                             Content="{x:Bind Text.RunMorningButton, Mode=OneTime}"
                                             Style="{StaticResource ActionButtonStyle}"
@@ -349,6 +461,7 @@
                                             Grid.Row="2"
                                             Grid.Column="0"
                                             Grid.ColumnSpan="2"
+                                            AccessKey="P"
                                             Click="OnReportButtonClick"
                                             Content="{x:Bind Text.ReportButton, Mode=OneTime}"
                                             Style="{StaticResource ActionButtonStyle}" />
@@ -356,6 +469,7 @@
                                             x:Name="MorningReportButton"
                                             Grid.Row="2"
                                             Grid.Column="0"
+                                            AccessKey="P"
                                             Click="OnMorningReportButtonClick"
                                             Content="{x:Bind Text.MorningReportButton, Mode=OneTime}"
                                             Style="{StaticResource ActionButtonStyle}"
@@ -364,6 +478,7 @@
                                             x:Name="LunchReportButton"
                                             Grid.Row="2"
                                             Grid.Column="1"
+                                            AccessKey="L"
                                             Click="OnLunchReportButtonClick"
                                             Content="{x:Bind Text.LunchReportButton, Mode=OneTime}"
                                             Style="{StaticResource ActionButtonStyle}"
@@ -373,6 +488,7 @@
                                             Grid.Row="3"
                                             Grid.Column="0"
                                             Grid.ColumnSpan="2"
+                                            AccessKey="X"
                                             Click="OnExitButtonClick"
                                             Content="{x:Bind Text.ExitButton, Mode=OneTime}"
                                             Style="{StaticResource SubtleActionButtonStyle}" />
@@ -387,9 +503,9 @@
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Style="{StaticResource SectionIconBadgeStyle}">
-                                            <SymbolIcon Style="{StaticResource SectionIconStyle}" Symbol="Folder" />
+                                            <FontIcon Glyph="&#xE8B7;" Style="{StaticResource SectionIconStyle}" />
                                         </Border>
-                                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ProjectBatchTitle, Mode=OneTime}" />
+                                        <TextBlock AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.ProjectBatchTitle, Mode=OneTime}" />
                                     </StackPanel>
 
                                     <TextBlock
@@ -412,6 +528,7 @@
                                         <Button
                                             Grid.Column="1"
                                             Margin="0,29,0,0"
+                                            AccessKey="F"
                                             Click="OnBrowseProjectBatchFolderButtonClick"
                                             Content="{x:Bind Text.BrowseButton, Mode=OneTime}"
                                             Style="{StaticResource ActionButtonStyle}" />
@@ -419,6 +536,7 @@
 
                                     <StackPanel Spacing="4">
                                         <TextBlock
+                                            x:Name="ProjectBatchParallelRunsLabelTextBlock"
                                             FontWeight="SemiBold"
                                             Text="{x:Bind Text.ProjectBatchParallelRunsHeader, Mode=OneTime}" />
 
@@ -431,6 +549,7 @@
                                             <NumberBox
                                                 x:Name="ProjectBatchParallelRunsNumberBox"
                                                 Grid.Column="0"
+                                                AutomationProperties.LabeledBy="{Binding ElementName=ProjectBatchParallelRunsLabelTextBlock}"
                                                 Minimum="1"
                                                 SmallChange="1"
                                                 SpinButtonPlacementMode="Compact"
@@ -493,6 +612,8 @@
                                     </StackPanel>
 
                                     <Button
+                                        x:Name="RunProjectBatchButton"
+                                        AccessKey="R"
                                         Click="OnRunProjectBatchButtonClick"
                                         Content="{x:Bind Text.ProjectBatchRunButton, Mode=OneTime}"
                                         Style="{StaticResource PrimaryActionButtonStyle}" />
@@ -504,10 +625,13 @@
                     </Border>
 
                     <Border
+                        x:Name="QueueCard"
+                        Grid.Row="0"
                         Grid.Column="1"
                         Style="{StaticResource SectionCardStyle}">
                         <Grid RowSpacing="10">
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                                 <RowDefinition Height="Auto" />
@@ -527,15 +651,40 @@
                                     VerticalAlignment="Center" />
 
                                 <StackPanel Grid.Column="1" Spacing="1">
-                                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.QueueTitle, Mode=OneTime}" />
+                                    <TextBlock AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SectionTitleStyle}" Text="{x:Bind Text.QueueTitle, Mode=OneTime}" />
                                     <TextBlock
                                         x:Name="BusyTextBlock"
+                                        AutomationProperties.LiveSetting="Polite"
                                         Style="{StaticResource SectionHintStyle}"
                                         Text="{x:Bind Text.Ready, Mode=OneTime}" />
                                 </StackPanel>
                             </Grid>
 
-                            <Grid Grid.Row="1">
+                            <Grid
+                                x:Name="BatchQueueControlsPanel"
+                                Grid.Row="1"
+                                ColumnSpacing="8"
+                                Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button
+                                    x:Name="StopQueuedJobsButton"
+                                    Grid.Column="0"
+                                    AccessKey="Q"
+                                    Click="OnStopQueuedJobsButtonClick"
+                                    Style="{StaticResource ActionButtonStyle}" />
+                                <Button
+                                    x:Name="StopAllJobsButton"
+                                    Grid.Column="1"
+                                    AccessKey="S"
+                                    Click="OnStopAllJobsButtonClick"
+                                    Style="{StaticResource ActionButtonStyle}" />
+                            </Grid>
+
+                            <Grid Grid.Row="2">
                                 <Border
                                     x:Name="EmptyQueueBorder"
                                     MinHeight="104"
@@ -564,9 +713,16 @@
                                         ItemsSource="{x:Bind Jobs, Mode=OneTime}"
                                         Visibility="Collapsed">
                                         <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Spacing="10" />
-                                            </ItemsPanelTemplate>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Spacing="10">
+                                                        <StackPanel.ChildrenTransitions>
+                                                            <TransitionCollection>
+                                                                <AddDeleteThemeTransition />
+                                                                <RepositionThemeTransition />
+                                                            </TransitionCollection>
+                                                        </StackPanel.ChildrenTransitions>
+                                                    </StackPanel>
+                                                </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
@@ -591,7 +747,7 @@
                                                                     Text="{Binding Title}"
                                                                     TextWrapping="Wrap" />
                                                                 <TextBlock
-                                                                    Opacity="0.72"
+                                                                    Foreground="{ThemeResource IosSubtleTextBrush}"
                                                                     Text="{Binding Details}"
                                                                     TextWrapping="Wrap" />
                                                             </StackPanel>
@@ -600,7 +756,7 @@
                                                                 Grid.Column="1"
                                                                 MaxWidth="160"
                                                                 HorizontalAlignment="Right"
-                                                                Opacity="0.8"
+                                                                Foreground="{ThemeResource IosSubtleTextBrush}"
                                                                 Text="{Binding HeaderStatusText}"
                                                                 TextTrimming="CharacterEllipsis"
                                                                 TextWrapping="NoWrap"
@@ -614,21 +770,31 @@
                                                                 Tag="{Binding}"
                                                                 ToolTipService.ToolTip="{Binding DismissButtonText}"
                                                                 Visibility="{Binding DismissButtonVisibility}">
-                                                                <SymbolIcon Symbol="Cancel" />
+                                                                <FontIcon
+                                                                    FontFamily="Segoe MDL2 Assets"
+                                                                    FontSize="16"
+                                                                    Glyph="&#xE711;"
+                                                                    IsTextScaleFactorEnabled="False" />
                                                             </Button>
                                                         </Grid>
 
                                                         <Border
-                                                            Background="{ThemeResource IosAccentSoftBrush}"
+                                                            Background="{ThemeResource IosCriticalSoftBrush}"
+                                                            BorderBrush="{ThemeResource IosCriticalTextBrush}"
+                                                            BorderThickness="1"
                                                             CornerRadius="14"
                                                             Padding="10"
                                                             Visibility="{Binding FailureMessageVisibility}">
-                                                            <TextBlock
-                                                                MaxLines="5"
+                                                            <TextBox
+                                                                AcceptsReturn="True"
+                                                                AutomationProperties.Name="{Binding FailureMessage}"
+                                                                Background="Transparent"
+                                                                BorderThickness="0"
+                                                                Foreground="{ThemeResource IosCriticalTextBrush}"
+                                                                IsReadOnly="True"
+                                                                Padding="0"
                                                                 Text="{Binding FailureMessage}"
-                                                                TextTrimming="CharacterEllipsis"
-                                                                TextWrapping="Wrap"
-                                                                ToolTipService.ToolTip="{Binding FailureMessage}" />
+                                                                TextWrapping="Wrap" />
                                                         </Border>
 
                                                         <ItemsControl ItemsSource="{Binding Scenarios}">
@@ -654,8 +820,8 @@
 
                                                                             <TextBlock
                                                                                 Grid.Column="1"
+                                                                                Foreground="{ThemeResource IosSubtleTextBrush}"
                                                                                 HorizontalAlignment="Right"
-                                                                                Opacity="0.7"
                                                                                 Text="{Binding ProgressText}" />
 
                                                                             <Button
@@ -669,13 +835,20 @@
                                                                         </Grid>
 
                                                                         <ProgressBar
+                                                                            AutomationProperties.Name="{Binding Label}"
                                                                             IsIndeterminate="{Binding IsIndeterminate}"
                                                                             Maximum="{Binding Maximum}"
                                                                             Style="{StaticResource ScenarioProgressBarStyle}"
                                                                             Value="{Binding Value}" />
 
-                                                                        <TextBlock
+                                                                        <TextBox
+                                                                            AcceptsReturn="True"
+                                                                            AutomationProperties.Name="{Binding FailureMessage}"
+                                                                            Background="Transparent"
+                                                                            BorderThickness="0"
                                                                             Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                                            IsReadOnly="True"
+                                                                            Padding="0"
                                                                             Text="{Binding FailureMessage}"
                                                                             TextWrapping="Wrap"
                                                                             Visibility="{Binding FailureMessageVisibility}" />
@@ -723,15 +896,24 @@
 
                             <InfoBar
                                 x:Name="StatusInfoBar"
-                                Grid.Row="2"
+                                Grid.Row="3"
+                                AutomationProperties.LiveSetting="Polite"
                                 IsOpen="False"
                                 IsClosable="False"
-                                Message="{x:Bind Text.Ready, Mode=OneTime}"
                                 Severity="Success"
-                                Title="{x:Bind Text.StatusTitle, Mode=OneTime}" />
+                                Title="{x:Bind Text.StatusTitle, Mode=OneTime}">
+                                <InfoBar.ActionButton>
+                                    <Button
+                                        x:Name="StatusActionButton"
+                                        Click="OnStatusActionButtonClick"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        Visibility="Collapsed" />
+                                </InfoBar.ActionButton>
+                            </InfoBar>
                         </Grid>
                     </Border>
                 </Grid>
+                </ScrollViewer>
         </Grid>
 
         <Grid Visibility="Collapsed">

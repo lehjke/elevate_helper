@@ -1,4 +1,6 @@
 ﻿using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using ElevateHelperWinUI.Models;
 
 namespace ElevateHelperWinUI.Services;
@@ -45,8 +47,19 @@ public sealed class AppLocalizationService
         ProjectBatchOfficeScenariosHint: "Applies only to Office groups. Residence and Hotel groups always use one scenario.",
         ProjectBatchRunButton: "Run project",
         ProjectBatchNoJobsMessage: "No valid project folders were found.",
+        ProjectBatchLaunchAlreadyPreparingMessage: "A batch launch is already being prepared.",
+        ProjectBatchAnalyzingStatus: "Analyzing the project structure…",
+        ProjectBatchOverlapFormat: "Batch launch was stopped because working folders '{0}' and '{1}' overlap. Move the root .elvx file into its own folder.",
+        ProjectBatchParallelRunsMinimumMessage: "Parallel runs: 1+",
         ProjectBatchStartedFormat: "Project batch started: {0} job(s).",
         ProjectBatchWarningsFormat: "{0} project scan warning(s).",
+        ProjectBatchStartedWithWarningsFormat: "Project batch started: {0} job(s). {1} project scan warning(s).",
+        ProjectBatchStartedWithOfficeScenarioFormat: "Project batch started: {0} job(s). Office: {1}.",
+        ProjectBatchStartedWithWarningsAndOfficeScenarioFormat: "Project batch started: {0} job(s). {1} project scan warning(s). Office: {2}.",
+        ProjectBatchWarningFolderMultipleFormat: "Folder '{0}' contains more than one source .elvx file and was skipped.",
+        ProjectBatchWarningGroupMultipleFormat: "Group '{0}' contains more than one source .elvx file and was skipped.",
+        ProjectBatchWarningTypeMismatchFormat: "File '{0}' declares building type '{1}', but it is stored under '{2}'. The value from the .elvx file will be used.",
+        ProjectBatchWarningTypeUnreadableFormat: "Could not read BuildingType from '{0}'. Folder type '{1}' will be used.",
         ProjectBatchOfficeScenarioStatusFormat: "Office: {0}.",
         ProjectBatchUnknownTitle: "Select building types",
         ProjectBatchUnknownHint: "The building type could not be read from these .elvx files. Select a type to include them in the run.",
@@ -70,7 +83,7 @@ public sealed class AppLocalizationService
         ProjectBatchPreviewWarningsTitle: "Skipped items",
         ProjectBatchPreviewWarningsFormat: "{0} skipped item(s) need attention.",
         EditorTitle: "ELVX Editor",
-        EditorHint: "Load an existing .elvx from the working folder or start from the built-in template. This editor keeps Elevate topology intact and lets you tune project, analysis, traffic, and existing lift parameters before the batch run.",
+        EditorHint: "Load an existing .elvx from the working folder or start from the built-in template. The editor keeps linked Elevate sections consistent while you tune the project, analysis, traffic, floors, and lifts before a run.",
         EditorWorkingFolderLabel: "Working folder",
         EditorBuildingTypeLabel: "Building type",
         EditorProjectTabTitle: "Project",
@@ -78,8 +91,8 @@ public sealed class AppLocalizationService
         EditorBuildingTabTitle: "Building",
         EditorLiftGroupTabTitle: "Lift Group",
         EditorAnalysisHint: "Traffic mode stays fixed from the loaded template or source ELVX and is not edited here.",
-        EditorBuildingHint: "The building table mirrors Elevate: floor name, floor-to-floor height, population, and entrance flag.",
-        EditorLiftGroupHint: "One common parameter set is applied to every lift in the current group.",
+        EditorBuildingHint: "The building table mirrors Elevate: floor name, floor-to-floor height, population, entrance share, and entrance flag. Adding or removing a floor updates linked sections.",
+        EditorLiftGroupHint: "Configure each lift separately. Adding or removing a lift updates the linked Elevate sections.",
         LoadEditorButton: "Load Existing",
         LoadEditorTemplateButton: "Load Template",
         SaveEditorButton: "Save ELVX",
@@ -119,7 +132,7 @@ public sealed class AppLocalizationService
         EditorRemoveLiftButton: "Remove lift",
         EditorCapacityHeader: "Capacity, kg",
         EditorCabWidthHeader: "Cab width, mm",
-        EditorCabHeightHeader: "Cab height, mm",
+        EditorCabHeightHeader: "Cab depth, mm",
         EditorCabAreaHeader: "Cab area, m²",
         EditorSpeedHeader: "Speed, m/s",
         EditorAccelerationHeader: "Acceleration, m/s²",
@@ -136,11 +149,11 @@ public sealed class AppLocalizationService
         EditorHandlingCapacityHeader: "Handling capacity, %",
         EditorLoadingTimeHeader: "Loading time, s",
         EditorUnloadingTimeHeader: "Unloading time, s",
-        EditorFloorsHint: "The current slice edits existing floors only. Floor names and count stay fixed to keep linked Elevate sections consistent.",
+        EditorFloorsHint: "Floor names, count, heights, population, and entrance settings are editable. Linked Elevate sections are rebuilt on save.",
         EditorFloorLevelLabel: "Level",
         EditorFloorPopulationLabel: "Population",
         EditorFloorEntranceLabel: "Entrance",
-        EditorCarsHint: "The current slice edits existing cars only. Car count and IDs stay fixed to preserve Elevate topology.",
+        EditorCarsHint: "Lift count and per-lift parameters are editable. Linked Elevate sections are rebuilt on save.",
         EditorCarCapacityLabel: "Capacity, kg",
         EditorCarAreaLabel: "Floor area, m²",
         EditorCarSpeedLabel: "Speed, m/s",
@@ -154,8 +167,32 @@ public sealed class AppLocalizationService
         EditorSaveSuccessFormat: "ELVX saved: {0}",
         EditorNotLoadedMessage: "Load an ELVX file or template before saving.",
         EditorExistingFileMissingMessage: "No .elvx files were found in the working folder.",
+        EditorBusyStatus: "Working…",
+        EditorBusyRunMessage: "Wait for the editor operation to finish before starting a run.",
+        EditorUnsavedRunMessage: "Save the ELVX changes in the editor before starting a run.",
+        EditorBuildingTypeMismatchFormat: "This file is for “{0}”, but the editor was opened for “{1}”. Change the building type on the main screen and reopen the file.",
         EditorInvalidNumberFormat: "Invalid numeric value in \"{0}\".",
+        EditorBaseFloorLevelFormat: "The base floor “{0}” must have a 0 m level.",
         EditorTrafficSplitTotalMessage: "Incoming, outgoing, and interfloor traffic must sum to 100%.",
+        EditorMinimumFloorMessage: "The building must contain at least one floor.",
+        EditorMinimumLiftMessage: "The group must contain at least one lift.",
+        EditorSimulationCountPositiveMessage: "The simulation count must be greater than zero.",
+        EditorPercentageRangeFormat: "{0} must be between 0% and 100%.",
+        EditorFieldNonNegativeFormat: "{0} cannot be negative.",
+        EditorFloorNameRequiredFormat: "Floor {0} must have a name.",
+        EditorFloorNameDuplicateFormat: "Floor name “{0}” is duplicated.",
+        EditorFloorFieldNonNegativeFormat: "{0} for “{1}” cannot be negative.",
+        EditorInterfloorHeightPositiveFormat: "The interfloor height for “{0}” must be greater than zero.",
+        EditorEntranceBiasRangeFormat: "The entrance bias for “{0}” must be between 0% and 100%.",
+        EditorNonEntranceBiasZeroFormat: "The entrance bias for non-entrance floor “{0}” must be 0%.",
+        EditorBuildingTableEmptyMessage: "Building table is empty.",
+        EditorEntranceFloorRequiredMessage: "Select at least one entrance floor.",
+        EditorEntranceBiasTotalFormat: "Entrance-floor bias must total 100%; it is currently {0}%.",
+        EditorLiftRequiredMessage: "Add at least one lift.",
+        EditorLiftFieldPositiveFormat: "{0} for “{1}” must be greater than zero.",
+        EditorHomeFloorRangeFormat: "The home floor for “{0}” must be between 1 and {1}.",
+        EditorServedFloorRequiredFormat: "{0} must serve at least one floor.",
+        EditorLiftTitleFormat: "Lift {0}",
         ActionsTitle: "Actions",
         ActionsHint: "Run the batch, or print the report directly after the calculations complete.",
         RunButton: "Run",
@@ -166,6 +203,9 @@ public sealed class AppLocalizationService
         MorningReportButton: "Morning Report",
         LunchReportButton: "Lunch Report",
         QueueTitle: "Run Queue",
+        ShutdownStoppingStatus: "Stopping jobs and releasing resources…",
+        ProcessingModeSingleStatus: "Mode: Single project.",
+        ProcessingModeBatchStatus: "Mode: Batch.",
         Ready: "Ready",
         ActiveJobsFormat: "{0} active job(s)",
         NoActiveJobsTitle: "No active jobs",
@@ -174,6 +214,11 @@ public sealed class AppLocalizationService
         QueuedStatus: "Queued",
         RunningStatus: "Running",
         StoppingStatus: "Stopping...",
+        JobStoppingFormat: "{0}: Stopping...",
+        NoStoppableJobsMessage: "There are no jobs that can be stopped.",
+        StopRequestedFormat: "Stop requested for {0} job(s).",
+        JobDismissedFormat: "Job '{0}' was dismissed.",
+        JobRestoredFormat: "Job '{0}' was restored.",
         CompletedStatus: "Completed",
         StoppedStatus: "Stopped early",
         ProgressScenario: "Progress",
@@ -185,6 +230,7 @@ public sealed class AppLocalizationService
         OfficeMorningOnlyMessage: "Run Morning Only is available only for Office.",
         SelectedBuildingTypeFormat: "Selected building type: {0}.",
         RunStartedFormat: "{0} started.",
+        ScenarioRunStartedFormat: "{0}: {1} started.",
         RunCompletedFormat: "{0} completed successfully.",
         RunStoppedFormat: "{0} stopped early. You can print a report from completed Elevate results.",
         GeneratingReport: "Generating report...",
@@ -256,8 +302,19 @@ public sealed class AppLocalizationService
         ProjectBatchOfficeScenariosHint: "Применяется только к группам Office. Res и Hotel всегда запускаются одним сценарием.",
         ProjectBatchRunButton: "Запустить проект",
         ProjectBatchNoJobsMessage: "Не найдено подходящих папок проекта.",
+        ProjectBatchLaunchAlreadyPreparingMessage: "Подготовка пакетного запуска уже выполняется.",
+        ProjectBatchAnalyzingStatus: "Анализируем структуру проекта…",
+        ProjectBatchOverlapFormat: "Пакетный запуск остановлен: рабочие папки «{0}» и «{1}» пересекаются. Переместите корневой .elvx в отдельную папку.",
+        ProjectBatchParallelRunsMinimumMessage: "Параллельных расчетов: 1+",
         ProjectBatchStartedFormat: "Пакетный запуск проекта начат: {0} задач.",
         ProjectBatchWarningsFormat: "Предупреждений при сканировании проекта: {0}.",
+        ProjectBatchStartedWithWarningsFormat: "Пакетный запуск проекта начат: {0} задач. Предупреждений при сканировании проекта: {1}.",
+        ProjectBatchStartedWithOfficeScenarioFormat: "Пакетный запуск проекта начат: {0} задач. Office: {1}.",
+        ProjectBatchStartedWithWarningsAndOfficeScenarioFormat: "Пакетный запуск проекта начат: {0} задач. Предупреждений при сканировании проекта: {1}. Office: {2}.",
+        ProjectBatchWarningFolderMultipleFormat: "Папка «{0}» содержит больше одного исходного .elvx-файла и пропущена.",
+        ProjectBatchWarningGroupMultipleFormat: "Группа «{0}» содержит больше одного исходного .elvx-файла и пропущена.",
+        ProjectBatchWarningTypeMismatchFormat: "В файле «{0}» указан тип здания «{1}», но он находится в папке «{2}». Будет использован тип из .elvx-файла.",
+        ProjectBatchWarningTypeUnreadableFormat: "Не удалось прочитать BuildingType из файла «{0}». Будет использован тип папки «{1}».",
         ProjectBatchOfficeScenarioStatusFormat: "Office: {0}.",
         ProjectBatchUnknownTitle: "Выбор типов здания",
         ProjectBatchUnknownHint: "В этих .elvx-файлах не удалось определить тип здания. Выберите тип, чтобы включить их в запуск.",
@@ -281,7 +338,7 @@ public sealed class AppLocalizationService
         ProjectBatchPreviewWarningsTitle: "Пропущенные элементы",
         ProjectBatchPreviewWarningsFormat: "Пропущено или требует внимания: {0}.",
         EditorTitle: "Редактор ELVX",
-        EditorHint: "Загрузите существующий .elvx из рабочей папки или стартуйте с встроенного шаблона. Редактор сохраняет топологию Elevate и позволяет настраивать проект, анализ, трафик и существующую лифтовую группу до batch-расчета.",
+        EditorHint: "Загрузите существующий .elvx из рабочей папки или стартуйте со встроенного шаблона. Редактор сохраняет связность секций Elevate при настройке проекта, анализа, трафика, этажей и лифтов до запуска.",
         EditorWorkingFolderLabel: "Рабочая папка",
         EditorBuildingTypeLabel: "Тип здания",
         EditorProjectTabTitle: "Проект",
@@ -289,8 +346,8 @@ public sealed class AppLocalizationService
         EditorBuildingTabTitle: "Здание",
         EditorLiftGroupTabTitle: "Лифтовая группа",
         EditorAnalysisHint: "Режим трафика остается фиксированным из загруженного шаблона или исходного ELVX и здесь не редактируется.",
-        EditorBuildingHint: "Таблица здания повторяет Elevate: название этажа, межэтажное расстояние, население и признак входного этажа.",
-        EditorLiftGroupHint: "Один общий набор параметров применяется ко всем лифтам текущей группы.",
+        EditorBuildingHint: "Таблица здания повторяет Elevate: название этажа, межэтажное расстояние, население, долю входа и признак входного этажа. Добавление или удаление этажа обновляет связанные секции.",
+        EditorLiftGroupHint: "Каждый лифт настраивается отдельно. Добавление или удаление лифта обновляет связанные секции Elevate.",
         LoadEditorButton: "Загрузить существующий",
         LoadEditorTemplateButton: "Загрузить шаблон",
         SaveEditorButton: "Сохранить ELVX",
@@ -347,11 +404,11 @@ public sealed class AppLocalizationService
         EditorHandlingCapacityHeader: "Провозная способность, %",
         EditorLoadingTimeHeader: "Время загрузки, с",
         EditorUnloadingTimeHeader: "Время выгрузки, с",
-        EditorFloorsHint: "В текущем срезе редактируются только существующие этажи. Имена этажей и их количество пока фиксированы, чтобы не ломать связанные разделы Elevate.",
+        EditorFloorsHint: "Можно менять названия, количество, высоту, население и параметры входа этажей. Связанные секции Elevate перестраиваются при сохранении.",
         EditorFloorLevelLabel: "Отметка",
         EditorFloorPopulationLabel: "Население",
         EditorFloorEntranceLabel: "Входной этаж",
-        EditorCarsHint: "В текущем срезе редактируются только существующие кабины. Количество лифтов и их идентификаторы остаются фиксированными, чтобы не ломать топологию Elevate.",
+        EditorCarsHint: "Можно менять количество лифтов и параметры каждого лифта. Связанные секции Elevate перестраиваются при сохранении.",
         EditorCarCapacityLabel: "Грузоподъемность, кг",
         EditorCarAreaLabel: "Площадь кабины, м²",
         EditorCarSpeedLabel: "Скорость, м/с",
@@ -365,8 +422,32 @@ public sealed class AppLocalizationService
         EditorSaveSuccessFormat: "ELVX сохранен: {0}",
         EditorNotLoadedMessage: "Сначала загрузите ELVX-файл или шаблон.",
         EditorExistingFileMissingMessage: "В рабочей папке не найдено ни одного .elvx-файла.",
+        EditorBusyStatus: "Выполняется…",
+        EditorBusyRunMessage: "Дождитесь завершения операции редактора перед запуском расчета.",
+        EditorUnsavedRunMessage: "Сохраните изменения ELVX в редакторе перед запуском расчета.",
+        EditorBuildingTypeMismatchFormat: "Файл относится к типу «{0}», а редактор открыт для «{1}». Измените тип здания на главном экране и снова откройте файл.",
         EditorInvalidNumberFormat: "Некорректное числовое значение в поле \"{0}\".",
+        EditorBaseFloorLevelFormat: "Отметка нижнего этажа «{0}» должна быть 0 м.",
         EditorTrafficSplitTotalMessage: "Сумма входящего, исходящего и межэтажного потоков должна быть равна 100%.",
+        EditorMinimumFloorMessage: "В здании должен остаться хотя бы один этаж.",
+        EditorMinimumLiftMessage: "В группе должен остаться хотя бы один лифт.",
+        EditorSimulationCountPositiveMessage: "Число симуляций должно быть больше нуля.",
+        EditorPercentageRangeFormat: "Поле «{0}» должно быть от 0 до 100 %.",
+        EditorFieldNonNegativeFormat: "Поле «{0}» не может быть отрицательным.",
+        EditorFloorNameRequiredFormat: "У этажа {0} должно быть название.",
+        EditorFloorNameDuplicateFormat: "Название этажа «{0}» повторяется.",
+        EditorFloorFieldNonNegativeFormat: "Поле «{0}» у этажа «{1}» не может быть отрицательным.",
+        EditorInterfloorHeightPositiveFormat: "Межэтажная высота для этажа «{0}» должна быть больше нуля.",
+        EditorEntranceBiasRangeFormat: "Доля входа для этажа «{0}» должна быть от 0 до 100 %.",
+        EditorNonEntranceBiasZeroFormat: "У невходного этажа «{0}» доля входа должна быть 0 %.",
+        EditorBuildingTableEmptyMessage: "Таблица здания пуста.",
+        EditorEntranceFloorRequiredMessage: "Выберите хотя бы один входной этаж.",
+        EditorEntranceBiasTotalFormat: "Сумма долей входных этажей должна быть 100 %, сейчас {0} %.",
+        EditorLiftRequiredMessage: "Нужно добавить хотя бы один лифт.",
+        EditorLiftFieldPositiveFormat: "Поле «{0}» для «{1}» должно быть больше нуля.",
+        EditorHomeFloorRangeFormat: "Домашний этаж для «{0}» должен быть от 1 до {1}.",
+        EditorServedFloorRequiredFormat: "Для {0} нужно выбрать хотя бы один обслуживаемый этаж.",
+        EditorLiftTitleFormat: "Лифт {0}",
         ActionsTitle: "Действия",
         ActionsHint: "Запустите batch-расчет или сформируйте отчет после завершения вычислений.",
         RunButton: "Запуск",
@@ -377,6 +458,9 @@ public sealed class AppLocalizationService
         MorningReportButton: "Утренний отчет",
         LunchReportButton: "Обеденный отчет",
         QueueTitle: "Очередь задач",
+        ShutdownStoppingStatus: "Останавливаем задачи и освобождаем ресурсы…",
+        ProcessingModeSingleStatus: "Режим: Один проект.",
+        ProcessingModeBatchStatus: "Режим: Пакет.",
         Ready: "Готово",
         ActiveJobsFormat: "Активных задач: {0}",
         NoActiveJobsTitle: "Нет активных задач",
@@ -385,6 +469,11 @@ public sealed class AppLocalizationService
         QueuedStatus: "В очереди",
         RunningStatus: "Выполняется",
         StoppingStatus: "Остановка...",
+        JobStoppingFormat: "{0}: Остановка...",
+        NoStoppableJobsMessage: "Нет задач, которые можно остановить.",
+        StopRequestedFormat: "Запрошена остановка задач: {0}.",
+        JobDismissedFormat: "Задача «{0}» скрыта.",
+        JobRestoredFormat: "Задача «{0}» восстановлена.",
         CompletedStatus: "Завершено",
         StoppedStatus: "Остановлено досрочно",
         ProgressScenario: "Прогресс",
@@ -396,6 +485,7 @@ public sealed class AppLocalizationService
         OfficeMorningOnlyMessage: "Отдельный запуск утреннего пика доступен только для Office.",
         SelectedBuildingTypeFormat: "Выбран тип здания: {0}.",
         RunStartedFormat: "{0} запущена.",
+        ScenarioRunStartedFormat: "{0}: {1} запущена.",
         RunCompletedFormat: "{0} завершена успешно.",
         RunStoppedFormat: "{0} остановлена досрочно. Можно сформировать отчет по уже рассчитанным данным Elevate.",
         GeneratingReport: "Формирование отчета...",
@@ -453,6 +543,10 @@ public sealed class AppLocalizationService
 
     public AppTextCatalog CurrentText => currentLanguage == AppLanguage.Russian ? Russian : English;
 
+    public CultureInfo CurrentCulture => currentLanguage == AppLanguage.Russian
+        ? CultureInfo.GetCultureInfo("ru-RU")
+        : CultureInfo.GetCultureInfo("en-US");
+
     public void SetLanguage(AppLanguage language)
     {
         if (currentLanguage == language)
@@ -480,7 +574,7 @@ public sealed class AppLocalizationService
     public string FormatJobTitle(int jobId, BuildingType buildingType)
     {
         return string.Format(
-            CultureInfo.CurrentCulture,
+            CurrentCulture,
             CurrentText.JobTitleFormat,
             jobId,
             FormatBuildingType(buildingType));
@@ -499,37 +593,65 @@ public sealed class AppLocalizationService
                 : CurrentText.JobModeMorningOnly
             : CurrentText.JobModeSingleScenario;
 
-        return string.Format(CultureInfo.CurrentCulture, CurrentText.JobDetailsFormat, path, mode);
+        return string.Format(CurrentCulture, CurrentText.JobDetailsFormat, path, mode);
     }
 
     public string FormatSelectedBuildingType(BuildingType buildingType)
     {
         return string.Format(
-            CultureInfo.CurrentCulture,
+            CurrentCulture,
             CurrentText.SelectedBuildingTypeFormat,
             FormatBuildingType(buildingType));
     }
 
     public string FormatRunStarted(string jobTitle)
     {
-        return string.Format(CultureInfo.CurrentCulture, CurrentText.RunStartedFormat, jobTitle);
+        return string.Format(CurrentCulture, CurrentText.RunStartedFormat, jobTitle);
     }
 
     public string FormatRunCompleted(string jobTitle)
     {
-        return string.Format(CultureInfo.CurrentCulture, CurrentText.RunCompletedFormat, jobTitle);
+        return string.Format(CurrentCulture, CurrentText.RunCompletedFormat, jobTitle);
     }
 
     public string FormatRunStopped(string jobTitle)
     {
-        return string.Format(CultureInfo.CurrentCulture, CurrentText.RunStoppedFormat, jobTitle);
+        return string.Format(CurrentCulture, CurrentText.RunStoppedFormat, jobTitle);
     }
 
     public string GetQueueSummary(int activeJobs)
     {
         return activeJobs > 0
-            ? string.Format(CultureInfo.CurrentCulture, CurrentText.ActiveJobsFormat, activeJobs)
+            ? string.Format(CurrentCulture, CurrentText.ActiveJobsFormat, activeJobs)
             : CurrentText.Ready;
+    }
+
+    public string FormatProjectBatchWarning(ProjectBatchWarning warning)
+    {
+        AppTextCatalog text = CurrentText;
+        return warning.Kind switch
+        {
+            ProjectBatchWarningKind.FolderContainsMultipleSourceFiles => string.Format(
+                CurrentCulture,
+                text.ProjectBatchWarningFolderMultipleFormat,
+                warning.Subject),
+            ProjectBatchWarningKind.GroupContainsMultipleSourceFiles => string.Format(
+                CurrentCulture,
+                text.ProjectBatchWarningGroupMultipleFormat,
+                warning.Subject),
+            ProjectBatchWarningKind.BuildingTypeMismatch => string.Format(
+                CurrentCulture,
+                text.ProjectBatchWarningTypeMismatchFormat,
+                warning.Subject,
+                warning.ActualValue ?? string.Empty,
+                warning.ExpectedValue ?? string.Empty),
+            ProjectBatchWarningKind.BuildingTypeUnreadable => string.Format(
+                CurrentCulture,
+                text.ProjectBatchWarningTypeUnreadableFormat,
+                warning.Subject,
+                warning.ExpectedValue ?? string.Empty),
+            _ => warning.Subject,
+        };
     }
 
     public string GetScenarioLabel(JobScenarioKind scenarioKind)
@@ -558,6 +680,335 @@ public sealed class AppLocalizationService
             JobStateKind.Failed => text.OperationFailedMessage,
             _ => text.QueuedStatus,
         };
+    }
+
+    public string RelocalizeCatalogMessage(string? message, AppLanguage sourceLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(message) || sourceLanguage == CurrentLanguage)
+        {
+            return message ?? string.Empty;
+        }
+
+        AppTextCatalog sourceCatalog = sourceLanguage == AppLanguage.Russian ? Russian : English;
+        AppTextCatalog targetCatalog = CurrentLanguage == AppLanguage.Russian ? Russian : English;
+        System.Reflection.PropertyInfo[] properties = typeof(AppTextCatalog)
+            .GetProperties()
+            .Where(property => property.PropertyType == typeof(string))
+            .ToArray();
+        System.Reflection.PropertyInfo[] exactMatches = properties
+            .Where(property => string.Equals(
+                (string?)property.GetValue(sourceCatalog),
+                message,
+                StringComparison.Ordinal))
+            .ToArray();
+        if (exactMatches.Length > 0)
+        {
+            string[] distinctTargets = exactMatches
+                .Select(property => (string?)property.GetValue(targetCatalog) ?? string.Empty)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (distinctTargets.Length == 1)
+            {
+                return distinctTargets[0];
+            }
+        }
+
+        foreach (System.Reflection.PropertyInfo property in properties
+                     .OrderByDescending(property =>
+                         ((string?)property.GetValue(sourceCatalog) ?? string.Empty).Length))
+        {
+            string sourcePattern = (string?)property.GetValue(sourceCatalog) ?? string.Empty;
+            string targetPattern = (string?)property.GetValue(targetCatalog) ?? string.Empty;
+            if (TryExtractFormatArguments(sourcePattern, message, out object[] arguments))
+            {
+                bool semanticArgumentMismatch = false;
+                for (int index = 0; index < arguments.Length; index++)
+                {
+                    if (arguments[index] is string argument)
+                    {
+                        string[] candidatePropertyNames = GetCatalogArgumentCandidateProperties(
+                            property.Name,
+                            index);
+                        if (candidatePropertyNames.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        if (!TryRelocalizeCatalogArgument(
+                                argument,
+                                candidatePropertyNames,
+                                sourceCatalog,
+                                targetCatalog,
+                                out string localizedArgument))
+                        {
+                            if (RequiresSemanticCatalogArgument(property.Name, index))
+                            {
+                                semanticArgumentMismatch = true;
+                                break;
+                            }
+
+                            continue;
+                        }
+
+                        arguments[index] = localizedArgument;
+                    }
+                }
+
+                if (semanticArgumentMismatch)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    return string.Format(CurrentCulture, targetPattern, arguments);
+                }
+                catch (FormatException)
+                {
+                    // Fall through to the runtime-message translator.
+                }
+            }
+        }
+
+        return CurrentLanguage == AppLanguage.Russian
+            ? TranslateRuntimeMessage(message)
+            : message;
+    }
+
+    private bool TryRelocalizeCatalogArgument(
+        string argument,
+        IReadOnlyList<string> candidatePropertyNames,
+        AppTextCatalog sourceCatalog,
+        AppTextCatalog targetCatalog,
+        out string localizedArgument)
+    {
+        localizedArgument = argument;
+        foreach (string propertyName in candidatePropertyNames)
+        {
+            System.Reflection.PropertyInfo? property = typeof(AppTextCatalog).GetProperty(propertyName);
+            if (property?.PropertyType != typeof(string))
+            {
+                continue;
+            }
+
+            string sourcePattern = (string?)property.GetValue(sourceCatalog) ?? string.Empty;
+            string targetPattern = (string?)property.GetValue(targetCatalog) ?? string.Empty;
+            if (string.Equals(sourcePattern, argument, StringComparison.Ordinal))
+            {
+                localizedArgument = targetPattern;
+                return true;
+            }
+
+            if (!TryExtractFormatArguments(sourcePattern, argument, out object[] nestedArguments))
+            {
+                continue;
+            }
+
+            bool nestedSemanticMismatch = false;
+            for (int index = 0; index < nestedArguments.Length; index++)
+            {
+                if (nestedArguments[index] is not string nestedArgument)
+                {
+                    continue;
+                }
+
+                string[] nestedCandidatePropertyNames = GetCatalogArgumentCandidateProperties(
+                    property.Name,
+                    index);
+                if (nestedCandidatePropertyNames.Length == 0)
+                {
+                    continue;
+                }
+
+                if (!TryRelocalizeCatalogArgument(
+                        nestedArgument,
+                        nestedCandidatePropertyNames,
+                        sourceCatalog,
+                        targetCatalog,
+                        out string localizedNestedArgument))
+                {
+                    if (RequiresSemanticCatalogArgument(property.Name, index))
+                    {
+                        nestedSemanticMismatch = true;
+                        break;
+                    }
+
+                    continue;
+                }
+
+                nestedArguments[index] = localizedNestedArgument;
+            }
+
+            if (nestedSemanticMismatch)
+            {
+                continue;
+            }
+
+            try
+            {
+                localizedArgument = string.Format(CurrentCulture, targetPattern, nestedArguments);
+                return true;
+            }
+            catch (FormatException)
+            {
+                // Try the next allowed semantic property.
+            }
+        }
+
+        return false;
+    }
+
+    private static string[] GetCatalogArgumentCandidateProperties(string propertyName, int argumentIndex)
+    {
+        return (propertyName, argumentIndex) switch
+        {
+            (nameof(AppTextCatalog.SelectedBuildingTypeFormat), 0) or
+            (nameof(AppTextCatalog.JobTitleFormat), 1) or
+            (nameof(AppTextCatalog.EditorBuildingTypeMismatchFormat), 0 or 1) or
+            (nameof(AppTextCatalog.ProjectBatchWarningTypeMismatchFormat), 1 or 2) or
+            (nameof(AppTextCatalog.ProjectBatchWarningTypeUnreadableFormat), 1) =>
+            [
+                nameof(AppTextCatalog.BuildingTypeOffice),
+                nameof(AppTextCatalog.BuildingTypeResidence),
+                nameof(AppTextCatalog.BuildingTypeHotel),
+            ],
+            (nameof(AppTextCatalog.JobDetailsFormat), 1) =>
+            [
+                nameof(AppTextCatalog.JobModeMorningLunch),
+                nameof(AppTextCatalog.JobModeMorningOnly),
+                nameof(AppTextCatalog.JobModeSingleScenario),
+            ],
+            (nameof(AppTextCatalog.ProjectBatchOfficeScenarioStatusFormat), 0) or
+            (nameof(AppTextCatalog.ProjectBatchStartedWithOfficeScenarioFormat), 1) or
+            (nameof(AppTextCatalog.ProjectBatchStartedWithWarningsAndOfficeScenarioFormat), 2) =>
+            [
+                nameof(AppTextCatalog.ProjectBatchPreviewMorningLunch),
+                nameof(AppTextCatalog.ProjectBatchPreviewMorningOnly),
+                nameof(AppTextCatalog.ProjectBatchPreviewSingleScenario),
+            ],
+            (nameof(AppTextCatalog.EditorInvalidNumberFormat), 0) or
+            (nameof(AppTextCatalog.EditorPercentageRangeFormat), 0) or
+            (nameof(AppTextCatalog.EditorFieldNonNegativeFormat), 0) or
+            (nameof(AppTextCatalog.EditorFloorFieldNonNegativeFormat), 0) or
+            (nameof(AppTextCatalog.EditorLiftFieldPositiveFormat), 0) =>
+            [
+                nameof(AppTextCatalog.EditorSimulationsHeader),
+                nameof(AppTextCatalog.EditorLearningRunsHeader),
+                nameof(AppTextCatalog.EditorRandomSeedHeader),
+                nameof(AppTextCatalog.EditorAbsenteeismHeader),
+                nameof(AppTextCatalog.EditorIncomingHeader),
+                nameof(AppTextCatalog.EditorOutgoingHeader),
+                nameof(AppTextCatalog.EditorInterfloorHeader),
+                nameof(AppTextCatalog.EditorHandlingCapacityHeader),
+                nameof(AppTextCatalog.EditorLoadingTimeHeader),
+                nameof(AppTextCatalog.EditorUnloadingTimeHeader),
+                nameof(AppTextCatalog.EditorInterfloorHeightColumn),
+                nameof(AppTextCatalog.EditorPopulationColumn),
+                nameof(AppTextCatalog.EditorEntranceBiasColumn),
+                nameof(AppTextCatalog.EditorCapacityHeader),
+                nameof(AppTextCatalog.EditorCabWidthHeader),
+                nameof(AppTextCatalog.EditorCabHeightHeader),
+                nameof(AppTextCatalog.EditorSpeedHeader),
+                nameof(AppTextCatalog.EditorFloorLevelLabel),
+                nameof(AppTextCatalog.EditorFloorPopulationLabel),
+                nameof(AppTextCatalog.EditorCarCapacityLabel),
+                nameof(AppTextCatalog.EditorCarAreaLabel),
+                nameof(AppTextCatalog.EditorCarSpeedLabel),
+                nameof(AppTextCatalog.EditorCarAccelerationLabel),
+                nameof(AppTextCatalog.EditorCarJerkLabel),
+                nameof(AppTextCatalog.EditorCarPreOpeningLabel),
+                nameof(AppTextCatalog.EditorCarOpenTimeLabel),
+                nameof(AppTextCatalog.EditorCarCloseTimeLabel),
+                nameof(AppTextCatalog.EditorCarHomeFloorLabel),
+            ],
+            (nameof(AppTextCatalog.EditorLiftFieldPositiveFormat), 1) or
+            (nameof(AppTextCatalog.EditorHomeFloorRangeFormat), 0) or
+            (nameof(AppTextCatalog.EditorServedFloorRequiredFormat), 0) =>
+            [nameof(AppTextCatalog.EditorLiftTitleFormat)],
+            (nameof(AppTextCatalog.JobStoppingFormat), 0) or
+            (nameof(AppTextCatalog.JobDismissedFormat), 0) or
+            (nameof(AppTextCatalog.JobRestoredFormat), 0) or
+            (nameof(AppTextCatalog.RunStartedFormat), 0) or
+            (nameof(AppTextCatalog.RunCompletedFormat), 0) or
+            (nameof(AppTextCatalog.RunStoppedFormat), 0) or
+            (nameof(AppTextCatalog.ScenarioRunStartedFormat), 0) =>
+            [nameof(AppTextCatalog.JobTitleFormat)],
+            (nameof(AppTextCatalog.ScenarioRunStartedFormat), 1) =>
+            [
+                nameof(AppTextCatalog.ProgressScenario),
+                nameof(AppTextCatalog.MorningScenario),
+                nameof(AppTextCatalog.LunchScenario),
+            ],
+            (nameof(AppTextCatalog.IntegrationFoundFormat), 0) =>
+            [nameof(AppTextCatalog.IntegrationVersionFormat)],
+            _ => [],
+        };
+    }
+
+    private static bool RequiresSemanticCatalogArgument(string propertyName, int argumentIndex)
+    {
+        return (propertyName, argumentIndex) switch
+        {
+            (nameof(AppTextCatalog.JobTitleFormat), 1) => true,
+            (nameof(AppTextCatalog.JobDetailsFormat), 1) => true,
+            _ => false,
+        };
+    }
+
+    private static bool TryExtractFormatArguments(
+        string format,
+        string message,
+        out object[] arguments)
+    {
+        MatchCollection tokens = Regex.Matches(
+            format,
+            @"\{(?<index>\d+)(?:,[^}:]+)?(?::[^}]+)?\}",
+            RegexOptions.CultureInvariant);
+        if (tokens.Count == 0)
+        {
+            arguments = [];
+            return false;
+        }
+
+        StringBuilder pattern = new("^");
+        HashSet<int> capturedIndexes = [];
+        int position = 0;
+        int maxIndex = 0;
+        foreach (Match token in tokens)
+        {
+            pattern.Append(Regex.Escape(format[position..token.Index]));
+            int index = int.Parse(token.Groups["index"].Value, CultureInfo.InvariantCulture);
+            maxIndex = Math.Max(maxIndex, index);
+            if (capturedIndexes.Add(index))
+            {
+                pattern.Append("(?<value").Append(index).Append(">.*?)");
+            }
+            else
+            {
+                pattern.Append("\\k<value").Append(index).Append('>');
+            }
+
+            position = token.Index + token.Length;
+        }
+
+        pattern.Append(Regex.Escape(format[position..])).Append('$');
+        Match match = Regex.Match(
+            message,
+            pattern.ToString(),
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        if (!match.Success)
+        {
+            arguments = [];
+            return false;
+        }
+
+        arguments = new object[maxIndex + 1];
+        for (int index = 0; index <= maxIndex; index++)
+        {
+            arguments[index] = match.Groups[$"value{index}"].Value;
+        }
+
+        return true;
     }
 
     public string TranslateRuntimeMessage(string? message)
@@ -600,6 +1051,13 @@ public sealed class AppLocalizationService
         if (message.Equals("Elevate main window did not appear.", StringComparison.Ordinal))
         {
             return "Главное окно Elevate не появилось.";
+        }
+
+        if (message.Equals(ElevateLauncherService.LicenseExpiredErrorMessage, StringComparison.Ordinal))
+        {
+            return
+                "Elevate не может выполнить расчет: срок действия установленной копии истек. " +
+                "Установите или активируйте актуальную лицензионную версию Peters Research Elevate и повторите попытку.";
         }
 
         if (message.Equals("Unable to open the Elevate Run Batch dialog.", StringComparison.Ordinal))
@@ -833,8 +1291,19 @@ public sealed class AppLocalizationService
         string ProjectBatchOfficeScenariosHint,
         string ProjectBatchRunButton,
         string ProjectBatchNoJobsMessage,
+        string ProjectBatchLaunchAlreadyPreparingMessage,
+        string ProjectBatchAnalyzingStatus,
+        string ProjectBatchOverlapFormat,
+        string ProjectBatchParallelRunsMinimumMessage,
         string ProjectBatchStartedFormat,
         string ProjectBatchWarningsFormat,
+        string ProjectBatchStartedWithWarningsFormat,
+        string ProjectBatchStartedWithOfficeScenarioFormat,
+        string ProjectBatchStartedWithWarningsAndOfficeScenarioFormat,
+        string ProjectBatchWarningFolderMultipleFormat,
+        string ProjectBatchWarningGroupMultipleFormat,
+        string ProjectBatchWarningTypeMismatchFormat,
+        string ProjectBatchWarningTypeUnreadableFormat,
         string ProjectBatchOfficeScenarioStatusFormat,
         string ProjectBatchUnknownTitle,
         string ProjectBatchUnknownHint,
@@ -942,8 +1411,32 @@ public sealed class AppLocalizationService
         string EditorSaveSuccessFormat,
         string EditorNotLoadedMessage,
         string EditorExistingFileMissingMessage,
+        string EditorBusyStatus,
+        string EditorBusyRunMessage,
+        string EditorUnsavedRunMessage,
+        string EditorBuildingTypeMismatchFormat,
         string EditorInvalidNumberFormat,
+        string EditorBaseFloorLevelFormat,
         string EditorTrafficSplitTotalMessage,
+        string EditorMinimumFloorMessage,
+        string EditorMinimumLiftMessage,
+        string EditorSimulationCountPositiveMessage,
+        string EditorPercentageRangeFormat,
+        string EditorFieldNonNegativeFormat,
+        string EditorFloorNameRequiredFormat,
+        string EditorFloorNameDuplicateFormat,
+        string EditorFloorFieldNonNegativeFormat,
+        string EditorInterfloorHeightPositiveFormat,
+        string EditorEntranceBiasRangeFormat,
+        string EditorNonEntranceBiasZeroFormat,
+        string EditorBuildingTableEmptyMessage,
+        string EditorEntranceFloorRequiredMessage,
+        string EditorEntranceBiasTotalFormat,
+        string EditorLiftRequiredMessage,
+        string EditorLiftFieldPositiveFormat,
+        string EditorHomeFloorRangeFormat,
+        string EditorServedFloorRequiredFormat,
+        string EditorLiftTitleFormat,
         string ActionsTitle,
         string ActionsHint,
         string RunButton,
@@ -954,6 +1447,9 @@ public sealed class AppLocalizationService
         string MorningReportButton,
         string LunchReportButton,
         string QueueTitle,
+        string ShutdownStoppingStatus,
+        string ProcessingModeSingleStatus,
+        string ProcessingModeBatchStatus,
         string Ready,
         string ActiveJobsFormat,
         string NoActiveJobsTitle,
@@ -962,6 +1458,11 @@ public sealed class AppLocalizationService
         string QueuedStatus,
         string RunningStatus,
         string StoppingStatus,
+        string JobStoppingFormat,
+        string NoStoppableJobsMessage,
+        string StopRequestedFormat,
+        string JobDismissedFormat,
+        string JobRestoredFormat,
         string CompletedStatus,
         string StoppedStatus,
         string ProgressScenario,
@@ -973,6 +1474,7 @@ public sealed class AppLocalizationService
         string OfficeMorningOnlyMessage,
         string SelectedBuildingTypeFormat,
         string RunStartedFormat,
+        string ScenarioRunStartedFormat,
         string RunCompletedFormat,
         string RunStoppedFormat,
         string GeneratingReport,

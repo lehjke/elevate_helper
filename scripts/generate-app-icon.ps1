@@ -54,6 +54,32 @@ function New-ScaledBitmap {
     return $scaled
 }
 
+function New-FittedBitmap {
+    param(
+        [System.Drawing.Bitmap]$Source,
+        [int]$Width,
+        [int]$Height,
+        [int]$ArtworkSize
+    )
+
+    if ($ArtworkSize -gt [Math]::Min($Width, $Height)) {
+        throw "ArtworkSize must fit inside the target canvas."
+    }
+
+    $fitted = New-Object System.Drawing.Bitmap $Width, $Height
+    $graphics = [System.Drawing.Graphics]::FromImage($fitted)
+    $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $graphics.Clear([System.Drawing.Color]::Transparent)
+
+    $left = [int](($Width - $ArtworkSize) / 2)
+    $top = [int](($Height - $ArtworkSize) / 2)
+    $graphics.DrawImage($Source, $left, $top, $ArtworkSize, $ArtworkSize)
+    $graphics.Dispose()
+    return $fitted
+}
+
 $canvasSize = 1024
 $bitmap = New-Object System.Drawing.Bitmap $canvasSize, $canvasSize
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
@@ -175,19 +201,19 @@ $writer.Dispose()
 $fileStream.Dispose()
 
 foreach ($mapping in @(
-    @{ Name = "Square44x44Logo.png"; Size = 44 },
-    @{ Name = "Square44x44Logo.scale-200.png"; Size = 88 },
-    @{ Name = "Square44x44Logo.targetsize-24_altform-unplated.png"; Size = 24 },
-    @{ Name = "Square150x150Logo.png"; Size = 150 },
-    @{ Name = "Square150x150Logo.scale-200.png"; Size = 300 },
-    @{ Name = "Wide310x150Logo.png"; Size = 310 },
-    @{ Name = "Wide310x150Logo.scale-200.png"; Size = 620 },
-    @{ Name = "StoreLogo.png"; Size = 50 },
-    @{ Name = "SplashScreen.png"; Size = 620 },
-    @{ Name = "SplashScreen.scale-200.png"; Size = 1240 },
-    @{ Name = "LockScreenLogo.scale-200.png"; Size = 48 }
+    @{ Name = "Square44x44Logo.png"; Width = 44; Height = 44; ArtworkSize = 44 },
+    @{ Name = "Square44x44Logo.scale-200.png"; Width = 88; Height = 88; ArtworkSize = 88 },
+    @{ Name = "Square44x44Logo.targetsize-24_altform-unplated.png"; Width = 24; Height = 24; ArtworkSize = 24 },
+    @{ Name = "Square150x150Logo.png"; Width = 150; Height = 150; ArtworkSize = 150 },
+    @{ Name = "Square150x150Logo.scale-200.png"; Width = 300; Height = 300; ArtworkSize = 300 },
+    @{ Name = "Wide310x150Logo.png"; Width = 310; Height = 150; ArtworkSize = 126 },
+    @{ Name = "Wide310x150Logo.scale-200.png"; Width = 620; Height = 300; ArtworkSize = 252 },
+    @{ Name = "StoreLogo.png"; Width = 50; Height = 50; ArtworkSize = 50 },
+    @{ Name = "SplashScreen.png"; Width = 620; Height = 300; ArtworkSize = 220 },
+    @{ Name = "SplashScreen.scale-200.png"; Width = 1240; Height = 600; ArtworkSize = 440 },
+    @{ Name = "LockScreenLogo.scale-200.png"; Width = 48; Height = 48; ArtworkSize = 48 }
 )) {
-    $scaled = New-ScaledBitmap -Source $bitmap -Size $mapping.Size
+    $scaled = New-FittedBitmap -Source $bitmap -Width $mapping.Width -Height $mapping.Height -ArtworkSize $mapping.ArtworkSize
     Save-PngFrame -Image $scaled -Path (Join-Path $fullOutputDirectory $mapping.Name)
     $scaled.Dispose()
 }

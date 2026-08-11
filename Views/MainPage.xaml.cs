@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Numerics;
 using ElevateHelperWinUI.Models;
 using ElevateHelperWinUI.Services;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -16,6 +18,9 @@ namespace ElevateHelperWinUI.Views;
 public sealed partial class MainPage : Page
 {
     private const float LeftColumnClipRadius = 24f;
+    private static readonly TimeSpan ProjectPathAnalysisDebounce = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan MetricsReadThrottle = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan DismissUndoLifetime = TimeSpan.FromSeconds(10);
     private readonly AppLocalizationService localizationService = AppLocalizationService.Instance;
     private readonly AppUpdateService updateService = new();
     private readonly IElevateProjectEditorService projectEditorService = new ElevateProjectEditorService();
@@ -26,6 +31,7 @@ public sealed partial class MainPage : Page
     private readonly ElevateResultMetricsService resultMetricsService = new();
     private readonly JobQueuePersistenceService jobQueuePersistenceService = new();
     private readonly SemaphoreSlim reportExecutionLock = new(1, 1);
+    private readonly SemaphoreSlim dialogCoordinator = new(1, 1);
     private readonly ProcessingFolderLeaseRegistry processingFolderLeases = new();
     private readonly CancellationTokenSource applicationLifetimeSource = new();
     private readonly object activeJobTasksSync = new();
@@ -43,15 +49,30 @@ public sealed partial class MainPage : Page
     private int nextJobId = 1;
     private int shutdownStarted;
     private bool restoringInterruptedJobs;
+    private CancellationTokenSource? projectPathAnalysisSource;
+    private int projectPathAnalysisGeneration;
+    private ProjectPathAnalysis? lastProjectPathAnalysis;
+    private readonly Dictionary<string, MetricsReadState> metricsReadStates =
+        new(StringComparer.OrdinalIgnoreCase);
+    private int batchLaunchFlowActive;
+    private int statusAnnouncementGeneration;
+    private AppLanguage statusMessageLanguage;
+    private JobProgressViewModel? dismissedJob;
+    private int dismissedJobIndex = -1;
+    private CancellationTokenSource? dismissUndoSource;
 
     public MainPage()
     {
         this.InitializeComponent();
+        StatusInfoBar.Message = Text.Ready;
+        statusMessageLanguage = localizationService.CurrentLanguage;
         localizationService.LanguageChanged += OnLanguageChanged;
         processingService.SetElevateWindowsHidden(HideElevateWindowsToggle.IsOn);
 
         UpdateLanguageSelector();
         OfficeRadioButton.IsChecked = true;
+        UpdateProjectInputModeSelection();
+        UpdateProjectModeControlsText();
 
         if (App.MainWindow is not null)
         {
@@ -86,6 +107,78 @@ public sealed partial class MainPage : Page
 
     public string AppVersionLabel => $"v{updateService.CurrentVersion}";
 
+    public async Task<bool> ConfirmShutdownAsync()
+    {
+        int activeJobCount = Jobs.Count(job => !job.IsFinished);
+        bool hasUnsavedEditorChanges = editorWindow?.HasUnsavedChanges == true;
+        bool editorIsBusy = editorWindow?.IsBusy == true;
+        if (activeJobCount == 0 && !hasUnsavedEditorChanges && !editorIsBusy)
+        {
+            return true;
+        }
+
+        string title = localizationService.CurrentLanguage == AppLanguage.Russian
+            ? "Завершить работу?"
+            : "Exit Elevate Helper?";
+        string activeJobsText = activeJobCount > 0
+            ? localizationService.CurrentLanguage == AppLanguage.Russian
+                ? $"Будет остановлено задач: {activeJobCount}."
+                : $"Active or queued jobs that will be stopped: {activeJobCount}."
+            : string.Empty;
+        string unsavedText = hasUnsavedEditorChanges
+            ? localizationService.CurrentLanguage == AppLanguage.Russian
+                ? "Несохранённые изменения редактора будут потеряны."
+                : "Unsaved editor changes will be discarded."
+            : string.Empty;
+        string editorBusyText = editorIsBusy
+            ? localizationService.CurrentLanguage == AppLanguage.Russian
+                ? "Текущая операция редактора будет прервана."
+                : "The current editor operation will be interrupted."
+            : string.Empty;
+        string message = string.Join(
+            Environment.NewLine,
+            new[] { activeJobsText, unsavedText, editorBusyText }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = message,
+            PrimaryButtonText = localizationService.CurrentLanguage == AppLanguage.Russian
+                ? "Остановить и выйти"
+                : "Stop and exit",
+            CloseButtonText = localizationService.CurrentLanguage == AppLanguage.Russian
+                ? "Продолжить работу"
+                : "Keep working",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        ContentDialogResult result = await ShowCoordinatedDialogAsync(dialog);
+        if (result != ContentDialogResult.Primary)
+        {
+            return false;
+        }
+
+        editorWindow?.AllowCloseForShutdown();
+        return true;
+    }
+
+    public void BeginShutdownFeedback()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(BeginShutdownFeedback);
+            return;
+        }
+
+        string message = Text.ShutdownStoppingStatus;
+        BusyRing.IsActive = true;
+        AutomationProperties.SetLiveSetting(BusyTextBlock, AutomationLiveSetting.Assertive);
+        UpdateLiveRegionText(BusyTextBlock, message);
+        SetStatus(message, InfoBarSeverity.Informational);
+        RootPage.IsEnabled = false;
+    }
+
     public async Task ShutdownAsync()
     {
         if (Interlocked.Exchange(ref shutdownStarted, 1) != 0)
@@ -94,13 +187,32 @@ public sealed partial class MainPage : Page
         }
 
         applicationLifetimeSource.Cancel();
+        projectPathAnalysisSource?.Cancel();
+        dismissUndoSource?.Cancel();
+        foreach (MetricsReadState metricsReadState in metricsReadStates.Values)
+        {
+            metricsReadState.Source?.Cancel();
+        }
+
         foreach (JobProgressViewModel job in Jobs.Where(job => job.CanStop).ToList())
         {
             job.RequestStop(localizationService);
         }
 
-        editorWindow?.Close();
         using CancellationTokenSource shutdownTimeout = new(TimeSpan.FromSeconds(20));
+        if (editorWindow is ElevateProjectEditorWindow currentEditorWindow)
+        {
+            try
+            {
+                await currentEditorWindow.PrepareForShutdownAsync(shutdownTimeout.Token);
+            }
+            catch (Exception)
+            {
+            }
+
+            currentEditorWindow.Close();
+        }
+
         try
         {
             await processingService.ShutdownAsync(shutdownTimeout.Token);
@@ -189,7 +301,7 @@ public sealed partial class MainPage : Page
             XamlRoot = XamlRoot,
             Title = Text.UpdateAvailableTitle,
             Content = string.Format(
-                System.Globalization.CultureInfo.CurrentCulture,
+                localizationService.CurrentCulture,
                 Text.UpdateAvailableMessageFormat,
                 updateInfo.CurrentVersion,
                 updateInfo.LatestVersion),
@@ -198,7 +310,7 @@ public sealed partial class MainPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        ContentDialogResult result = await dialog.ShowAsync();
+        ContentDialogResult result = await ShowCoordinatedDialogAsync(dialog);
         if (result != ContentDialogResult.Primary)
         {
             return;
@@ -268,11 +380,26 @@ public sealed partial class MainPage : Page
             }
         };
 
-        await progressDialog.ShowAsync();
+        await ShowCoordinatedDialogAsync(progressDialog);
         _ = await updateTaskCompletion.Task;
         SetStatus(Text.UpdateStartedStatus, InfoBarSeverity.Success);
         await Task.Delay(TimeSpan.FromMilliseconds(500));
         App.MainWindow?.Close();
+    }
+
+    private async Task<ContentDialogResult> ShowCoordinatedDialogAsync(
+        ContentDialog dialog,
+        CancellationToken cancellationToken = default)
+    {
+        await dialogCoordinator.WaitAsync(cancellationToken);
+        try
+        {
+            return await dialog.ShowAsync();
+        }
+        finally
+        {
+            _ = dialogCoordinator.Release();
+        }
     }
 
     private void ApplyUpdateProgress(
@@ -288,7 +415,7 @@ public sealed partial class MainPage : Page
                     progressBar.IsIndeterminate = false;
                     progressBar.Value = percentage;
                     progressTextBlock.Text = string.Format(
-                        System.Globalization.CultureInfo.CurrentCulture,
+                        localizationService.CurrentCulture,
                         Text.UpdateDownloadingProgressFormat,
                         percentage);
                     SetStatus(progressTextBlock.Text, InfoBarSeverity.Informational);
@@ -350,7 +477,6 @@ public sealed partial class MainPage : Page
 
     private void OnRunButtonClick(object sender, RoutedEventArgs e)
     {
-        RefreshProjectInputMode();
         if (projectInputMode == ProjectInputMode.ProjectBatch)
         {
             OnRunProjectBatchButtonClick(sender, e);
@@ -358,6 +484,11 @@ public sealed partial class MainPage : Page
         }
 
         if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        if (!TryEnsureEditorReadyForRun())
         {
             return;
         }
@@ -373,6 +504,11 @@ public sealed partial class MainPage : Page
     private void OnRunMorningOnlyButtonClick(object sender, RoutedEventArgs e)
     {
         if (!TryGetInputs(out string path, out BuildingType buildingType))
+        {
+            return;
+        }
+
+        if (!TryEnsureEditorReadyForRun())
         {
             return;
         }
@@ -393,66 +529,106 @@ public sealed partial class MainPage : Page
 
     private async void OnRunProjectBatchButtonClick(object sender, RoutedEventArgs e)
     {
-        if (!TryGetProjectBatchInputs(out string projectRoot, out int parallelRuns))
+        if (Interlocked.Exchange(ref batchLaunchFlowActive, 1) != 0)
         {
+            SetStatus(Text.ProjectBatchLaunchAlreadyPreparingMessage, InfoBarSeverity.Informational);
             return;
         }
 
-        if (!TryEnsureIntegrationForLaunch())
-        {
-            return;
-        }
-
-        ProjectBatchDiscoveryResult discoveryResult;
+        RunProjectBatchButton.IsEnabled = false;
         try
         {
-            discoveryResult = projectBatchDiscoveryService.Discover(projectRoot);
+            if (!TryEnsureEditorReadyForRun())
+            {
+                return;
+            }
+
+            if (!TryGetProjectBatchInputs(out string projectRoot, out int parallelRuns))
+            {
+                return;
+            }
+
+            if (!TryEnsureIntegrationForLaunch())
+            {
+                return;
+            }
+
+            SetStatus(Text.ProjectBatchAnalyzingStatus, InfoBarSeverity.Informational);
+
+            ProjectBatchDiscoveryResult discoveryResult = await Task.Run(
+                () => projectBatchDiscoveryService.Discover(projectRoot),
+                applicationLifetimeSource.Token);
+
+            IReadOnlyList<ProjectBatchJob>? manualJobs = await ResolveUnknownProjectBatchJobsAsync(
+                projectRoot,
+                discoveryResult.UnknownElvxFiles);
+            if (manualJobs is null)
+            {
+                return;
+            }
+
+            List<ProjectBatchJob> batchJobs = discoveryResult.Jobs
+                .Concat(manualJobs)
+                .OrderBy(job => job.BuildingTypeFolderName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(job => job.GroupName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            bool includeOfficeLunchPeak = ShouldIncludeProjectBatchOfficeLunchPeak();
+
+            if (batchJobs.Count == 0)
+            {
+                SetStatus(Text.ProjectBatchNoJobsMessage, InfoBarSeverity.Warning);
+                return;
+            }
+
+            if (TryFindOverlappingBatchJobs(
+                    batchJobs,
+                    out ProjectBatchJob? firstOverlappingJob,
+                    out ProjectBatchJob? secondOverlappingJob))
+            {
+                string message = string.Format(
+                    localizationService.CurrentCulture,
+                    Text.ProjectBatchOverlapFormat,
+                    firstOverlappingJob!.WorkingFolder,
+                    secondOverlappingJob!.WorkingFolder);
+                SetStatus(message, InfoBarSeverity.Error);
+                return;
+            }
+
+            if (!await ConfirmProjectBatchJobsAsync(batchJobs, discoveryResult.Warnings, includeOfficeLunchPeak))
+            {
+                return;
+            }
+
+            StartProjectBatchJobs(batchJobs, parallelRuns, discoveryResult.Warnings.Count, includeOfficeLunchPeak);
+        }
+        catch (OperationCanceledException) when (applicationLifetimeSource.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
             SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
-            return;
         }
-
-        IReadOnlyList<ProjectBatchJob>? manualJobs = await ResolveUnknownProjectBatchJobsAsync(
-            projectRoot,
-            discoveryResult.UnknownElvxFiles);
-        if (manualJobs is null)
+        finally
         {
-            return;
+            RunProjectBatchButton.IsEnabled = true;
+            Interlocked.Exchange(ref batchLaunchFlowActive, 0);
         }
+    }
 
-        List<ProjectBatchJob> batchJobs = discoveryResult.Jobs
-            .Concat(manualJobs)
-            .OrderBy(job => job.BuildingTypeFolderName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(job => job.GroupName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        bool includeOfficeLunchPeak = ShouldIncludeProjectBatchOfficeLunchPeak();
+    private void OnRunKeyboardAcceleratorInvoked(
+        KeyboardAccelerator sender,
+        KeyboardAcceleratorInvokedEventArgs args)
+    {
+        OnRunButtonClick(RunButton, new RoutedEventArgs());
+        args.Handled = true;
+    }
 
-        if (batchJobs.Count == 0)
-        {
-            SetStatus(Text.ProjectBatchNoJobsMessage, InfoBarSeverity.Warning);
-            return;
-        }
-
-        if (TryFindOverlappingBatchJobs(
-                batchJobs,
-                out ProjectBatchJob? firstOverlappingJob,
-                out ProjectBatchJob? secondOverlappingJob))
-        {
-            string message = localizationService.CurrentLanguage == AppLanguage.Russian
-                ? $"Пакетный запуск остановлен: рабочие папки «{firstOverlappingJob!.WorkingFolder}» и «{secondOverlappingJob!.WorkingFolder}» пересекаются. Переместите корневой .elvx в отдельную папку."
-                : $"Batch launch was stopped because working folders '{firstOverlappingJob!.WorkingFolder}' and '{secondOverlappingJob!.WorkingFolder}' overlap. Move the root .elvx file into its own folder.";
-            SetStatus(message, InfoBarSeverity.Error);
-            return;
-        }
-
-        if (!await ConfirmProjectBatchJobsAsync(batchJobs, discoveryResult.Warnings, includeOfficeLunchPeak))
-        {
-            return;
-        }
-
-        StartProjectBatchJobs(batchJobs, parallelRuns, discoveryResult.Warnings.Count, includeOfficeLunchPeak);
+    private void OnStopAllKeyboardAcceleratorInvoked(
+        KeyboardAccelerator sender,
+        KeyboardAcceleratorInvokedEventArgs args)
+    {
+        OnStopAllJobsButtonClick(StopAllJobsButton, new RoutedEventArgs());
+        args.Handled = true;
     }
 
     private static bool TryFindOverlappingBatchJobs(
@@ -526,6 +702,37 @@ public sealed partial class MainPage : Page
         ProjectBatchMorningOnlyCheckBox.IsChecked = ProjectBatchMorningOnlyCheckBox.IsChecked != true;
     }
 
+    private void OnSingleProjectModeButtonClick(object sender, RoutedEventArgs e)
+    {
+        SetProjectInputMode(ProjectInputMode.Standard);
+    }
+
+    private void OnProjectBatchModeButtonClick(object sender, RoutedEventArgs e)
+    {
+        SetProjectInputMode(ProjectInputMode.ProjectBatch);
+    }
+
+    private void SetProjectInputMode(ProjectInputMode mode)
+    {
+        projectInputMode = mode;
+        UpdateProjectInputModeSelection();
+        SyncProjectBatchPathFromMainPath();
+        UpdateProjectInputModeVisibility();
+
+        SetStatus(
+            mode == ProjectInputMode.ProjectBatch
+                ? Text.ProcessingModeBatchStatus
+                : Text.ProcessingModeSingleStatus,
+            InfoBarSeverity.Informational);
+    }
+
+    private void UpdateProjectInputModeSelection()
+    {
+        bool isBatchMode = projectInputMode == ProjectInputMode.ProjectBatch;
+        SingleProjectModeButton.IsChecked = !isBatchMode;
+        ProjectBatchModeButton.IsChecked = isBatchMode;
+    }
+
     private static bool IsDescendantOf(DependencyObject source, DependencyObject ancestor)
     {
         for (DependencyObject? current = source; current is not null; current = VisualTreeHelper.GetParent(current))
@@ -571,7 +778,7 @@ public sealed partial class MainPage : Page
             SaveEditorButton.IsEnabled = true;
             SetStatus(
                 string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.EditorLoadSuccessFormat,
                     Path.GetFileName(document.SourcePath ?? document.TemplatePath ?? string.Empty)),
                 InfoBarSeverity.Success);
@@ -599,7 +806,7 @@ public sealed partial class MainPage : Page
             SaveEditorButton.IsEnabled = true;
             SetStatus(
                 string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.EditorLoadSuccessFormat,
                     Path.GetFileName(document.TemplatePath ?? string.Empty)),
                 InfoBarSeverity.Success);
@@ -613,7 +820,8 @@ public sealed partial class MainPage : Page
     private void OnEditorPathTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateEditorOutputPreview();
-        RefreshProjectInputMode();
+        SyncProjectBatchPathFromMainPath();
+        ScheduleProjectPathAnalysis();
     }
 
     private void OnEditorOutputFieldsChanged(object sender, TextChangedEventArgs e)
@@ -660,7 +868,7 @@ public sealed partial class MainPage : Page
             loadedEditorDocument = refreshedDocument;
             SetStatus(
                 string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.EditorSaveSuccessFormat,
                     Path.GetFileName(outputPath)),
                 InfoBarSeverity.Success);
@@ -741,25 +949,42 @@ public sealed partial class MainPage : Page
             GetJobReportBusyText(job),
             async () =>
             {
-                ProcessingResult result = await PrintReportsForJobAsync(
-                    job,
-                    outputFolder: null,
-                    applicationLifetimeSource.Token);
-                processingService.RecordReportOutcome(
-                    job.JobPath,
-                    result.Success,
-                    result.Success ? null : FormatResultMessage(result));
-                if (result.Success && job.IsReportFailed)
-                {
-                    job.MarkCompleted(localizationService);
-                }
-                else if (!result.Success && !job.WasStoppedEarly)
-                {
-                    job.MarkReportFailed(FormatResultMessage(result));
-                }
-
+                job.BeginManualReport(localizationService);
                 RefreshJobsSummary();
-                HandleReportResult(result, GetJobReportSuccessText(job));
+                try
+                {
+                    ProcessingResult result = await PrintReportsForJobAsync(
+                        job,
+                        outputFolder: null,
+                        applicationLifetimeSource.Token);
+                    processingService.RecordReportOutcome(
+                        job.JobPath,
+                        result.Success,
+                        result.Success ? null : FormatResultMessage(result));
+                    if (result.Success)
+                    {
+                        job.CompleteManualReport(localizationService);
+                    }
+                    else
+                    {
+                        job.MarkReportFailed(result, localizationService);
+                    }
+
+                    RefreshJobsSummary();
+                    HandleReportResult(result, GetJobReportSuccessText(job));
+                }
+                catch (OperationCanceledException) when (applicationLifetimeSource.IsCancellationRequested)
+                {
+                    job.CancelManualReport(localizationService);
+                    RefreshJobsSummary();
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    job.MarkReportFailed(ex, localizationService);
+                    RefreshJobsSummary();
+                    throw;
+                }
             });
     }
 
@@ -783,7 +1008,7 @@ public sealed partial class MainPage : Page
         {
             SetStatus(
                 string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.RunFolderBusyMessage,
                     normalizedPath),
                 InfoBarSeverity.Warning);
@@ -828,7 +1053,7 @@ public sealed partial class MainPage : Page
         {
             SetStatus(
                 string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.RunFolderBusyMessage,
                     scenarioPath),
                 InfoBarSeverity.Warning);
@@ -849,7 +1074,13 @@ public sealed partial class MainPage : Page
         job.AttachStopSource(stopSource);
         job.MarkScenarioRetryRunning(scenario, localizationService);
         RefreshJobsSummary();
-        SetStatus(localizationService.FormatRunStarted($"{job.Title}: {scenario.Label}"), InfoBarSeverity.Informational);
+        SetStatus(
+            string.Format(
+                localizationService.CurrentCulture,
+                Text.ScenarioRunStartedFormat,
+                job.Title,
+                scenario.Label),
+            InfoBarSeverity.Informational);
 
         try
         {
@@ -862,10 +1093,10 @@ public sealed partial class MainPage : Page
             if (!result.Success)
             {
                 string message = FormatResultMessage(result);
-                job.MarkScenarioFailed(scenario, message, localizationService);
+                job.MarkScenarioFailed(scenario, result, localizationService);
                 if (job.PrimaryRunFinished)
                 {
-                    job.MarkFailed(message);
+                    job.MarkFailed(result, localizationService);
                 }
 
                 SetStatus(message, InfoBarSeverity.Error);
@@ -885,10 +1116,10 @@ public sealed partial class MainPage : Page
         catch (Exception ex)
         {
             string message = BuildExceptionMessage(ex);
-            job.MarkScenarioFailed(scenario, message, localizationService);
+            job.MarkScenarioFailed(scenario, ex, localizationService);
             if (job.PrimaryRunFinished)
             {
-                job.MarkFailed(message);
+                job.MarkFailed(ex, localizationService);
             }
 
             SetStatus(message, InfoBarSeverity.Error);
@@ -910,7 +1141,67 @@ public sealed partial class MainPage : Page
 
         job.RequestStop(localizationService);
         RefreshJobsSummary();
-        SetStatus($"{job.Title}: {Text.StoppingStatus}", InfoBarSeverity.Informational);
+        SetStatus(
+            string.Format(localizationService.CurrentCulture, Text.JobStoppingFormat, job.Title),
+            InfoBarSeverity.Informational);
+    }
+
+    private async void OnStopQueuedJobsButtonClick(object sender, RoutedEventArgs e)
+    {
+        await ConfirmAndStopJobsAsync(
+            Jobs.Where(job => job.CanStop && job.IsQueued).ToList(),
+            queuedOnly: true);
+    }
+
+    private async void OnStopAllJobsButtonClick(object sender, RoutedEventArgs e)
+    {
+        await ConfirmAndStopJobsAsync(
+            Jobs.Where(job => job.CanStop).ToList(),
+            queuedOnly: false);
+    }
+
+    private async Task ConfirmAndStopJobsAsync(
+        IReadOnlyList<JobProgressViewModel> jobsToStop,
+        bool queuedOnly)
+    {
+        if (jobsToStop.Count == 0)
+        {
+            SetStatus(Text.NoStoppableJobsMessage, InfoBarSeverity.Informational);
+            return;
+        }
+
+        bool isRussian = localizationService.CurrentLanguage == AppLanguage.Russian;
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = queuedOnly
+                ? isRussian ? "Остановить ожидающие задачи?" : "Stop queued jobs?"
+                : isRussian ? "Остановить все задачи?" : "Stop all jobs?",
+            Content = isRussian
+                ? $"Будет остановлено задач: {jobsToStop.Count}. Уже созданные результаты останутся в рабочих папках."
+                : $"Jobs that will be stopped: {jobsToStop.Count}. Existing results will remain in their working folders.",
+            PrimaryButtonText = isRussian ? "Остановить" : "Stop",
+            CloseButtonText = isRussian ? "Продолжить" : "Keep running",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await ShowCoordinatedDialogAsync(dialog) != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        List<JobProgressViewModel> confirmedJobs = jobsToStop
+            .Where(job => job.CanStop && (!queuedOnly || job.IsQueued))
+            .ToList();
+        foreach (JobProgressViewModel job in confirmedJobs)
+        {
+            job.RequestStop(localizationService);
+        }
+
+        RefreshJobsSummary();
+        SetStatus(
+            string.Format(localizationService.CurrentCulture, Text.StopRequestedFormat, confirmedJobs.Count),
+            InfoBarSeverity.Informational);
     }
 
     private void OnDismissJobButtonClick(object sender, RoutedEventArgs e)
@@ -920,8 +1211,111 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        _ = Jobs.Remove(job);
+        int removedIndex = Jobs.IndexOf(job);
+        if (removedIndex < 0 || !Jobs.Remove(job))
+        {
+            return;
+        }
+
+        dismissUndoSource?.Cancel();
+        dismissUndoSource?.Dispose();
+        dismissUndoSource = new CancellationTokenSource();
+        dismissedJob = job;
+        dismissedJobIndex = removedIndex;
         RefreshJobsSummary();
+
+        bool isRussian = localizationService.CurrentLanguage == AppLanguage.Russian;
+        StatusActionButton.Content = isRussian ? "Отменить" : "Undo";
+        StatusActionButton.Visibility = Visibility.Visible;
+        SetStatus(
+            string.Format(localizationService.CurrentCulture, Text.JobDismissedFormat, job.Title),
+            InfoBarSeverity.Informational,
+            preserveActionButton: true);
+        FocusJobAtIndex(Math.Min(removedIndex, Jobs.Count - 1));
+        _ = ExpireDismissUndoAsync(dismissUndoSource);
+    }
+
+    private void OnStatusActionButtonClick(object sender, RoutedEventArgs e)
+    {
+        JobProgressViewModel? job = dismissedJob;
+        if (job is null)
+        {
+            return;
+        }
+
+        dismissUndoSource?.Cancel();
+        dismissUndoSource?.Dispose();
+        dismissUndoSource = null;
+        int restoredIndex = Math.Clamp(dismissedJobIndex, 0, Jobs.Count);
+        dismissedJob = null;
+        dismissedJobIndex = -1;
+        StatusActionButton.Visibility = Visibility.Collapsed;
+        Jobs.Insert(restoredIndex, job);
+        RefreshJobsSummary();
+        SetStatus(
+            string.Format(localizationService.CurrentCulture, Text.JobRestoredFormat, job.Title),
+            InfoBarSeverity.Success);
+        FocusJobAtIndex(restoredIndex);
+    }
+
+    private async Task ExpireDismissUndoAsync(CancellationTokenSource source)
+    {
+        try
+        {
+            await Task.Delay(DismissUndoLifetime, source.Token);
+            if (!ReferenceEquals(dismissUndoSource, source))
+            {
+                return;
+            }
+
+            dismissUndoSource = null;
+            dismissedJob = null;
+            dismissedJobIndex = -1;
+            StatusActionButton.Visibility = Visibility.Collapsed;
+            source.Dispose();
+        }
+        catch (OperationCanceledException) when (source.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void FocusJobAtIndex(int index)
+    {
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (index >= 0 &&
+                JobsItemsControl.ContainerFromIndex(index) is DependencyObject container &&
+                FindFirstFocusableControl(container) is Control focusTarget &&
+                focusTarget.Focus(FocusState.Programmatic))
+            {
+                return;
+            }
+
+            _ = PathTextBox.Focus(FocusState.Programmatic);
+        });
+    }
+
+    private static Control? FindFirstFocusableControl(DependencyObject root)
+    {
+        if (root is Control control &&
+            control.IsEnabled &&
+            control.IsTabStop &&
+            control.Visibility == Visibility.Visible)
+        {
+            return control;
+        }
+
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < childCount; index++)
+        {
+            Control? candidate = FindFirstFocusableControl(VisualTreeHelper.GetChild(root, index));
+            if (candidate is not null)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private void OnExitButtonClick(object sender, RoutedEventArgs e)
@@ -929,7 +1323,7 @@ public sealed partial class MainPage : Page
         App.MainWindow?.Close();
     }
 
-    private void OnOpenEditorWindowClick(object sender, RoutedEventArgs e)
+    private async void OnOpenEditorWindowClick(object sender, RoutedEventArgs e)
     {
         if (projectInputMode == ProjectInputMode.ProjectBatch)
         {
@@ -952,12 +1346,20 @@ public sealed partial class MainPage : Page
                 return;
             }
 
-            editorWindow.DocumentSaved -= OnEditorWindowDocumentSaved;
-            editorWindow.Closed -= OnEditorWindowClosed;
-            editorWindow.Close();
-            editorWindow = null;
-            editorWindowPath = null;
-            editorWindowBuildingType = null;
+            ElevateProjectEditorWindow currentEditorWindow = editorWindow;
+            if (!await currentEditorWindow.TryCloseAsync())
+            {
+                return;
+            }
+
+            if (ReferenceEquals(editorWindow, currentEditorWindow))
+            {
+                currentEditorWindow.DocumentSaved -= OnEditorWindowDocumentSaved;
+                currentEditorWindow.Closed -= OnEditorWindowClosed;
+                editorWindow = null;
+                editorWindowPath = null;
+                editorWindowBuildingType = null;
+            }
         }
 
         editorWindow = new ElevateProjectEditorWindow(path, buildingType);
@@ -970,10 +1372,11 @@ public sealed partial class MainPage : Page
 
     private void OnEditorWindowClosed(object sender, WindowEventArgs args)
     {
-        if (editorWindow is not null)
+        if (sender is ElevateProjectEditorWindow closedWindow &&
+            ReferenceEquals(editorWindow, closedWindow))
         {
-            editorWindow.DocumentSaved -= OnEditorWindowDocumentSaved;
-            editorWindow.Closed -= OnEditorWindowClosed;
+            closedWindow.DocumentSaved -= OnEditorWindowDocumentSaved;
+            closedWindow.Closed -= OnEditorWindowClosed;
             editorWindow = null;
             editorWindowPath = null;
             editorWindowBuildingType = null;
@@ -982,7 +1385,32 @@ public sealed partial class MainPage : Page
 
     private void OnEditorWindowDocumentSaved(object? sender, EventArgs e)
     {
+        lastProjectPathAnalysis = null;
         RefreshCalculationFileStatus();
+    }
+
+    private bool TryEnsureEditorReadyForRun()
+    {
+        if (editorWindow is null)
+        {
+            return true;
+        }
+
+        if (editorWindow.IsBusy)
+        {
+            editorWindow.Activate();
+            SetStatus(Text.EditorBusyRunMessage, InfoBarSeverity.Warning);
+            return false;
+        }
+
+        if (editorWindow.HasUnsavedChanges)
+        {
+            editorWindow.Activate();
+            SetStatus(Text.EditorUnsavedRunMessage, InfoBarSeverity.Warning);
+            return false;
+        }
+
+        return true;
     }
 
     private void OnLanguageFlyoutOptionClick(object sender, RoutedEventArgs e)
@@ -1014,26 +1442,54 @@ public sealed partial class MainPage : Page
         EnglishLanguageSelectionPill.Opacity = isEnglish ? 1 : 0;
         RussianLanguageSelectionBackground.Opacity = isEnglish ? 0 : 1;
         RussianLanguageSelectionPill.Opacity = isEnglish ? 0 : 1;
+
+        bool isRussian = localizationService.CurrentLanguage == AppLanguage.Russian;
+        string selectedStatus = isRussian ? "Выбран" : "Selected";
+        string availableStatus = isRussian ? "Доступен для выбора" : "Available";
+        AutomationProperties.SetName(EnglishLanguageButton, "English");
+        AutomationProperties.SetName(RussianLanguageButton, "Русский");
+        AutomationProperties.SetItemStatus(
+            EnglishLanguageButton,
+            isEnglish ? selectedStatus : availableStatus);
+        AutomationProperties.SetItemStatus(
+            RussianLanguageButton,
+            isEnglish ? availableStatus : selectedStatus);
+        AutomationProperties.SetHelpText(
+            EnglishLanguageButton,
+            isEnglish ? selectedStatus : (isRussian ? "Переключить на английский" : "Switch to English"));
+        AutomationProperties.SetHelpText(
+            RussianLanguageButton,
+            !isEnglish ? selectedStatus : (isRussian ? "Переключить на русский" : "Switch to Russian"));
+    }
+
+    private void UpdateProjectModeControlsText()
+    {
+        bool isRussian = localizationService.CurrentLanguage == AppLanguage.Russian;
+        ProjectModeTitleTextBlock.Text = isRussian ? "Режим обработки" : "Processing mode";
+        SingleProjectModeButton.Content = isRussian ? "Один проект" : "Single project";
+        ProjectBatchModeButton.Content = isRussian ? "Пакет" : "Batch";
+        StopQueuedJobsButton.Content = isRussian ? "Стоп очереди" : "Stop queued";
+        StopAllJobsButton.Content = isRussian ? "Остановить все" : "Stop all";
+        StatusActionButton.Content = isRussian ? "Отменить" : "Undo";
+
+        AutomationProperties.SetName(SingleProjectModeButton, SingleProjectModeButton.Content.ToString()!);
+        AutomationProperties.SetName(ProjectBatchModeButton, ProjectBatchModeButton.Content.ToString()!);
+        AutomationProperties.SetName(StopQueuedJobsButton, StopQueuedJobsButton.Content.ToString()!);
+        AutomationProperties.SetName(StopAllJobsButton, StopAllJobsButton.Content.ToString()!);
+        AutomationProperties.SetHelpText(
+            StopQueuedJobsButton,
+            isRussian
+                ? "Отменяет задачи, которые ещё не начали расчёт."
+                : "Stops jobs that have not started processing yet.");
+        AutomationProperties.SetHelpText(
+            StopAllJobsButton,
+            isRussian
+                ? "Останавливает все ожидающие и выполняющиеся задачи."
+                : "Stops every queued and running job.");
     }
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
     {
-        if (ReferenceEquals(sender, OfficeRadioButton))
-        {
-            ResidenceRadioButton.IsChecked = false;
-            HotelRadioButton.IsChecked = false;
-        }
-        else if (ReferenceEquals(sender, ResidenceRadioButton))
-        {
-            OfficeRadioButton.IsChecked = false;
-            HotelRadioButton.IsChecked = false;
-        }
-        else if (ReferenceEquals(sender, HotelRadioButton))
-        {
-            OfficeRadioButton.IsChecked = false;
-            ResidenceRadioButton.IsChecked = false;
-        }
-
         BuildingType? selectedType = GetSelectedBuildingType();
         if (!selectedType.HasValue)
         {
@@ -1050,29 +1506,6 @@ public sealed partial class MainPage : Page
         }
 
         SetStatus(localizationService.FormatSelectedBuildingType(selectedType.Value), InfoBarSeverity.Informational);
-    }
-
-    private void OnBuildingTypeRadioButtonUnchecked(object sender, RoutedEventArgs e)
-    {
-        if (OfficeRadioButton.IsChecked == true
-            || ResidenceRadioButton.IsChecked == true
-            || HotelRadioButton.IsChecked == true)
-        {
-            return;
-        }
-
-        if (ReferenceEquals(sender, OfficeRadioButton))
-        {
-            OfficeRadioButton.IsChecked = true;
-        }
-        else if (ReferenceEquals(sender, ResidenceRadioButton))
-        {
-            ResidenceRadioButton.IsChecked = true;
-        }
-        else if (ReferenceEquals(sender, HotelRadioButton))
-        {
-            HotelRadioButton.IsChecked = true;
-        }
     }
 
     private bool TryGetInputs(out string path, out BuildingType buildingType)
@@ -1129,7 +1562,7 @@ public sealed partial class MainPage : Page
         double rawParallelRuns = ProjectBatchParallelRunsNumberBox.Value;
         if (double.IsNaN(rawParallelRuns) || rawParallelRuns < 1)
         {
-            SetStatus($"{Text.ProjectBatchParallelRunsHeader}: 1+", InfoBarSeverity.Warning);
+            SetStatus(Text.ProjectBatchParallelRunsMinimumMessage, InfoBarSeverity.Warning);
             return false;
         }
 
@@ -1164,18 +1597,21 @@ public sealed partial class MainPage : Page
             ComboBox comboBox = new()
             {
                 MinWidth = 180,
-                SelectedIndex = 0,
             };
             comboBox.Items.Add(new ComboBoxItem { Content = Text.BuildingTypeOffice, Tag = BuildingType.Office });
             comboBox.Items.Add(new ComboBoxItem { Content = Text.BuildingTypeResidence, Tag = BuildingType.Residence });
             comboBox.Items.Add(new ComboBoxItem { Content = Text.BuildingTypeHotel, Tag = BuildingType.Hotel });
+            comboBox.SelectedIndex = 0;
+            UpdateUnknownProjectComboBoxAutomationName(comboBox, filePath);
+            comboBox.SelectionChanged += (_, _) =>
+                UpdateUnknownProjectComboBoxAutomationName(comboBox, filePath);
 
             StackPanel row = new() { Spacing = 6 };
             row.Children.Add(new TextBlock
             {
                 Text = filePath,
                 TextWrapping = TextWrapping.Wrap,
-                Opacity = 0.78,
+                Foreground = ResolveSubtleTextBrush(),
             });
             row.Children.Add(comboBox);
             rowsPanel.Children.Add(row);
@@ -1197,7 +1633,7 @@ public sealed partial class MainPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        ContentDialogResult result = await dialog.ShowAsync();
+        ContentDialogResult result = await ShowCoordinatedDialogAsync(dialog);
         if (result == ContentDialogResult.None)
         {
             return null;
@@ -1217,6 +1653,18 @@ public sealed partial class MainPage : Page
                 return ElevateProjectBatchDiscoveryService.CreateManualJob(projectRoot, selection.FilePath, buildingType);
             })
             .ToList();
+    }
+
+    private void UpdateUnknownProjectComboBoxAutomationName(ComboBox comboBox, string filePath)
+    {
+        string buildingTypeText = comboBox.SelectedItem is ComboBoxItem { Content: object content }
+            ? content.ToString() ?? string.Empty
+            : string.Empty;
+        string name = localizationService.CurrentLanguage == AppLanguage.Russian
+            ? $"Тип здания для {Path.GetFileName(filePath)}: {buildingTypeText}"
+            : $"Building type for {Path.GetFileName(filePath)}: {buildingTypeText}";
+        AutomationProperties.SetName(comboBox, name);
+        AutomationProperties.SetHelpText(comboBox, filePath);
     }
 
     private async Task<bool> ConfirmProjectBatchJobsAsync(
@@ -1247,7 +1695,7 @@ public sealed partial class MainPage : Page
 
             AddProjectBatchPreviewCell(table, localizationService.FormatBuildingType(job.BuildingType), row, column: 0);
             AddProjectBatchPreviewCell(table, job.WorkingFolder, row, column: 1, wrap: true);
-            AddProjectBatchPreviewCell(table, CountProjectBatchSourceFiles(job).ToString(System.Globalization.CultureInfo.CurrentCulture), row, column: 2);
+            AddProjectBatchPreviewCell(table, CountProjectBatchSourceFiles(job).ToString(localizationService.CurrentCulture), row, column: 2);
             AddProjectBatchPreviewCell(table, scenarioText, row, column: 3);
         }
 
@@ -1268,11 +1716,11 @@ public sealed partial class MainPage : Page
             contentStack.Children.Add(new TextBlock
             {
                 Text = string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.ProjectBatchPreviewWarningsFormat,
                     warnings.Count),
                 FontSize = 13,
-                Opacity = 0.78,
+                Foreground = ResolveSubtleTextBrush(),
                 TextWrapping = TextWrapping.Wrap,
             });
 
@@ -1280,9 +1728,10 @@ public sealed partial class MainPage : Page
             {
                 contentStack.Children.Add(new TextBlock
                 {
-                    Text = $"{warning.Message} {warning.Path}",
+                    Text = $"{localizationService.FormatProjectBatchWarning(warning)}\n{warning.Path}",
                     FontSize = 12,
-                    Opacity = 0.82,
+                    Foreground = ResolveSubtleTextBrush(),
+                    IsTextSelectionEnabled = true,
                     TextWrapping = TextWrapping.Wrap,
                     MaxWidth = 720,
                 });
@@ -1309,7 +1758,7 @@ public sealed partial class MainPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        ContentDialogResult result = await dialog.ShowAsync();
+        ContentDialogResult result = await ShowCoordinatedDialogAsync(dialog);
         return result == ContentDialogResult.Primary;
     }
 
@@ -1332,8 +1781,7 @@ public sealed partial class MainPage : Page
             text,
             row: 0,
             column,
-            fontWeight: Microsoft.UI.Text.FontWeights.SemiBold,
-            opacity: 0.78);
+            fontWeight: Microsoft.UI.Text.FontWeights.SemiBold);
     }
 
     private static void AddProjectBatchPreviewCell(
@@ -1349,7 +1797,6 @@ public sealed partial class MainPage : Page
             row,
             column,
             fontWeight: Microsoft.UI.Text.FontWeights.Normal,
-            opacity: 1,
             wrap);
     }
 
@@ -1359,7 +1806,6 @@ public sealed partial class MainPage : Page
         int row,
         int column,
         Windows.UI.Text.FontWeight fontWeight,
-        double opacity,
         bool wrap = false)
     {
         while (table.RowDefinitions.Count <= row)
@@ -1372,7 +1818,6 @@ public sealed partial class MainPage : Page
             Text = text,
             FontSize = 13,
             FontWeight = fontWeight,
-            Opacity = opacity,
             TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
             MaxWidth = wrap ? 520 : double.PositiveInfinity,
         };
@@ -1380,6 +1825,13 @@ public sealed partial class MainPage : Page
         Grid.SetRow(textBlock, row);
         Grid.SetColumn(textBlock, column);
         table.Children.Add(textBlock);
+    }
+
+    private static Brush? ResolveSubtleTextBrush()
+    {
+        return Application.Current.Resources.TryGetValue("IosSubtleTextBrush", out object resource) && resource is Brush brush
+            ? brush
+            : null;
     }
 
     private static int CountProjectBatchSourceFiles(ProjectBatchJob job)
@@ -1712,7 +2164,7 @@ public sealed partial class MainPage : Page
 
         SetStatus(
             string.Format(
-                System.Globalization.CultureInfo.CurrentCulture,
+                localizationService.CurrentCulture,
                 Text.EditorInvalidNumberFormat,
                 fieldName),
             InfoBarSeverity.Warning);
@@ -1735,7 +2187,7 @@ public sealed partial class MainPage : Page
 
         SetStatus(
             string.Format(
-                System.Globalization.CultureInfo.CurrentCulture,
+                localizationService.CurrentCulture,
                 Text.EditorInvalidNumberFormat,
                 fieldName),
             InfoBarSeverity.Warning);
@@ -1754,9 +2206,9 @@ public sealed partial class MainPage : Page
         return true;
     }
 
-    private static string FormatEditorNumber(double value)
+    private string FormatEditorNumber(double value)
     {
-        return value.ToString("0.###", System.Globalization.CultureInfo.GetCultureInfo("ru-RU"));
+        return value.ToString("0.###", localizationService.CurrentCulture);
     }
 
     private void StartProcessingJob(string path, BuildingType buildingType, bool includeLunchPeak)
@@ -1767,7 +2219,7 @@ public sealed partial class MainPage : Page
         {
             SetStatus(
                 string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.RunFolderBusyMessage,
                     normalizedPath),
                 InfoBarSeverity.Warning);
@@ -1818,7 +2270,7 @@ public sealed partial class MainPage : Page
             {
                 SetStatus(
                     string.Format(
-                        System.Globalization.CultureInfo.CurrentCulture,
+                        localizationService.CurrentCulture,
                         Text.RunFolderBusyMessage,
                         normalizedPath),
                     InfoBarSeverity.Warning);
@@ -1851,25 +2303,30 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        string startedMessage = string.Format(
-            System.Globalization.CultureInfo.CurrentCulture,
-            Text.ProjectBatchStartedFormat,
-            startedJobs);
-        if (warningCount > 0)
+        string officeScenario = GetProjectBatchScenarioText(BuildingType.Office, includeOfficeLunchPeak);
+        string startedMessage = (warningCount > 0, startedOfficeJob) switch
         {
-            startedMessage += " " + string.Format(
-                System.Globalization.CultureInfo.CurrentCulture,
-                Text.ProjectBatchWarningsFormat,
-                warningCount);
-        }
-
-        if (startedOfficeJob)
-        {
-            startedMessage += " " + string.Format(
-                System.Globalization.CultureInfo.CurrentCulture,
-                Text.ProjectBatchOfficeScenarioStatusFormat,
-                GetProjectBatchScenarioText(BuildingType.Office, includeOfficeLunchPeak));
-        }
+            (true, true) => string.Format(
+                localizationService.CurrentCulture,
+                Text.ProjectBatchStartedWithWarningsAndOfficeScenarioFormat,
+                startedJobs,
+                warningCount,
+                officeScenario),
+            (true, false) => string.Format(
+                localizationService.CurrentCulture,
+                Text.ProjectBatchStartedWithWarningsFormat,
+                startedJobs,
+                warningCount),
+            (false, true) => string.Format(
+                localizationService.CurrentCulture,
+                Text.ProjectBatchStartedWithOfficeScenarioFormat,
+                startedJobs,
+                officeScenario),
+            _ => string.Format(
+                localizationService.CurrentCulture,
+                Text.ProjectBatchStartedFormat,
+                startedJobs),
+        };
 
         SetStatus(startedMessage, warningCount > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Informational);
     }
@@ -1910,7 +2367,7 @@ public sealed partial class MainPage : Page
         catch (Exception ex)
         {
             string message = BuildExceptionMessage(ex);
-            job.MarkFailed(message);
+            job.MarkFailed(ex, localizationService);
             SetStatus(message, InfoBarSeverity.Error);
         }
         finally
@@ -2019,7 +2476,7 @@ public sealed partial class MainPage : Page
         {
             job.MarkPrimaryRunFinished();
             string message = BuildExceptionMessage(ex);
-            job.MarkFailed(message);
+            job.MarkFailed(ex, localizationService);
             SetStatus(message, InfoBarSeverity.Error);
         }
         finally
@@ -2178,7 +2635,7 @@ public sealed partial class MainPage : Page
         string message = FormatResultMessage(reportResult);
         if (!preserveStoppedStatus)
         {
-            job.MarkReportFailed(message);
+            job.MarkReportFailed(reportResult, localizationService);
         }
 
         SetStatus(message, InfoBarSeverity.Error);
@@ -2241,7 +2698,7 @@ public sealed partial class MainPage : Page
         }
 
         string message = FormatResultMessage(result);
-        job.MarkFailed(message);
+        job.MarkFailed(result, localizationService);
         SetStatus(message, InfoBarSeverity.Error);
     }
 
@@ -2298,7 +2755,7 @@ public sealed partial class MainPage : Page
         if (!string.IsNullOrWhiteSpace(update.ErrorMessage))
         {
             string message = localizationService.TranslateRuntimeMessage(update.ErrorMessage);
-            job.MarkScenarioFailed(update.Scenario, message, localizationService);
+            job.MarkScenarioFailed(update.Scenario, update.ErrorMessage, localizationService);
             RefreshJobsSummary();
             return;
         }
@@ -2315,15 +2772,94 @@ public sealed partial class MainPage : Page
     private void UpdateJobScenarioMetrics(JobProgressViewModel job, string? scenario)
     {
         string metricsPath = ResolveMetricsPath(job, scenario);
-        ElevateResultMetrics? metrics = resultMetricsService.ReadLatestMetrics(metricsPath);
-        if (metrics is null)
+        if (!metricsReadStates.TryGetValue(metricsPath, out MetricsReadState? state))
         {
-            return;
+            state = new MetricsReadState();
+            metricsReadStates.Add(metricsPath, state);
         }
 
-        job.UpdateScenarioMetrics(
+        state.Source?.Cancel();
+        CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(
+            applicationLifetimeSource.Token);
+        int generation = ++state.Generation;
+        state.Source = source;
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        TimeSpan delay = state.LastReadStartedUtc == default
+            ? TimeSpan.Zero
+            : state.LastReadStartedUtc + MetricsReadThrottle - now;
+        if (delay < TimeSpan.Zero)
+        {
+            delay = TimeSpan.Zero;
+        }
+
+        _ = ReadJobScenarioMetricsAsync(
+            job,
             scenario,
-            ElevateResultMetricsService.Format(metrics, System.Globalization.CultureInfo.CurrentCulture));
+            metricsPath,
+            state,
+            generation,
+            delay,
+            source);
+    }
+
+    private async Task ReadJobScenarioMetricsAsync(
+        JobProgressViewModel job,
+        string? scenario,
+        string metricsPath,
+        MetricsReadState state,
+        int generation,
+        TimeSpan delay,
+        CancellationTokenSource source)
+    {
+        try
+        {
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay, source.Token);
+            }
+
+            source.Token.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(state.Source, source) || state.Generation != generation)
+            {
+                return;
+            }
+
+            state.LastReadStartedUtc = DateTimeOffset.UtcNow;
+            ElevateResultMetrics? metrics = await Task.Run(
+                () => resultMetricsService.ReadLatestMetrics(metricsPath),
+                source.Token);
+            source.Token.ThrowIfCancellationRequested();
+            if (metrics is null ||
+                !ReferenceEquals(state.Source, source) ||
+                state.Generation != generation ||
+                !Jobs.Contains(job))
+            {
+                return;
+            }
+
+            job.UpdateScenarioMetrics(
+                scenario,
+                metrics,
+                localizationService.CurrentCulture);
+        }
+        catch (OperationCanceledException) when (source.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Unable to refresh Elevate result metrics for '{metricsPath}': {ex}");
+        }
+        finally
+        {
+            if (ReferenceEquals(state.Source, source))
+            {
+                state.Source = null;
+            }
+
+            source.Dispose();
+        }
     }
 
     private static string ResolveMetricsPath(JobProgressViewModel job, string? scenario)
@@ -2342,17 +2878,77 @@ public sealed partial class MainPage : Page
         return Path.Combine(job.JobPath, "morning");
     }
 
-    private void SetStatus(string message, InfoBarSeverity severity)
+    private void SetStatus(
+        string message,
+        InfoBarSeverity severity,
+        bool preserveActionButton = false)
     {
         if (!DispatcherQueue.HasThreadAccess)
         {
-            _ = DispatcherQueue.TryEnqueue(() => SetStatus(message, severity));
+            _ = DispatcherQueue.TryEnqueue(() => SetStatus(message, severity, preserveActionButton));
             return;
         }
 
+        if (!preserveActionButton)
+        {
+            dismissUndoSource?.Cancel();
+            dismissUndoSource?.Dispose();
+            dismissUndoSource = null;
+            dismissedJob = null;
+            dismissedJobIndex = -1;
+            StatusActionButton.Visibility = Visibility.Collapsed;
+        }
+
+        int announcementGeneration = Interlocked.Increment(ref statusAnnouncementGeneration);
+        bool wasOpen = StatusInfoBar.IsOpen;
+        if (wasOpen)
+        {
+            StatusInfoBar.IsOpen = false;
+        }
+
+        AutomationProperties.SetLiveSetting(
+            StatusInfoBar,
+            severity is InfoBarSeverity.Error or InfoBarSeverity.Warning
+                ? AutomationLiveSetting.Assertive
+                : AutomationLiveSetting.Polite);
         StatusInfoBar.Severity = severity;
         StatusInfoBar.Message = message;
-        StatusInfoBar.IsOpen = true;
+        statusMessageLanguage = localizationService.CurrentLanguage;
+        AutomationProperties.SetName(StatusInfoBar, $"{Text.StatusTitle}: {message}");
+        if (!wasOpen)
+        {
+            StatusInfoBar.IsOpen = true;
+            RaiseLiveRegionChanged(StatusInfoBar);
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (announcementGeneration == statusAnnouncementGeneration)
+            {
+                StatusInfoBar.IsOpen = true;
+                RaiseLiveRegionChanged(StatusInfoBar);
+            }
+        });
+    }
+
+    private static void UpdateLiveRegionText(TextBlock textBlock, string text)
+    {
+        if (string.Equals(textBlock.Text, text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        textBlock.Text = text;
+        RaiseLiveRegionChanged(textBlock);
+    }
+
+    private static void RaiseLiveRegionChanged(FrameworkElement element)
+    {
+        AutomationPeer? peer =
+            FrameworkElementAutomationPeer.FromElement(element) ??
+            FrameworkElementAutomationPeer.CreatePeerForElement(element);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
     private void RefreshJobsSummary()
@@ -2367,7 +2963,15 @@ public sealed partial class MainPage : Page
 
         int runningJobs = Jobs.Count(job => job.IsRunning);
         BusyRing.IsActive = runningJobs > 0;
-        BusyTextBlock.Text = localizationService.GetQueueSummary(runningJobs);
+        UpdateLiveRegionText(BusyTextBlock, localizationService.GetQueueSummary(runningJobs));
+
+        int queuedStoppableJobs = Jobs.Count(job => job.CanStop && job.IsQueued);
+        int allStoppableJobs = Jobs.Count(job => job.CanStop);
+        BatchQueueControlsPanel.Visibility = allStoppableJobs > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        StopQueuedJobsButton.IsEnabled = queuedStoppableJobs > 0;
+        StopAllJobsButton.IsEnabled = allStoppableJobs > 0;
 
         bool hasJobs = Jobs.Count > 0;
         JobsItemsControl.Visibility = hasJobs ? Visibility.Visible : Visibility.Collapsed;
@@ -2402,14 +3006,16 @@ public sealed partial class MainPage : Page
                     snapshot.Title,
                     snapshot.ReportOutputRoot);
                 bool pathExists = Directory.Exists(snapshot.Path);
-                string interruptionMessage = localizationService.CurrentLanguage == AppLanguage.Russian
-                    ? pathExists
-                        ? "Предыдущий сеанс приложения завершился до окончания задачи. Расчет можно повторить."
-                        : "Предыдущий сеанс завершился до окончания задачи, а рабочая папка сейчас недоступна."
-                    : pathExists
-                        ? "The previous application session ended before this task completed. The calculation can be retried."
-                        : "The previous session ended before this task completed, and its working folder is currently unavailable.";
-                job.MarkFailed(interruptionMessage);
+                string interruptionMessage = pathExists
+                    ? "The previous application session ended before this task completed. The calculation can be retried."
+                    : "The previous session ended before this task completed, and its working folder is currently unavailable.";
+                string russianInterruptionMessage = pathExists
+                    ? "Предыдущий сеанс приложения завершился до окончания задачи. Расчет можно повторить."
+                    : "Предыдущий сеанс завершился до окончания задачи, а рабочая папка сейчас недоступна.";
+                job.MarkFailed(
+                    interruptionMessage,
+                    localizationService,
+                    russianInterruptionMessage);
             }
 
             jobQueuePersistenceService.ClearInterruptedJobs();
@@ -2585,58 +3191,124 @@ public sealed partial class MainPage : Page
 
     private void RefreshProjectInputMode()
     {
-        ProjectInputMode newMode = DetectProjectInputMode(PathTextBox.Text);
-        if (projectInputMode == newMode)
-        {
-            if (newMode == ProjectInputMode.ProjectBatch)
-            {
-                SyncProjectBatchPathFromMainPath();
-            }
+        ScheduleProjectPathAnalysis(immediate: true);
+    }
 
-            RefreshCalculationFileStatus();
+    private void ScheduleProjectPathAnalysis(bool immediate = false)
+    {
+        projectPathAnalysisSource?.Cancel();
+        projectPathAnalysisSource = null;
+
+        int generation = Interlocked.Increment(ref projectPathAnalysisGeneration);
+        string path = PathTextBox.Text?.Trim() ?? string.Empty;
+        lastProjectPathAnalysis = null;
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ApplyProjectPathAnalysisState();
             return;
         }
 
-        projectInputMode = newMode;
-        SyncProjectBatchPathFromMainPath();
-        UpdateProjectInputModeVisibility();
+        if (!Directory.Exists(path))
+        {
+            ApplyProjectPathAnalysisState();
+            return;
+        }
+
+        CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(
+            applicationLifetimeSource.Token);
+        projectPathAnalysisSource = source;
+        UpdateLiveRegionText(
+            ProjectModeSuggestionTextBlock,
+            localizationService.CurrentLanguage == AppLanguage.Russian
+                ? "Анализируем структуру папки…"
+                : "Analyzing the folder structure…");
+        CalculationFileStatusTextBlock.Text = ProjectModeSuggestionTextBlock.Text;
+        _ = AnalyzeProjectPathAsync(path, generation, immediate, source);
     }
 
-    private ProjectInputMode DetectProjectInputMode(string? rawPath)
+    private async Task AnalyzeProjectPathAsync(
+        string path,
+        int generation,
+        bool immediate,
+        CancellationTokenSource source)
     {
-        string path = rawPath?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
-        {
-            return ProjectInputMode.Standard;
-        }
-
         try
         {
-            string normalizedPath = NormalizeProcessingFolder(path);
-            ProjectBatchDiscoveryResult discoveryResult = projectBatchDiscoveryService.Discover(normalizedPath);
-            bool hasNestedProjectFiles = discoveryResult.Jobs.Any(job =>
-                    !NormalizeProcessingFolder(job.WorkingFolder)
-                        .Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)) ||
-                discoveryResult.UnknownElvxFiles.Any(file =>
-                    !NormalizeProcessingFolder(Path.GetDirectoryName(file) ?? normalizedPath)
-                        .Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)) ||
-                discoveryResult.Warnings.Any(warning =>
-                    !NormalizeProcessingFolder(
-                            Directory.Exists(warning.Path)
-                                ? warning.Path
-                                : Path.GetDirectoryName(warning.Path) ?? normalizedPath)
-                        .Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
-            if (hasNestedProjectFiles)
+            if (!immediate)
             {
-                return ProjectInputMode.ProjectBatch;
+                await Task.Delay(ProjectPathAnalysisDebounce, source.Token);
             }
 
-            return ProjectInputMode.Standard;
+            ProjectPathAnalysis analysis = await Task.Run(
+                () => AnalyzeProjectPath(path, source.Token),
+                source.Token);
+            source.Token.ThrowIfCancellationRequested();
+            if (generation != projectPathAnalysisGeneration)
+            {
+                return;
+            }
+
+            lastProjectPathAnalysis = analysis;
+            ApplyProjectPathAnalysisState();
         }
-        catch
+        catch (OperationCanceledException) when (source.IsCancellationRequested)
         {
-            return ProjectInputMode.Standard;
         }
+        catch (Exception ex)
+        {
+            if (generation != projectPathAnalysisGeneration)
+            {
+                return;
+            }
+
+            lastProjectPathAnalysis = new ProjectPathAnalysis(
+                path,
+                SuggestedBatchMode: false,
+                CalculationFileCount: 0,
+                PreferredCalculationFileName: null,
+                ErrorMessage: ex.Message);
+            ApplyProjectPathAnalysisState();
+        }
+        finally
+        {
+            if (ReferenceEquals(projectPathAnalysisSource, source))
+            {
+                projectPathAnalysisSource = null;
+            }
+
+            source.Dispose();
+        }
+    }
+
+    private ProjectPathAnalysis AnalyzeProjectPath(string path, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        string normalizedPath = NormalizeProcessingFolder(path);
+        ProjectBatchDiscoveryResult discoveryResult = projectBatchDiscoveryService.Discover(normalizedPath);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        bool hasNestedProjectFiles = discoveryResult.Jobs.Any(job =>
+                !NormalizeProcessingFolder(job.WorkingFolder)
+                    .Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)) ||
+            discoveryResult.UnknownElvxFiles.Any(file =>
+                !NormalizeProcessingFolder(Path.GetDirectoryName(file) ?? normalizedPath)
+                    .Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)) ||
+            discoveryResult.Warnings.Any(warning =>
+                !NormalizeProcessingFolder(
+                        Directory.Exists(warning.Path)
+                            ? warning.Path
+                            : Path.GetDirectoryName(warning.Path) ?? normalizedPath)
+                    .Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+
+        string[] calculationFiles = GetCalculationElvxCandidates(normalizedPath);
+        string? preferredFile = SelectPreferredCalculationElvxPath(calculationFiles);
+        return new ProjectPathAnalysis(
+            normalizedPath,
+            hasNestedProjectFiles,
+            calculationFiles.Length,
+            preferredFile is null ? null : Path.GetFileName(preferredFile),
+            ErrorMessage: null);
     }
 
     private void SyncProjectBatchPathFromMainPath()
@@ -2656,6 +3328,7 @@ public sealed partial class MainPage : Page
     private void UpdateProjectInputModeVisibility()
     {
         bool isBatchMode = projectInputMode == ProjectInputMode.ProjectBatch;
+        UpdateProjectInputModeSelection();
         BuildingTypeCard.Visibility = isBatchMode ? Visibility.Collapsed : Visibility.Visible;
         EditorWindowCard.Visibility = isBatchMode ? Visibility.Collapsed : Visibility.Visible;
         ActionsCard.Visibility = isBatchMode ? Visibility.Collapsed : Visibility.Visible;
@@ -2667,44 +3340,106 @@ public sealed partial class MainPage : Page
 
     private void RefreshCalculationFileStatus()
     {
-        if (projectInputMode == ProjectInputMode.ProjectBatch)
+        string path = PathTextBox.Text?.Trim() ?? string.Empty;
+        if (lastProjectPathAnalysis is not null &&
+            string.Equals(
+                NormalizeProcessingFolder(path),
+                NormalizeProcessingFolder(lastProjectPathAnalysis.Path),
+                StringComparison.OrdinalIgnoreCase))
         {
-            CalculationFileStatusTextBlock.Text = Text.CalculationFileBatchModeStatus;
+            ApplyProjectPathAnalysisState();
             return;
         }
 
+        ScheduleProjectPathAnalysis(immediate: true);
+    }
+
+    private void ApplyProjectPathAnalysisState()
+    {
         string path = PathTextBox.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(path))
         {
             CalculationFileStatusTextBlock.Text = Text.CalculationFileNoPathStatus;
+            UpdateLiveRegionText(
+                ProjectModeSuggestionTextBlock,
+                localizationService.CurrentLanguage == AppLanguage.Russian
+                    ? "Выберите режим и рабочую папку."
+                    : "Choose a mode and working folder.");
             return;
         }
 
         if (!Directory.Exists(path))
         {
             CalculationFileStatusTextBlock.Text = Text.CalculationFileMissingPathStatus;
+            UpdateLiveRegionText(
+                ProjectModeSuggestionTextBlock,
+                localizationService.CurrentLanguage == AppLanguage.Russian
+                    ? "Папка пока недоступна; выбранный режим сохранён."
+                    : "The folder is not available yet; the selected mode is preserved.");
             return;
         }
 
-        try
+        ProjectPathAnalysis? analysis = lastProjectPathAnalysis;
+        if (analysis is null)
         {
-            string[] elvxFiles = GetCalculationElvxCandidates(path);
-            string? preferredFile = SelectPreferredCalculationElvxPath(elvxFiles);
-            if (preferredFile is null)
-            {
-                CalculationFileStatusTextBlock.Text = Text.CalculationFileTemplateStatus;
-                return;
-            }
+            UpdateLiveRegionText(
+                ProjectModeSuggestionTextBlock,
+                localizationService.CurrentLanguage == AppLanguage.Russian
+                    ? "Анализируем структуру папки…"
+                    : "Analyzing the folder structure…");
+            CalculationFileStatusTextBlock.Text = ProjectModeSuggestionTextBlock.Text;
+            return;
+        }
 
-            string fileName = Path.GetFileName(preferredFile);
-            CalculationFileStatusTextBlock.Text = elvxFiles.Length == 1
-                ? string.Format(System.Globalization.CultureInfo.CurrentCulture, Text.CalculationFileExistingStatusFormat, fileName)
-                : string.Format(System.Globalization.CultureInfo.CurrentCulture, Text.CalculationFileMultipleStatusFormat, elvxFiles.Length, fileName);
-        }
-        catch (Exception ex)
+        if (!string.IsNullOrWhiteSpace(analysis.ErrorMessage))
         {
-            CalculationFileStatusTextBlock.Text = localizationService.TranslateRuntimeMessage(ex.Message);
+            CalculationFileStatusTextBlock.Text = localizationService.TranslateRuntimeMessage(analysis.ErrorMessage);
+            UpdateLiveRegionText(
+                ProjectModeSuggestionTextBlock,
+                localizationService.CurrentLanguage == AppLanguage.Russian
+                    ? "Не удалось определить структуру автоматически; выберите режим вручную."
+                    : "The structure could not be detected; choose the mode manually.");
+            return;
         }
+
+        if (projectInputMode == ProjectInputMode.ProjectBatch)
+        {
+            CalculationFileStatusTextBlock.Text = Text.CalculationFileBatchModeStatus;
+        }
+        else if (analysis.CalculationFileCount == 0 ||
+                 string.IsNullOrWhiteSpace(analysis.PreferredCalculationFileName))
+        {
+            CalculationFileStatusTextBlock.Text = Text.CalculationFileTemplateStatus;
+        }
+        else
+        {
+            CalculationFileStatusTextBlock.Text = analysis.CalculationFileCount == 1
+                ? string.Format(
+                    localizationService.CurrentCulture,
+                    Text.CalculationFileExistingStatusFormat,
+                    analysis.PreferredCalculationFileName)
+                : string.Format(
+                    localizationService.CurrentCulture,
+                    Text.CalculationFileMultipleStatusFormat,
+                    analysis.CalculationFileCount,
+                    analysis.PreferredCalculationFileName);
+        }
+
+        bool selectedModeMatchesSuggestion =
+            analysis.SuggestedBatchMode == (projectInputMode == ProjectInputMode.ProjectBatch);
+        UpdateLiveRegionText(
+            ProjectModeSuggestionTextBlock,
+            selectedModeMatchesSuggestion
+                ? localizationService.CurrentLanguage == AppLanguage.Russian
+                    ? "Выбранный режим соответствует структуре папки."
+                    : "The selected mode matches the folder structure."
+                : analysis.SuggestedBatchMode
+                    ? localizationService.CurrentLanguage == AppLanguage.Russian
+                        ? "Обнаружены вложенные проекты — рекомендуется режим «Пакет»."
+                        : "Nested projects were detected; Batch mode is recommended."
+                    : localizationService.CurrentLanguage == AppLanguage.Russian
+                        ? "Вложенные проекты не найдены — рекомендуется режим «Один проект»."
+                        : "No nested projects were found; Single project mode is recommended.");
     }
 
     private static string? SelectPreferredCalculationElvxPath(IEnumerable<string> files)
@@ -2787,12 +3522,12 @@ public sealed partial class MainPage : Page
             string versionPart = string.IsNullOrWhiteSpace(info.ProductVersion)
                 ? string.Empty
                 : string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.IntegrationVersionFormat,
                     info.ProductVersion);
             SetStatus(
                 string.Format(
-                    System.Globalization.CultureInfo.CurrentCulture,
+                    localizationService.CurrentCulture,
                     Text.IntegrationFoundFormat,
                     versionPart,
                     info.ExecutablePath),
@@ -2838,7 +3573,7 @@ public sealed partial class MainPage : Page
         string message = string.IsNullOrWhiteSpace(result.Message)
             ? Text.OperationFailedMessage
             : localizationService.TranslateRuntimeMessage(result.Message);
-        if (!message.Contains(Text.OperationFailedMessage, StringComparison.CurrentCultureIgnoreCase))
+        if (!message.Contains(Text.OperationFailedMessage, StringComparison.OrdinalIgnoreCase))
         {
             message = $"{Text.OperationFailedMessage} {message}";
         }
@@ -2870,10 +3605,17 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        bool runtimeStatusWasOpen = StatusInfoBar.IsOpen;
+        string previousStatusMessage = StatusInfoBar.Message;
+        InfoBarSeverity previousStatusSeverity = StatusInfoBar.Severity;
+        AppLanguage previousStatusLanguage = statusMessageLanguage;
+
         foreach (JobProgressViewModel job in Jobs)
         {
             job.ApplyLocalization(localizationService);
         }
+
+        dismissedJob?.ApplyLocalization(localizationService);
 
         foreach (FloorEditorRowViewModel row in editorFloors)
         {
@@ -2893,8 +3635,59 @@ public sealed partial class MainPage : Page
         }
 
         Bindings.Update();
+        UpdateProjectModeControlsText();
         RefreshCalculationFileStatus();
         RefreshJobsSummary();
+
+        string localizedStatusMessage;
+        InfoBarSeverity localizedStatusSeverity;
+        if (dismissedJob is not null && StatusActionButton.Visibility == Visibility.Visible)
+        {
+            localizedStatusMessage = string.Format(
+                localizationService.CurrentCulture,
+                Text.JobDismissedFormat,
+                dismissedJob.Title);
+            localizedStatusSeverity = InfoBarSeverity.Informational;
+        }
+        else
+        {
+            localizedStatusMessage = localizationService.RelocalizeCatalogMessage(
+                previousStatusMessage,
+                previousStatusLanguage);
+            localizedStatusSeverity = previousStatusSeverity;
+        }
+
+        StatusInfoBar.Title = Text.StatusTitle;
+        StatusInfoBar.Message = localizedStatusMessage;
+        StatusInfoBar.Severity = localizedStatusSeverity;
+        statusMessageLanguage = localizationService.CurrentLanguage;
+        AutomationProperties.SetLiveSetting(
+            StatusInfoBar,
+            localizedStatusSeverity is InfoBarSeverity.Error or InfoBarSeverity.Warning
+                ? AutomationLiveSetting.Assertive
+                : AutomationLiveSetting.Polite);
+        StatusInfoBar.IsOpen = runtimeStatusWasOpen;
+        AutomationProperties.SetName(StatusInfoBar, $"{Text.StatusTitle}: {localizedStatusMessage}");
+        if (runtimeStatusWasOpen)
+        {
+            RaiseLiveRegionChanged(StatusInfoBar);
+        }
+    }
+
+    private sealed record ProjectPathAnalysis(
+        string Path,
+        bool SuggestedBatchMode,
+        int CalculationFileCount,
+        string? PreferredCalculationFileName,
+        string? ErrorMessage);
+
+    private sealed class MetricsReadState
+    {
+        public DateTimeOffset LastReadStartedUtc { get; set; }
+
+        public int Generation { get; set; }
+
+        public CancellationTokenSource? Source { get; set; }
     }
 
     private enum ProjectInputMode
@@ -2918,7 +3711,12 @@ public sealed partial class MainPage : Page
         private readonly ScenarioProgressViewModel? lunchScenario;
         private JobScenarioKind activeScenarioKind;
         private JobStateKind stateKind;
+        private JobStateKind? manualReportReturnState;
         private string? failureMessage;
+        private string? failureSourceMessage;
+        private string? failureSourceExceptionMessage;
+        private string? failureRussianOverride;
+        private bool failureIncludesOperationPrefix;
         private string title;
         private string details;
         private string statusText;
@@ -3172,7 +3970,12 @@ public sealed partial class MainPage : Page
 
         public bool StopRequested => stopRequested;
 
-        public bool WasStoppedEarly => stateKind == JobStateKind.Stopped || stopRequested;
+        public bool IsQueued => stateKind == JobStateKind.Queued;
+
+        public bool WasStoppedEarly => stateKind == JobStateKind.Stopped ||
+                                       (stateKind == JobStateKind.Reporting &&
+                                        manualReportReturnState == JobStateKind.Stopped) ||
+                                       stopRequested;
 
         public bool CanStop => (stateKind is JobStateKind.Queued
                                     or JobStateKind.Preparing
@@ -3240,6 +4043,7 @@ public sealed partial class MainPage : Page
         {
             isFinished = false;
             SetFailureMessage(null);
+            manualReportReturnState = null;
             stopRequested = false;
             stateKind = JobStateKind.Queued;
             IsRunning = true;
@@ -3261,6 +4065,7 @@ public sealed partial class MainPage : Page
             primaryRunFinished = false;
             completionStarted = false;
             SetFailureMessage(null);
+            manualReportReturnState = null;
             stopRequested = false;
             stateKind = JobStateKind.Running;
             IsRunning = true;
@@ -3270,16 +4075,49 @@ public sealed partial class MainPage : Page
 
         public void MarkReporting(AppLocalizationService localizationService)
         {
+            manualReportReturnState = null;
             stateKind = JobStateKind.Reporting;
             IsRunning = true;
             StatusText = localizationService.GetJobStateLabel(JobStateKind.Reporting);
             NotifyReportActionStateChanged();
         }
 
+        public void BeginManualReport(AppLocalizationService localizationService)
+        {
+            manualReportReturnState = stateKind == JobStateKind.Stopped
+                ? JobStateKind.Stopped
+                : JobStateKind.Completed;
+            isFinished = false;
+            SetFailureMessage(null);
+            stateKind = JobStateKind.Reporting;
+            IsRunning = true;
+            StatusText = localizationService.GetJobStateLabel(JobStateKind.Reporting);
+            NotifyReportActionStateChanged();
+        }
+
+        public void CompleteManualReport(AppLocalizationService localizationService)
+        {
+            JobStateKind returnState = manualReportReturnState ?? JobStateKind.Completed;
+            manualReportReturnState = null;
+            if (returnState == JobStateKind.Stopped)
+            {
+                MarkStopped(localizationService);
+                return;
+            }
+
+            MarkCompleted(localizationService);
+        }
+
+        public void CancelManualReport(AppLocalizationService localizationService)
+        {
+            CompleteManualReport(localizationService);
+        }
+
         public void MarkCompleted(AppLocalizationService localizationService)
         {
             isFinished = true;
             SetFailureMessage(null);
+            manualReportReturnState = null;
             stopRequested = false;
             stateKind = JobStateKind.Completed;
             IsRunning = false;
@@ -3291,6 +4129,7 @@ public sealed partial class MainPage : Page
         {
             isFinished = true;
             SetFailureMessage(null);
+            manualReportReturnState = null;
             stopRequested = false;
             stateKind = JobStateKind.Stopped;
             IsRunning = false;
@@ -3298,25 +4137,99 @@ public sealed partial class MainPage : Page
             NotifyReportActionStateChanged();
         }
 
-        public void MarkFailed(string message)
+        public void MarkFailed(ProcessingResult result, AppLocalizationService localizationService)
+        {
+            MarkFailed(
+                result.Message,
+                result.Exception?.Message,
+                localizationService,
+                includeOperationPrefix: true);
+        }
+
+        public void MarkFailed(Exception exception, AppLocalizationService localizationService)
+        {
+            MarkFailed(
+                exception.Message,
+                exception.InnerException?.Message,
+                localizationService,
+                includeOperationPrefix: true);
+        }
+
+        public void MarkFailed(
+            string sourceMessage,
+            AppLocalizationService localizationService,
+            string? russianOverride = null,
+            bool includeOperationPrefix = false)
         {
             isFinished = true;
-            SetFailureMessage(message);
+            manualReportReturnState = null;
             stopRequested = false;
             stateKind = JobStateKind.Failed;
+            SetFailureSource(
+                sourceMessage,
+                sourceExceptionMessage: null,
+                localizationService,
+                includeOperationPrefix,
+                russianOverride);
             IsRunning = false;
-            StatusText = message;
+            StatusText = FailureMessage;
             NotifyReportActionStateChanged();
         }
 
-        public void MarkReportFailed(string message)
+        private void MarkFailed(
+            string sourceMessage,
+            string? sourceExceptionMessage,
+            AppLocalizationService localizationService,
+            bool includeOperationPrefix)
         {
             isFinished = true;
-            SetFailureMessage(message);
+            manualReportReturnState = null;
+            stopRequested = false;
+            stateKind = JobStateKind.Failed;
+            SetFailureSource(
+                sourceMessage,
+                sourceExceptionMessage,
+                localizationService,
+                includeOperationPrefix);
+            IsRunning = false;
+            StatusText = FailureMessage;
+            NotifyReportActionStateChanged();
+        }
+
+        public void MarkReportFailed(
+            ProcessingResult result,
+            AppLocalizationService localizationService)
+        {
+            MarkReportFailed(
+                result.Message,
+                result.Exception?.Message,
+                localizationService);
+        }
+
+        public void MarkReportFailed(Exception exception, AppLocalizationService localizationService)
+        {
+            MarkReportFailed(
+                exception.Message,
+                exception.InnerException?.Message,
+                localizationService);
+        }
+
+        private void MarkReportFailed(
+            string sourceMessage,
+            string? sourceExceptionMessage,
+            AppLocalizationService localizationService)
+        {
+            isFinished = true;
+            manualReportReturnState = null;
             stopRequested = false;
             stateKind = JobStateKind.ReportFailed;
+            SetFailureSource(
+                sourceMessage,
+                sourceExceptionMessage,
+                localizationService,
+                includeOperationPrefix: true);
             IsRunning = false;
-            StatusText = message;
+            StatusText = FailureMessage;
             NotifyReportActionStateChanged();
         }
 
@@ -3338,18 +4251,55 @@ public sealed partial class MainPage : Page
 
         public void MarkScenarioFailed(
             string? scenario,
-            string message,
+            string sourceMessage,
             AppLocalizationService localizationService)
         {
-            MarkScenarioFailed(ResolveScenario(scenario), message, localizationService);
+            MarkScenarioFailed(
+                ResolveScenario(scenario),
+                sourceMessage,
+                sourceExceptionMessage: null,
+                localizationService,
+                includeOperationPrefix: false);
         }
 
         public void MarkScenarioFailed(
             ScenarioProgressViewModel scenario,
-            string message,
+            ProcessingResult result,
             AppLocalizationService localizationService)
         {
-            scenario.MarkFailed(message);
+            MarkScenarioFailed(
+                scenario,
+                result.Message,
+                result.Exception?.Message,
+                localizationService,
+                includeOperationPrefix: true);
+        }
+
+        public void MarkScenarioFailed(
+            ScenarioProgressViewModel scenario,
+            Exception exception,
+            AppLocalizationService localizationService)
+        {
+            MarkScenarioFailed(
+                scenario,
+                exception.Message,
+                exception.InnerException?.Message,
+                localizationService,
+                includeOperationPrefix: true);
+        }
+
+        private void MarkScenarioFailed(
+            ScenarioProgressViewModel scenario,
+            string sourceMessage,
+            string? sourceExceptionMessage,
+            AppLocalizationService localizationService,
+            bool includeOperationPrefix)
+        {
+            scenario.MarkFailed(
+                sourceMessage,
+                sourceExceptionMessage,
+                localizationService,
+                includeOperationPrefix);
             activeScenarioKind = scenario.ScenarioKind;
             StatusText = $"{scenario.Label}: {localizationService.CurrentText.OperationFailedMessage}";
         }
@@ -3423,9 +4373,12 @@ public sealed partial class MainPage : Page
             }
         }
 
-        public void UpdateScenarioMetrics(string? scenario, string metricsText)
+        public void UpdateScenarioMetrics(
+            string? scenario,
+            ElevateResultMetrics metrics,
+            System.Globalization.CultureInfo culture)
         {
-            ResolveScenario(scenario).MetricsText = metricsText;
+            ResolveScenario(scenario).UpdateMetrics(metrics, culture);
         }
 
         public void ApplyLocalization(AppLocalizationService localizationService)
@@ -3447,9 +4400,10 @@ public sealed partial class MainPage : Page
                 scenario.ApplyLocalization(localizationService);
             }
 
-            if (!string.IsNullOrWhiteSpace(failureMessage))
+            if (stateKind is JobStateKind.Failed or JobStateKind.ReportFailed)
             {
-                StatusText = failureMessage;
+                SetFailureMessage(BuildLocalizedFailureMessage(localizationService));
+                StatusText = FailureMessage;
                 return;
             }
 
@@ -3548,6 +4502,14 @@ public sealed partial class MainPage : Page
 
         private void SetFailureMessage(string? message)
         {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                failureSourceMessage = null;
+                failureSourceExceptionMessage = null;
+                failureRussianOverride = null;
+                failureIncludesOperationPrefix = false;
+            }
+
             if (failureMessage == message)
             {
                 return;
@@ -3562,6 +4524,74 @@ public sealed partial class MainPage : Page
             OnPropertyChanged(nameof(CanRetry));
             OnPropertyChanged(nameof(RetryButtonVisibility));
             OnPropertyChanged(nameof(QueueSortGroup));
+        }
+
+        private void SetFailureSource(
+            string? sourceMessage,
+            string? sourceExceptionMessage,
+            AppLocalizationService localizationService,
+            bool includeOperationPrefix,
+            string? russianOverride = null)
+        {
+            failureSourceMessage = sourceMessage;
+            failureSourceExceptionMessage = sourceExceptionMessage;
+            failureRussianOverride = russianOverride;
+            failureIncludesOperationPrefix = includeOperationPrefix;
+            SetFailureMessage(BuildLocalizedFailureMessage(localizationService));
+        }
+
+        private string BuildLocalizedFailureMessage(AppLocalizationService localizationService)
+        {
+            string sourceMessage = StripOperationFailurePrefix(failureSourceMessage ?? string.Empty);
+            string translatedMessage = localizationService.CurrentLanguage == AppLanguage.Russian &&
+                                       !string.IsNullOrWhiteSpace(failureRussianOverride)
+                ? failureRussianOverride
+                : localizationService.TranslateRuntimeMessage(sourceMessage);
+            string operationPrefix = localizationService.CurrentText.OperationFailedMessage;
+            string message = string.IsNullOrWhiteSpace(translatedMessage)
+                ? operationPrefix
+                : translatedMessage;
+
+            if (failureIncludesOperationPrefix &&
+                !message.StartsWith(operationPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                message = $"{operationPrefix} {message}";
+            }
+
+            string exceptionMessage = StripOperationFailurePrefix(
+                failureSourceExceptionMessage ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(exceptionMessage))
+            {
+                return message;
+            }
+
+            string translatedException = localizationService.TranslateRuntimeMessage(exceptionMessage);
+            return string.Equals(
+                    translatedException,
+                    translatedMessage,
+                    StringComparison.OrdinalIgnoreCase)
+                ? message
+                : $"{message} | {translatedException}";
+        }
+
+        private static string StripOperationFailurePrefix(string message)
+        {
+            string trimmed = message.Trim();
+            foreach (string prefix in new[]
+                     {
+                         "Operation failed.",
+                         "Операция завершилась ошибкой.",
+                     })
+            {
+                if (!trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return trimmed[prefix.Length..].TrimStart();
+            }
+
+            return trimmed;
         }
 
         private void NotifyReportActionStateChanged()
@@ -3580,6 +4610,7 @@ public sealed partial class MainPage : Page
             OnPropertyChanged(nameof(FailureMessageVisibility));
             OnPropertyChanged(nameof(QueueSortGroup));
             OnPropertyChanged(nameof(WasStoppedEarly));
+            OnPropertyChanged(nameof(IsQueued));
             NotifyStopActionStateChanged();
         }
 
@@ -3589,6 +4620,7 @@ public sealed partial class MainPage : Page
             OnPropertyChanged(nameof(WasStoppedEarly));
             OnPropertyChanged(nameof(CanStop));
             OnPropertyChanged(nameof(StopButtonVisibility));
+            OnPropertyChanged(nameof(IsQueued));
         }
 
         private void OnPropertyChanged(string propertyName)
@@ -3609,7 +4641,11 @@ public sealed partial class MainPage : Page
         private bool isIndeterminate = true;
         private string progressText = "0/0";
         private string metricsText = string.Empty;
+        private ElevateResultMetrics? metrics;
         private string failureMessage = string.Empty;
+        private string? failureSourceMessage;
+        private string? failureSourceExceptionMessage;
+        private bool failureIncludesOperationPrefix;
         private string retryButtonText = string.Empty;
         private bool isRunning;
         private bool isCompleted;
@@ -3838,21 +4874,28 @@ public sealed partial class MainPage : Page
             Value = Total > 0 ? Math.Min(Completed, Total) : 0;
             IsIndeterminate = Total <= 0;
             ProgressText = $"{Completed}/{Total}";
-            FailureMessage = string.Empty;
+            ClearFailure();
             IsCompleted = isFinal;
             IsRunning = !isFinal;
         }
 
-        public void MarkFailed(string message)
+        public void MarkFailed(
+            string sourceMessage,
+            string? sourceExceptionMessage,
+            AppLocalizationService localizationService,
+            bool includeOperationPrefix)
         {
-            FailureMessage = message;
+            failureSourceMessage = sourceMessage;
+            failureSourceExceptionMessage = sourceExceptionMessage;
+            failureIncludesOperationPrefix = includeOperationPrefix;
+            FailureMessage = BuildLocalizedFailureMessage(localizationService);
             IsCompleted = false;
             IsRunning = false;
         }
 
         public void MarkRetrying()
         {
-            FailureMessage = string.Empty;
+            ClearFailure();
             IsCompleted = false;
             IsRunning = true;
             Completed = 0;
@@ -3863,7 +4906,7 @@ public sealed partial class MainPage : Page
 
         public void MarkCompleted()
         {
-            FailureMessage = string.Empty;
+            ClearFailure();
             IsCompleted = true;
             IsRunning = false;
             if (Total > 0)
@@ -3874,10 +4917,86 @@ public sealed partial class MainPage : Page
             }
         }
 
+        public void UpdateMetrics(
+            ElevateResultMetrics value,
+            System.Globalization.CultureInfo culture)
+        {
+            metrics = value;
+            MetricsText = ElevateResultMetricsService.Format(value, culture);
+        }
+
         public void ApplyLocalization(AppLocalizationService localizationService)
         {
             Label = localizationService.GetScenarioLabel(scenarioKind);
             RetryButtonText = localizationService.CurrentText.ProjectBatchRetryButton;
+            if (metrics is not null)
+            {
+                MetricsText = ElevateResultMetricsService.Format(
+                    metrics,
+                    localizationService.CurrentCulture);
+            }
+
+            if (!string.IsNullOrWhiteSpace(failureSourceMessage))
+            {
+                FailureMessage = BuildLocalizedFailureMessage(localizationService);
+            }
+        }
+
+        private void ClearFailure()
+        {
+            failureSourceMessage = null;
+            failureSourceExceptionMessage = null;
+            failureIncludesOperationPrefix = false;
+            FailureMessage = string.Empty;
+        }
+
+        private string BuildLocalizedFailureMessage(AppLocalizationService localizationService)
+        {
+            string sourceMessage = StripOperationFailurePrefix(failureSourceMessage ?? string.Empty);
+            string translatedMessage = localizationService.TranslateRuntimeMessage(sourceMessage);
+            string operationPrefix = localizationService.CurrentText.OperationFailedMessage;
+            string message = string.IsNullOrWhiteSpace(translatedMessage)
+                ? operationPrefix
+                : translatedMessage;
+
+            if (failureIncludesOperationPrefix &&
+                !message.StartsWith(operationPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                message = $"{operationPrefix} {message}";
+            }
+
+            string exceptionMessage = StripOperationFailurePrefix(
+                failureSourceExceptionMessage ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(exceptionMessage))
+            {
+                return message;
+            }
+
+            string translatedException = localizationService.TranslateRuntimeMessage(exceptionMessage);
+            return string.Equals(
+                    translatedException,
+                    translatedMessage,
+                    StringComparison.OrdinalIgnoreCase)
+                ? message
+                : $"{message} | {translatedException}";
+        }
+
+        private static string StripOperationFailurePrefix(string message)
+        {
+            string trimmed = message.Trim();
+            foreach (string prefix in new[]
+                     {
+                         "Operation failed.",
+                         "Операция завершилась ошибкой.",
+                     })
+            {
+                if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return trimmed[prefix.Length..].TrimStart();
+                }
+            }
+
+            return trimmed;
         }
 
         private void NotifyRetryStateChanged()
@@ -3904,8 +5023,8 @@ public sealed partial class MainPage : Page
         {
             FloorName = floor.FloorName;
             EntranceFloor = floor.EntranceFloor;
-            floorLevelText = FormatEditorNumber(floor.FloorLevel);
-            populationText = FormatEditorNumber(floor.Population);
+            floorLevelText = floor.FloorLevel.ToString("0.###", localizationService.CurrentCulture);
+            populationText = floor.Population.ToString("0.###", localizationService.CurrentCulture);
             levelLabel = string.Empty;
             populationLabel = string.Empty;
             entranceLabel = string.Empty;

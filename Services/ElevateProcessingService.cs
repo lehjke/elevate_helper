@@ -12,6 +12,7 @@ public sealed class ElevateProcessingService : IElevateProcessingService
     private readonly ElevateRunManifestService runManifestService;
     private readonly ElevateWorkflowRunner workflowRunner;
     private readonly ElevateScenarioStateService scenarioStateService;
+    private readonly Action<XDocument, string>? writeTemporaryXmlFile;
 
     public ElevateProcessingService()
         : this(new ElevateLauncherService())
@@ -19,8 +20,16 @@ public sealed class ElevateProcessingService : IElevateProcessingService
     }
 
     public ElevateProcessingService(IElevateLauncherService launcherService)
+        : this(launcherService, writeTemporaryXmlFile: null)
+    {
+    }
+
+    internal ElevateProcessingService(
+        IElevateLauncherService launcherService,
+        Action<XDocument, string>? writeTemporaryXmlFile)
     {
         this.launcherService = launcherService;
+        this.writeTemporaryXmlFile = writeTemporaryXmlFile;
         runManifestService = new ElevateRunManifestService();
         workflowRunner = new ElevateWorkflowRunner(runManifestService);
         scenarioStateService = new ElevateScenarioStateService();
@@ -665,31 +674,49 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         IProgress<ElevateProgressInfo>? lunchProgress,
         CancellationToken cancellationToken)
     {
-        DeleteTrackedGeneratedCopies(path);
-        List<string> files = GetElvxFiles(path);
+        HashSet<string> trackedGeneratedCopies = GetTrackedGeneratedCopyFileNames(path);
+        List<string> files = GetElvxFiles(path)
+            .Where(fileName => !trackedGeneratedCopies.Contains(fileName))
+            .ToList();
         string baseFileName = ResolveBaseFileName(path, files);
 
         if (buildingType is BuildingType.Residence or BuildingType.Hotel)
         {
-            ClearGeneratedOutputs(path);
-
             string residenceBaseFilePath = Path.Combine(path, baseFileName);
+            cancellationToken.ThrowIfCancellationRequested();
+            _ = LoadXml(residenceBaseFilePath);
+
+            List<string> plannedCopyFileNames = BuildScenarioProjectFileNames(baseFileName, copiesCount)
+                .Skip(1)
+                .ToList();
+            foreach (string plannedCopyFileName in plannedCopyFileNames)
+            {
+                string plannedCopyPath = Path.Combine(path, plannedCopyFileName);
+                if (!trackedGeneratedCopies.Contains(plannedCopyFileName))
+                {
+                    EnsureCopyTargetDoesNotExist(plannedCopyPath);
+                }
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
             ModifyBuildingTypeResidence(residenceBaseFilePath, buildingType);
+            DeleteTrackedGeneratedCopies(path, trackedGeneratedCopies);
+            ClearGeneratedOutputs(path);
             List<string> generatedCopies = new();
 
-            for (int i = 2; i <= copiesCount; i++)
+            for (int copyOffset = 0; copyOffset < plannedCopyFileNames.Count; copyOffset++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                string newFileName = BuildCopyFileName(baseFileName, i);
+                int copyIndex = copyOffset + 2;
+                string newFileName = plannedCopyFileNames[copyOffset];
                 string newFilePath = Path.Combine(path, newFileName);
-                EnsureCopyTargetDoesNotExist(newFilePath);
                 generatedCopies.Add(newFileName);
                 SaveTrackedGeneratedCopies(path, generatedCopies);
                 File.Copy(
                     residenceBaseFilePath,
                     newFilePath,
                     overwrite: false);
-                ModifyHandlingCapacity(newFilePath, i);
+                ModifyHandlingCapacity(newFilePath, copyIndex);
             }
 
             await launcherService.LaunchResidenceAsync(path, morningProgress, cancellationToken);
@@ -702,6 +729,10 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         }
 
         string officeBaseFilePath = Path.Combine(path, baseFileName);
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = LoadXml(officeBaseFilePath);
+        DeleteTrackedGeneratedCopies(path, trackedGeneratedCopies);
+
         string morningPath = Path.Combine(path, "morning");
         PrepareOfficeScenarioIfNeeded(
             officeBaseFilePath,
@@ -944,12 +975,13 @@ public sealed class ElevateProcessingService : IElevateProcessingService
                fileName.EndsWith("_elvx.csv", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void DeleteTrackedGeneratedCopies(string path)
+    private static HashSet<string> GetTrackedGeneratedCopyFileNames(string path)
     {
+        HashSet<string> fileNames = new(StringComparer.OrdinalIgnoreCase);
         string manifestPath = GetGeneratedCopiesManifestPath(path);
         if (!File.Exists(manifestPath))
         {
-            return;
+            return fileNames;
         }
 
         foreach (string fileName in File.ReadLines(manifestPath))
@@ -959,12 +991,26 @@ public sealed class ElevateProcessingService : IElevateProcessingService
                 continue;
             }
 
+            fileNames.Add(Path.GetFileName(candidatePath));
+        }
+
+        return fileNames;
+    }
+
+    private static void DeleteTrackedGeneratedCopies(
+        string path,
+        IReadOnlyCollection<string> trackedFileNames)
+    {
+        foreach (string fileName in trackedFileNames)
+        {
+            string candidatePath = Path.Combine(path, fileName);
             if (File.Exists(candidatePath))
             {
                 File.Delete(candidatePath);
             }
         }
 
+        string manifestPath = GetGeneratedCopiesManifestPath(path);
         File.Delete(manifestPath);
     }
 
@@ -1098,9 +1144,59 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         return XDocument.Load(xmlFilePath);
     }
 
-    private static void SaveXml(XDocument xmlDocument, string xmlFilePath)
+    private void SaveXml(XDocument xmlDocument, string xmlFilePath)
     {
-        xmlDocument.Save(xmlFilePath, SaveOptions.None);
+        SaveXmlAtomically(xmlDocument, xmlFilePath, writeTemporaryXmlFile);
+    }
+
+    internal static void SaveXmlAtomically(
+        XDocument xmlDocument,
+        string xmlFilePath,
+        Action<XDocument, string>? writeTemporaryFile = null)
+    {
+        string outputDirectory = Path.GetDirectoryName(xmlFilePath) ?? string.Empty;
+        string temporaryPath = Path.Combine(
+            outputDirectory,
+            $".{Path.GetFileName(xmlFilePath)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            if (writeTemporaryFile is null)
+            {
+                xmlDocument.Save(temporaryPath, SaveOptions.None);
+            }
+            else
+            {
+                writeTemporaryFile(xmlDocument, temporaryPath);
+            }
+
+            if (File.Exists(xmlFilePath))
+            {
+                File.Replace(temporaryPath, xmlFilePath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(temporaryPath, xmlFilePath);
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch (IOException)
+                {
+                    // Preserve the original save/replace failure; cleanup is best effort.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Preserve the original save/replace failure; cleanup is best effort.
+                }
+            }
+        }
     }
 
     private static string EscapeCsvValue(string value)

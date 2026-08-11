@@ -7,7 +7,9 @@ param(
     [string]$Runtime = 'win-x64',
 
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+
+    [switch]$SkipPublish
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,9 +25,54 @@ $outputInstallerPath = Join-Path $releaseDir "ElevateHelper-$Runtime-$Tag-setup.
 $stagingRoot = Join-Path $env:TEMP 'ElevateHelperInstallerStage'
 $stagingDir = Join-Path $stagingRoot $Runtime
 
-if (-not (Test-Path $appExePath)) {
+$requiredTemplates = @(
+    'Office.elvx',
+    'Residential.elvx',
+    'Hotel.elvx',
+    'Office.xlsx',
+    'Residential.xlsx',
+    'Hotel.xlsx'
+)
+
+function Assert-NonEmptyFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "$Description was not found: $Path"
+    }
+
+    if ((Get-Item -LiteralPath $Path).Length -le 0) {
+        throw "$Description is empty: $Path"
+    }
+}
+
+function Assert-PublishPayload {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Root
+    )
+
+    Assert-NonEmptyFile `
+        -Path (Join-Path $Root 'ElevateHelperWinUI.exe') `
+        -Description 'Published application executable'
+
+    foreach ($templateName in $requiredTemplates) {
+        $templatePath = Join-Path (Join-Path $Root '.example') $templateName
+        Assert-NonEmptyFile -Path $templatePath -Description 'Published template file'
+    }
+}
+
+if (-not $SkipPublish) {
     & (Join-Path $PSScriptRoot 'build-release.ps1') -Tag $Tag -Runtime $Runtime -Configuration $Configuration
 }
+
+Assert-PublishPayload -Root $publishDir
 
 if (-not (Test-Path $releaseDir)) {
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -41,6 +88,7 @@ if (Test-Path $stagingDir) {
 
 New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 Copy-Item -Path (Join-Path $publishDir '*') -Destination $stagingDir -Recurse -Force
+Assert-PublishPayload -Root $stagingDir
 
 [xml]$projectXml = Get-Content -Path $projectPath
 $appVersion = $projectXml.Project.PropertyGroup |
@@ -90,9 +138,11 @@ if ([string]::IsNullOrWhiteSpace($isccPath)) {
     "/DRuntime=$Runtime" `
     $installerScriptPath
 
-if (-not (Test-Path $outputInstallerPath)) {
-    throw "Installer was not created: $outputInstallerPath"
+if ($LASTEXITCODE -ne 0) {
+    throw "ISCC.exe failed with exit code $LASTEXITCODE."
 }
+
+Assert-NonEmptyFile -Path $outputInstallerPath -Description 'Installer executable'
 
 if (Test-Path $stagingRoot) {
     Remove-Item -Path $stagingRoot -Recurse -Force

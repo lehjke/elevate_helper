@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    HighContrastAdjustment="None"
     mc:Ignorable="d">
     <Application.Resources>
         <ResourceDictionary>
@@ -13,100 +14,189 @@
             </ResourceDictionary.MergedDictionaries>
 
             <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="IosPageBackgroundBrush" Color="#FFF5F5F7" />
-                    <SolidColorBrush x:Key="IosGroupedCardBrush" Color="#FAFFFFFF" />
-                    <SolidColorBrush x:Key="IosGroupedCardStrokeBrush" Color="#18000000" />
-                    <SolidColorBrush x:Key="IosSecondaryGroupedBrush" Color="#FFE9E9EB" />
-                    <SolidColorBrush x:Key="IosAccentBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="#FF6E6E73" />
-                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E60A84FF" />
-                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#CC0A84FF" />
-                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#E60A84FF" />
-                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#CC0A84FF" />
-                    <SolidColorBrush x:Key="MacSelectedControlBrush" Color="#FFFFFFFF" />
-                    <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FAFFFFFF" />
-                    <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#18000000" />
-                    <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedUnfocused" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#1F0A84FF" />
-                    <SolidColorBrush x:Key="ProgressBarForeground" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="ProgressBarForegroundThemeBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="ProgressBarIndeterminateForegroundThemeBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#FFFFFFFF" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FFFFFFFF" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#FFFFFFFF" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="Transparent" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="Transparent" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Dark">
+                <ResourceDictionary x:Key="Default">
                     <SolidColorBrush x:Key="IosPageBackgroundBrush" Color="#FF1E1E1F" />
                     <SolidColorBrush x:Key="IosGroupedCardBrush" Color="#F52B2B2D" />
+                    <SolidColorBrush x:Key="IosHeroCardBrush" Color="#FF323234" />
+                    <SolidColorBrush x:Key="IosToolbarBrush" Color="#FA2B2B2D" />
                     <SolidColorBrush x:Key="IosGroupedCardStrokeBrush" Color="#24FFFFFF" />
+                    <SolidColorBrush x:Key="IosHeroCardStrokeBrush" Color="#32FFFFFF" />
                     <SolidColorBrush x:Key="IosSecondaryGroupedBrush" Color="#FF3A3A3C" />
-                    <SolidColorBrush x:Key="IosAccentBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="#FFAEAEB2" />
-                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E60A84FF" />
-                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#CC0A84FF" />
-                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#E60A84FF" />
-                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#CC0A84FF" />
-                    <SolidColorBrush x:Key="MacSelectedControlBrush" Color="#FF5A5A5E" />
+                    <SolidColorBrush x:Key="IosAccentBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="#33006ED3" />
+                    <SolidColorBrush x:Key="IosOnAccentBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="#FFB8B8BD" />
+                    <SolidColorBrush x:Key="IosSelectedControlBrush" Color="#FF505054" />
+                    <SolidColorBrush x:Key="IosSelectedIndicatorBrush" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="IosStateOverlayBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="IosProgressBrush" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="IosCriticalSoftBrush" Color="#33FF453A" />
+                    <SolidColorBrush x:Key="IosCriticalTextBrush" Color="#FFFF8A83" />
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E6006ED3" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#CC006ED3" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#EFFFFFFF" />
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FF2B2B2D" />
                     <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#24FFFFFF" />
-                    <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedUnfocused" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#2E0A84FF" />
-                    <SolidColorBrush x:Key="ProgressBarForeground" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="ProgressBarForegroundThemeBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="ProgressBarIndeterminateForegroundThemeBrush" Color="#FF0A84FF" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#FF5A5A5E" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FF626266" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#FF505054" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="Transparent" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#3358A6FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedUnfocused" Color="#3358A6FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#4058A6FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#4058A6FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF087AE5" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF005FB8" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF71B4FF" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#3358A6FF" />
+                    <SolidColorBrush x:Key="ProgressBarForeground" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ProgressBarForegroundThemeBrush" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ProgressBarIndeterminateForegroundThemeBrush" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#FF505054" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FF5A5A5E" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#FF47474B" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="#FF71B4FF" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF087AE5" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF005FB8" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#FF58A6FF" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="#FF71B4FF" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="#FF58A6FF" />
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="IosPageBackgroundBrush" Color="#FFF5F5F7" />
+                    <SolidColorBrush x:Key="IosGroupedCardBrush" Color="#FCFFFFFF" />
+                    <SolidColorBrush x:Key="IosHeroCardBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="IosToolbarBrush" Color="#F8FFFFFF" />
+                    <SolidColorBrush x:Key="IosGroupedCardStrokeBrush" Color="#18000000" />
+                    <SolidColorBrush x:Key="IosHeroCardStrokeBrush" Color="#24000000" />
+                    <SolidColorBrush x:Key="IosSecondaryGroupedBrush" Color="#FFE9E9EB" />
+                    <SolidColorBrush x:Key="IosAccentBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="#1F006ED3" />
+                    <SolidColorBrush x:Key="IosOnAccentBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="#FF646468" />
+                    <SolidColorBrush x:Key="IosSelectedControlBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="IosSelectedIndicatorBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="IosStateOverlayBrush" Color="#FF000000" />
+                    <SolidColorBrush x:Key="IosProgressBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="IosCriticalSoftBrush" Color="#18D70015" />
+                    <SolidColorBrush x:Key="IosCriticalTextBrush" Color="#FFB10E1E" />
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E6006ED3" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#CC006ED3" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#EFFFFFFF" />
+                    <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FCFFFFFF" />
+                    <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#18000000" />
+                    <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#1F006ED3" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedUnfocused" Color="#1F006ED3" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#29006ED3" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#29006ED3" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FF005FBA" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FF0055A6" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FF005FBA" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#FF0055A6" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#1F006ED3" />
+                    <SolidColorBrush x:Key="ProgressBarForeground" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ProgressBarForegroundThemeBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ProgressBarIndeterminateForegroundThemeBrush" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FFF9F9FA" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#FFF1F1F3" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="#FF005FBA" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF005FBA" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF0055A6" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#FF006ED3" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="#FF005FBA" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="#FF0055A6" />
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="IosPageBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="IosGroupedCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="IosHeroCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="IosToolbarBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="IosGroupedCardStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="IosHeroCardStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="IosSecondaryGroupedBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="IosAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="IosAccentSoftBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="IosOnAccentBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                    <SolidColorBrush x:Key="IosSubtleTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="IosSelectedControlBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="IosSelectedIndicatorBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="IosStateOverlayBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="IosProgressBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="IosCriticalSoftBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="IosCriticalTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                    <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedUnfocused" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="ProgressBarForeground" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ProgressBarForegroundThemeBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ProgressBarIndeterminateForegroundThemeBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="{ThemeResource SystemColorHighlightColor}" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
-
-            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF0A84FF" />
-            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF0A84FF" />
-            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF0A84FF" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#FF0A84FF" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="#FF0A84FF" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="#FF0A84FF" />
             <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
             <CornerRadius x:Key="OverlayCornerRadius">12</CornerRadius>
             <CornerRadius x:Key="ComboBoxItemCornerRadius">8</CornerRadius>
@@ -151,16 +241,16 @@
             </Style>
 
             <Style x:Key="HeroCardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource IosGroupedCardBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosHeroCardBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource IosHeroCardStrokeBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="24" />
-                <Setter Property="Padding" Value="16" />
+                <Setter Property="CornerRadius" Value="28" />
+                <Setter Property="Padding" Value="20" />
             </Style>
 
             <Style x:Key="ActionButtonStyle" TargetType="Button">
-                <Setter Property="MinHeight" Value="38" />
-                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="40" />
+                <Setter Property="MinWidth" Value="40" />
                 <Setter Property="Padding" Value="14,8" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="Background" Value="{ThemeResource IosSecondaryGroupedBrush}" />
@@ -170,6 +260,8 @@
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-2" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
@@ -183,38 +275,45 @@
                                     <VisualStateGroup x:Name="CommonStates">
                                         <VisualState x:Name="Normal">
                                             <Storyboard>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="Root"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="1"
-                                                    Duration="0:0:0.10" />
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="1" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="StateOverlay" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="0" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="PointerOver">
                                             <Storyboard>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="Root"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="0.92"
-                                                    Duration="0:0:0.10" />
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="1" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="StateOverlay" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="0.06" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Pressed">
                                             <Storyboard>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="Root"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="0.84"
-                                                    Duration="0:0:0.06" />
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="1" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="StateOverlay" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="0.12" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <PointerDownThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Disabled">
                                             <Storyboard>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="Root"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="0.55"
-                                                    Duration="0:0:0.10" />
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="0.55" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="StateOverlay" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="0" />
+                                                </ObjectAnimationUsingKeyFrames>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource TextFillColorDisabledBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
@@ -223,15 +322,24 @@
                                     </VisualStateGroup>
                                 </VisualStateManager.VisualStateGroups>
 
-                                <ContentPresenter
-                                    x:Name="ContentPresenter"
-                                    Padding="{TemplateBinding Padding}"
-                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                                    Content="{TemplateBinding Content}"
-                                    ContentTemplate="{TemplateBinding ContentTemplate}"
-                                    ContentTransitions="{TemplateBinding ContentTransitions}"
-                                    Foreground="{TemplateBinding Foreground}" />
+                                <Grid>
+                                    <Border
+                                        x:Name="StateOverlay"
+                                        Background="{ThemeResource IosStateOverlayBrush}"
+                                        CornerRadius="{TemplateBinding CornerRadius}"
+                                        IsHitTestVisible="False"
+                                        Opacity="0" />
+                                    <ContentPresenter
+                                        x:Name="ContentPresenter"
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        Padding="{TemplateBinding Padding}"
+                                        HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                        VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                        Content="{TemplateBinding Content}"
+                                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                                        ContentTransitions="{TemplateBinding ContentTransitions}"
+                                        Foreground="{TemplateBinding Foreground}" />
+                                </Grid>
                             </Border>
                         </ControlTemplate>
                     </Setter.Value>
@@ -244,12 +352,12 @@
             </Style>
 
             <Style x:Key="DismissJobButtonStyle" TargetType="Button">
-                <Setter Property="Width" Value="30" />
-                <Setter Property="Height" Value="30" />
-                <Setter Property="MinWidth" Value="0" />
-                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="MinWidth" Value="40" />
+                <Setter Property="MinHeight" Value="40" />
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="CornerRadius" Value="12" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderBrush" Value="Transparent" />
                 <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
@@ -257,12 +365,14 @@
                 <Setter Property="VerticalAlignment" Value="Top" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-2" />
             </Style>
 
             <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
                 <Setter Property="Background" Value="{ThemeResource IosAccentBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource IosAccentBrush}" />
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Foreground" Value="{ThemeResource IosOnAccentBrush}" />
             </Style>
 
             <Style x:Key="SectionIconBadgeStyle" TargetType="Border">
@@ -276,10 +386,13 @@
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
 
-            <Style x:Key="SectionIconStyle" TargetType="SymbolIcon">
+            <Style x:Key="SectionIconStyle" TargetType="FontIcon">
                 <Setter Property="Width" Value="20" />
                 <Setter Property="Height" Value="20" />
+                <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+                <Setter Property="FontSize" Value="20" />
                 <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="IsTextScaleFactorEnabled" Value="False" />
                 <Setter Property="VerticalAlignment" Value="Center" />
                 <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
             </Style>
@@ -287,7 +400,7 @@
             <Style
                 x:Key="AccentSectionIconStyle"
                 BasedOn="{StaticResource SectionIconStyle}"
-                TargetType="SymbolIcon">
+                TargetType="FontIcon">
                 <Setter Property="Foreground" Value="{ThemeResource IosSubtleTextBrush}" />
             </Style>
 
@@ -299,7 +412,7 @@
             </Style>
 
             <Style x:Key="ToolbarCardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource IosGroupedCardBrush}" />
+                <Setter Property="Background" Value="{ThemeResource IosToolbarBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="20" />
@@ -319,7 +432,7 @@
             <Style x:Key="ScenarioProgressBarStyle" TargetType="ProgressBar">
                 <Setter Property="Height" Value="5" />
                 <Setter Property="Background" Value="{ThemeResource IosGroupedCardStrokeBrush}" />
-                <Setter Property="Foreground" Value="{ThemeResource IosAccentBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource IosProgressBrush}" />
                 <Setter Property="BorderBrush" Value="Transparent" />
             </Style>
 
@@ -330,8 +443,8 @@
             </Style>
 
             <Style x:Key="SegmentedButtonStyle" TargetType="ToggleButton">
-                <Setter Property="MinHeight" Value="32" />
-                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="40" />
+                <Setter Property="MinWidth" Value="40" />
                 <Setter Property="Padding" Value="12,6" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -342,6 +455,8 @@
                 <Setter Property="BorderBrush" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-2" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ToggleButton">
@@ -353,12 +468,17 @@
                                 CornerRadius="{TemplateBinding CornerRadius}">
                                 <VisualStateManager.VisualStateGroups>
                                     <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="Normal">
+                                            <Storyboard>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
+                                            </Storyboard>
+                                        </VisualState>
                                         <VisualState x:Name="PointerOver">
                                             <Storyboard>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorTertiaryBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Pressed">
@@ -366,6 +486,7 @@
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <PointerDownThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Disabled">
@@ -378,28 +499,43 @@
                                         <VisualState x:Name="Checked">
                                             <Storyboard>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
-                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource MacSelectedControlBrush}" />
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosSelectedControlBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="SelectionIndicator" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="1" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="CheckedPointerOver">
                                             <Storyboard>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
-                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource MacSelectedControlBrush}" />
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosSelectedControlBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="SelectionIndicator" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="1" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="CheckedPressed">
                                             <Storyboard>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
-                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource MacSelectedControlBrush}" />
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosSelectedControlBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="SelectionIndicator" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="1" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <PointerDownThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="CheckedDisabled">
                                             <Storyboard>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
-                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource MacSelectedControlBrush}" />
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosSelectedControlBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="SelectionIndicator" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="0.45" />
                                                 </ObjectAnimationUsingKeyFrames>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource TextFillColorDisabledBrush}" />
@@ -409,15 +545,28 @@
                                     </VisualStateGroup>
                                 </VisualStateManager.VisualStateGroups>
 
-                                <ContentPresenter
-                                    x:Name="ContentPresenter"
-                                    Padding="{TemplateBinding Padding}"
-                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                                    Content="{TemplateBinding Content}"
-                                    ContentTemplate="{TemplateBinding ContentTemplate}"
-                                    ContentTransitions="{TemplateBinding ContentTransitions}"
-                                    Foreground="{TemplateBinding Foreground}" />
+                                <Grid>
+                                    <ContentPresenter
+                                        x:Name="ContentPresenter"
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        Padding="{TemplateBinding Padding}"
+                                        HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                        VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                        Content="{TemplateBinding Content}"
+                                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                                        ContentTransitions="{TemplateBinding ContentTransitions}"
+                                        Foreground="{TemplateBinding Foreground}" />
+                                    <Border
+                                        x:Name="SelectionIndicator"
+                                        Height="3"
+                                        Margin="8,0,8,2"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Bottom"
+                                        Background="{ThemeResource IosSelectedIndicatorBrush}"
+                                        CornerRadius="1.5"
+                                        IsHitTestVisible="False"
+                                        Opacity="0" />
+                                </Grid>
                             </Border>
                         </ControlTemplate>
                     </Setter.Value>
@@ -425,10 +574,10 @@
             </Style>
 
             <Style x:Key="RoundCheckToggleStyle" TargetType="ToggleButton">
-                <Setter Property="Width" Value="22" />
-                <Setter Property="Height" Value="22" />
-                <Setter Property="MinWidth" Value="22" />
-                <Setter Property="MinHeight" Value="22" />
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="MinWidth" Value="40" />
+                <Setter Property="MinHeight" Value="40" />
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="CornerRadius" Value="11" />
                 <Setter Property="Background" Value="Transparent" />
@@ -436,41 +585,37 @@
                 <Setter Property="BorderThickness" Value="1.5" />
                 <Setter Property="HorizontalAlignment" Value="Left" />
                 <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-2" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ToggleButton">
-                            <Border
-                                x:Name="Root"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{TemplateBinding CornerRadius}">
+                            <Grid Background="Transparent">
                                 <VisualStateManager.VisualStateGroups>
                                     <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="Normal">
+                                            <Storyboard>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
+                                            </Storyboard>
+                                        </VisualState>
                                         <VisualState x:Name="PointerOver">
                                             <Storyboard>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
-                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosSelectedIndicatorBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Pressed">
                                             <Storyboard>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="Root"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="0.82"
-                                                    Duration="0:0:0.06" />
+                                                <PointerDownThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Disabled">
                                             <Storyboard>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="Root"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="0.45"
-                                                    Duration="0:0:0.10" />
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Opacity">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="0.45" />
+                                                </ObjectAnimationUsingKeyFrames>
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Checked">
@@ -479,11 +624,12 @@
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
-                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosSelectedIndicatorBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Visibility">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="Visible" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="CheckedPointerOver">
@@ -492,41 +638,53 @@
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
-                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosSelectedIndicatorBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Visibility">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="Visible" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="CheckedPressed">
                                             <Storyboard>
-                                                <DoubleAnimation
-                                                    Storyboard.TargetName="Root"
-                                                    Storyboard.TargetProperty="Opacity"
-                                                    To="0.82"
-                                                    Duration="0:0:0.06" />
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosAccentBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource IosSelectedIndicatorBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Visibility">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="Visible" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <PointerDownThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                     </VisualStateGroup>
                                 </VisualStateManager.VisualStateGroups>
 
-                                <FontIcon
-                                    x:Name="CheckGlyph"
+                                <Border
+                                    x:Name="Root"
+                                    Width="22"
+                                    Height="22"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
-                                    FontFamily="Segoe MDL2 Assets"
-                                    FontSize="11"
-                                    Foreground="White"
-                                    Glyph="&#xE73E;"
-                                    Visibility="Collapsed" />
-                            </Border>
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                    <FontIcon
+                                        x:Name="CheckGlyph"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="11"
+                                        Foreground="{ThemeResource IosOnAccentBrush}"
+                                        Glyph="&#xE73E;"
+                                        IsTextScaleFactorEnabled="False"
+                                        Visibility="Collapsed" />
+                                </Border>
+                            </Grid>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
@@ -536,7 +694,7 @@
                 x:Key="LanguageComboBoxItemStyle"
                 BasedOn="{StaticResource DefaultComboBoxItemStyle}"
                 TargetType="ComboBoxItem">
-                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="MinHeight" Value="40" />
                 <Setter Property="Padding" Value="11,7,11,7" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -544,14 +702,14 @@
             </Style>
 
             <Style x:Key="ToolbarComboBoxStyle" TargetType="ComboBox">
-                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="MinHeight" Value="40" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="VerticalAlignment" Value="Center" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
             </Style>
 
             <Style x:Key="ToolbarLanguageButtonStyle" TargetType="Button">
-                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="MinHeight" Value="40" />
                 <Setter Property="MinWidth" Value="170" />
                 <Setter Property="Padding" Value="14,0,10,0" />
                 <Setter Property="CornerRadius" Value="8" />
@@ -563,6 +721,8 @@
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 <Setter Property="VerticalAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-2" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
@@ -574,12 +734,17 @@
                                 CornerRadius="{TemplateBinding CornerRadius}">
                                 <VisualStateManager.VisualStateGroups>
                                     <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="Normal">
+                                            <Storyboard>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
+                                            </Storyboard>
+                                        </VisualState>
                                         <VisualState x:Name="PointerOver">
                                             <Storyboard>
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <PointerUpThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Pressed">
@@ -587,6 +752,7 @@
                                                 <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorTertiaryBrush}" />
                                                 </ObjectAnimationUsingKeyFrames>
+                                                <PointerDownThemeAnimation Storyboard.TargetName="Root" />
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Disabled">
@@ -601,6 +767,7 @@
 
                                 <ContentPresenter
                                     x:Name="ContentPresenter"
+                                    AutomationProperties.AccessibilityView="Raw"
                                     Padding="{TemplateBinding Padding}"
                                     HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                     VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
@@ -617,14 +784,14 @@
             <Style x:Key="LanguageFlyoutPresenterStyle" TargetType="FlyoutPresenter">
                 <Setter Property="MinWidth" Value="170" />
                 <Setter Property="Padding" Value="6" />
-                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="CornerRadius" Value="14" />
                 <Setter Property="Background" Value="{ThemeResource ComboBoxDropDownBackground}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource ComboBoxDropDownBorderBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
             </Style>
 
             <Style x:Key="LanguageFlyoutItemButtonStyle" TargetType="Button">
-                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="MinHeight" Value="40" />
                 <Setter Property="MinWidth" Value="0" />
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="CornerRadius" Value="8" />
@@ -635,6 +802,8 @@
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-2" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
@@ -665,6 +834,7 @@
                                 </VisualStateManager.VisualStateGroups>
 
                                 <ContentPresenter
+                                    AutomationProperties.AccessibilityView="Raw"
                                     Padding="{TemplateBinding Padding}"
                                     HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                     VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
@@ -679,12 +849,12 @@
             </Style>
 
             <Style x:Key="InputTextBoxStyle" TargetType="TextBox">
-                <Setter Property="MinHeight" Value="38" />
+                <Setter Property="MinHeight" Value="40" />
                 <Setter Property="CornerRadius" Value="8" />
             </Style>
 
             <Style x:Key="InputNumberBoxStyle" TargetType="NumberBox">
-                <Setter Property="MinHeight" Value="38" />
+                <Setter Property="MinHeight" Value="40" />
                 <Setter Property="CornerRadius" Value="8" />
             </Style>
         </ResourceDictionary>

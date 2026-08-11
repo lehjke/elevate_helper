@@ -74,7 +74,7 @@ jobs:
 
       - name: Build installer
         shell: pwsh
-        run: ./scripts/build-installer.ps1 -Tag $env:RELEASE_TAG -Runtime $env:RELEASE_RUNTIME -Configuration Release
+        run: ./scripts/build-installer.ps1 -Tag $env:RELEASE_TAG -Runtime $env:RELEASE_RUNTIME -Configuration Release -SkipPublish
 
       - name: Resolve release metadata
         shell: pwsh

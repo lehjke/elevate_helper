@@ -38,6 +38,62 @@ public sealed class ElevateProjectEditorServiceTests
         Assert.Contains("R00", fileName, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("unsupported")]
+    public async Task LoadFile_RejectsMissingOrUnknownBuildingType(string? buildingType)
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "InvalidBuildingType.elvx");
+        XDocument xDocument = XDocument.Load(Path.Combine(GetExampleDirectory(), "Office.elvx"));
+        XAttribute attribute = xDocument.Root!.Element("BuildingData")!.Attribute("BuildingType")!;
+        if (buildingType is null)
+        {
+            attribute.Remove();
+        }
+        else
+        {
+            attribute.Value = buildingType;
+        }
+
+        xDocument.Save(sourcePath);
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() => service.LoadFile(sourcePath));
+
+        Assert.Contains("Unknown building type", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("SimulationParameters", "SimulationParameters")]
+    [InlineData("Configuration", "Configuration")]
+    [InlineData("Cars", "at least one Car")]
+    public async Task LoadFile_RejectsMissingRequiredEditableStructure(string section, string expectedMessage)
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "MissingStructure.elvx");
+        XDocument xDocument = XDocument.Load(Path.Combine(GetExampleDirectory(), "Office.elvx"));
+        XElement root = xDocument.Root!;
+        XElement configuration = root.Element("ElevatorData")!.Element("Advanced")!.Element("Configuration")!;
+        switch (section)
+        {
+            case "SimulationParameters":
+                root.Element("AnalysisData")!.Element("SimulationParameters")!.Remove();
+                break;
+            case "Configuration":
+                configuration.Remove();
+                break;
+            case "Cars":
+                configuration.Elements("Car").Remove();
+                break;
+        }
+
+        xDocument.Save(sourcePath);
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() => service.LoadFile(sourcePath));
+
+        Assert.Contains(expectedMessage, error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task SaveAsync_PatchesLoadedDocumentAndPreservesOtherXml()
     {
@@ -66,7 +122,7 @@ public sealed class ElevateProjectEditorServiceTests
         document.Traffic.HandlingCapacity = 13.5;
         document.Traffic.LoadingTimeSeconds = 1.25;
         document.Traffic.UnloadingTimeSeconds = 1.5;
-        document.Floors[0].InterfloorHeight = 9.75;
+        document.Floors[1].InterfloorHeight = 9.75;
         document.Floors[0].Population = 123;
         document.Floors[0].EntranceBiasPercent = 8.25;
         document.Floors[1].EntranceBiasPercent = 11.75;
@@ -96,7 +152,7 @@ public sealed class ElevateProjectEditorServiceTests
         Assert.Equal("1.250000", (string?)root.Element("PassengerData")?.Element("Standard")?.Attribute("LoadingTime"));
         Assert.Equal("8.250000", (string?)root.Element("PassengerData")?.Element("Standard")?.Elements("Floor").First().Attribute("EntranceBias"));
         Assert.Equal("45.000000", (string?)root.Element("PassengerData")?.Element("Traffic")?.Element("Period")?.Attribute("SplitUp"));
-        Assert.Equal("9.750000", (string?)root.Element("BuildingData")?.Elements("Floor").First().Attribute("FloorLevel"));
+        Assert.Equal("9.750000", (string?)root.Element("BuildingData")?.Elements("Floor").ElementAt(1).Attribute("FloorLevel"));
         Assert.Equal("123.000000", (string?)root.Element("BuildingData")?.Elements("Floor").First().Attribute("NoOfPeople"));
         Assert.Equal("1600.000000", (string?)root.Element("ElevatorData")?.Element("Advanced")?.Element("Configuration")?.Elements("Car").First().Attribute("Capacity"));
         Assert.Equal("1.900000", (string?)root.Element("ElevatorData")?.Element("Advanced")?.Element("Configuration")?.Elements("Car").First().Attribute("DoorOpenTime"));
@@ -104,6 +160,50 @@ public sealed class ElevateProjectEditorServiceTests
         Assert.NotEmpty(xDispatchFloors);
         Assert.All(xDispatchFloors, floor => Assert.Equal("False", (string?)floor.Attribute("DestinationButtons")));
         Assert.NotNull(root.Element("Results"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_ReplacesExistingOutputAtomicallyWithoutLeavingTemporaryFiles()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        string outputPath = Path.Combine(workspace.RootPath, "Existing.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        await File.WriteAllTextAsync(outputPath, "unrelated previous content");
+
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        document.Job.Title = "Atomic replacement";
+
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.True(result.Success);
+        Assert.Equal(
+            "Atomic replacement",
+            (string?)XDocument.Load(outputPath).Root?.Element("JobData")?.Attribute("JobTitle"));
+        Assert.Empty(Directory.EnumerateFiles(workspace.RootPath, ".Existing.elvx.*.tmp"));
+    }
+
+    [Fact]
+    public void SaveAtomically_WhenTemporaryWriteFails_PreservesExistingOutputAndCleansTemporaryFile()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string outputPath = Path.Combine(workspace.RootPath, "Existing.elvx");
+        File.WriteAllText(outputPath, "previous content");
+        XDocument document = new(new XElement("Project"));
+
+        IOException error = Assert.Throws<IOException>(() =>
+            ElevateProjectEditorService.SaveAtomically(
+                document,
+                outputPath,
+                (_, temporaryPath) =>
+                {
+                    File.WriteAllText(temporaryPath, "partial content");
+                    throw new IOException("Injected temporary write failure.");
+                }));
+
+        Assert.Contains("Injected", error.Message, StringComparison.Ordinal);
+        Assert.Equal("previous content", File.ReadAllText(outputPath));
+        Assert.Empty(Directory.EnumerateFiles(workspace.RootPath, ".Existing.elvx.*.tmp"));
     }
 
     [Fact]
@@ -144,6 +244,158 @@ public sealed class ElevateProjectEditorServiceTests
 
         Assert.False(result.Success);
         Assert.Contains("total 100%", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RejectsHomeFloorOutsideBuildingRange()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        document.Cars[0].HomeFloor = (document.Floors.Count + 1).ToString(CultureInfo.InvariantCulture);
+        string outputPath = Path.Combine(workspace.RootPath, "Invalid.elvx");
+
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.False(result.Success);
+        Assert.Contains("home floor", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Theory]
+    [InlineData(0, 1d, "base floor")]
+    [InlineData(0, 0.01d, "base floor")]
+    [InlineData(0, 0.001d, "base floor")]
+    [InlineData(0, -0.001d, "base floor")]
+    [InlineData(1, 0d, "greater than zero")]
+    public async Task SaveAsync_RejectsNonIncreasingFloorLevels(
+        int floorIndex,
+        double interfloorHeight,
+        string expectedMessage)
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        document.Floors[floorIndex].InterfloorHeight = interfloorHeight;
+        string outputPath = Path.Combine(workspace.RootPath, "Invalid.elvx");
+
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.False(result.Success);
+        Assert.Contains(expectedMessage, result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Theory]
+    [InlineData("capacity", "capacity")]
+    [InlineData("speed", "speed")]
+    [InlineData("home-shaft", "shaft")]
+    public async Task SaveAsync_RejectsInvalidLiftGroupValues(string field, string expectedMessage)
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        switch (field)
+        {
+            case "capacity":
+                document.Cars[0].CapacityKg = "0";
+                break;
+            case "speed":
+                document.Cars[0].Speed = "NaN";
+                break;
+            case "home-shaft":
+                document.Cars[1].HomeShaft = document.Cars[0].HomeShaft;
+                break;
+        }
+
+        string outputPath = Path.Combine(workspace.RootPath, "Invalid.elvx");
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.False(result.Success);
+        Assert.Contains(expectedMessage, result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Theory]
+    [InlineData("SimulationParameters")]
+    [InlineData("Configuration")]
+    public async Task SaveAsync_RejectsBaseDocumentThatLostRequiredEditableStructure(string section)
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        XDocument xDocument = XDocument.Load(sourcePath);
+        if (section == "SimulationParameters")
+        {
+            xDocument.Root!.Element("AnalysisData")!.Element("SimulationParameters")!.Remove();
+        }
+        else
+        {
+            xDocument.Root!.Element("ElevatorData")!.Element("Advanced")!.Element("Configuration")!.Remove();
+        }
+
+        xDocument.Save(sourcePath);
+        string outputPath = Path.Combine(workspace.RootPath, "ShouldNotExist.elvx");
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SaveAsync(document, outputPath));
+
+        Assert.Contains(section, error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RejectsNonPositiveSimulationCount()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        document.Analysis.SimulationsPerConfiguration = 0;
+        string outputPath = Path.Combine(workspace.RootPath, "Invalid.elvx");
+
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.False(result.Success);
+        Assert.Contains("simulation", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Theory]
+    [InlineData(-1d, 100d, 1d, 12d, 1d, 1d, "between")]
+    [InlineData(50d, 40d, 5d, 12d, 1d, 1d, "total")]
+    [InlineData(50d, 50d, 0d, -1d, 1d, 1d, "negative")]
+    [InlineData(50d, 50d, 0d, 12d, -1d, 1d, "negative")]
+    public async Task SaveAsync_RejectsInvalidTrafficValues(
+        double incoming,
+        double outgoing,
+        double interfloor,
+        double handlingCapacity,
+        double loadingTime,
+        double unloadingTime,
+        string expectedMessage)
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        document.Traffic.IncomingPercent = incoming;
+        document.Traffic.OutgoingPercent = outgoing;
+        document.Traffic.InterfloorPercent = interfloor;
+        document.Traffic.HandlingCapacity = handlingCapacity;
+        document.Traffic.LoadingTimeSeconds = loadingTime;
+        document.Traffic.UnloadingTimeSeconds = unloadingTime;
+        string outputPath = Path.Combine(workspace.RootPath, "Invalid.elvx");
+
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.False(result.Success);
+        Assert.Contains(expectedMessage, result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.False(File.Exists(outputPath));
     }
 
@@ -344,6 +596,64 @@ public sealed class ElevateProjectEditorServiceTests
     }
 
     [Fact]
+    public async Task SaveAsync_SwapsFloorNamesWithoutCollapsingReferences()
+    {
+        using ProjectEditorWorkspace workspace = new();
+        string sourcePath = Path.Combine(workspace.RootPath, "Editable.elvx");
+        File.Copy(Path.Combine(GetExampleDirectory(), "Office.elvx"), sourcePath);
+        XDocument sourceDocument = XDocument.Load(sourcePath);
+        ElevateProjectEditorDocument document = await service.LoadFile(sourcePath);
+        string firstName = document.Floors[0].FloorName;
+        string secondName = document.Floors[1].FloorName;
+        int sourceFirstSeriesCount = sourceDocument.Descendants("Series")
+            .Count(series => (string?)series.Attribute("Data") == firstName);
+        int sourceSecondSeriesCount = sourceDocument.Descendants("Series")
+            .Count(series => (string?)series.Attribute("Data") == secondName);
+        document.Floors[0].FloorName = secondName;
+        document.Floors[1].FloorName = firstName;
+
+        string outputPath = Path.Combine(workspace.RootPath, "Swapped.elvx");
+        ProcessingResult result = await service.SaveAsync(document, outputPath);
+
+        Assert.True(result.Success);
+        XElement root = XDocument.Load(outputPath).Root!;
+        List<XElement> buildingFloors = root.Element("BuildingData")!.Elements("Floor").ToList();
+        Assert.Equal(secondName, (string?)buildingFloors[0].Attribute("FloorName"));
+        Assert.Equal(firstName, (string?)buildingFloors[1].Attribute("FloorName"));
+
+        List<XElement> dispatchFloors = root.Element("ElevatorData")!.Element("XDispatch")!.Elements("Floor").ToList();
+        Assert.Equal(secondName, (string?)dispatchFloors[0].Attribute("FloorName"));
+        Assert.Equal(firstName, (string?)dispatchFloors[1].Attribute("FloorName"));
+
+        List<XElement> servedFloors = root.Element("ElevatorData")!
+            .Element("Advanced")!
+            .Element("Configuration")!
+            .Elements("Car")
+            .First()
+            .Elements("FloorServed")
+            .ToList();
+        Assert.Equal(secondName, (string?)servedFloors[0].Attribute("FloorName"));
+        Assert.Equal(firstName, (string?)servedFloors[1].Attribute("FloorName"));
+
+        XElement passengerDemand = root.Element("PassengerData")!
+            .Element("Advanced")!
+            .Elements("Period")
+            .First()
+            .Element("PassengerDemand")!;
+        Assert.Equal(secondName, (string?)passengerDemand.Elements("From").First().Attribute("FloorName"));
+        Assert.Contains(
+            passengerDemand.Elements("From").First().Elements("To"),
+            destination => (string?)destination.Attribute("FloorName") == firstName);
+
+        Assert.Equal(
+            sourceSecondSeriesCount,
+            root.Descendants("Series").Count(series => (string?)series.Attribute("Data") == firstName));
+        Assert.Equal(
+            sourceFirstSeriesCount,
+            root.Descendants("Series").Count(series => (string?)series.Attribute("Data") == secondName));
+    }
+
+    [Fact]
     public async Task SaveAsync_RebuildsBuildingFloorsWhenNewFloorIsAdded()
     {
         using ProjectEditorWorkspace workspace = new();
@@ -357,11 +667,12 @@ public sealed class ElevateProjectEditorServiceTests
             FloorIndex = 1,
             SourceFloorName = string.Empty,
             FloorName = "Level -4",
-            InterfloorHeight = 3.9,
-            FloorLevel = 3.9,
+            InterfloorHeight = 0,
+            FloorLevel = 0,
             Population = 0,
             EntranceFloor = false,
         });
+        document.Floors[1].InterfloorHeight = 3.9;
 
         foreach (ElevateProjectEditorFloor floor in document.Floors.Skip(1))
         {
@@ -385,7 +696,8 @@ public sealed class ElevateProjectEditorServiceTests
         Assert.Equal(document.Floors.Count, floors.Count);
         Assert.Equal(document.Floors.Count.ToString(CultureInfo.InvariantCulture), (string?)buildingData.Attribute("NoOfFloors"));
         Assert.Equal("Level -4", (string?)floors[0].Attribute("FloorName"));
-        Assert.Equal("3.900000", (string?)floors[0].Attribute("FloorLevel"));
+        Assert.Equal("0.000000", (string?)floors[0].Attribute("FloorLevel"));
+        Assert.Equal("3.900000", (string?)floors[1].Attribute("FloorLevel"));
         Assert.Equal(originalFirstFloorName, (string?)floors[1].Attribute("FloorName"));
     }
 
@@ -403,11 +715,12 @@ public sealed class ElevateProjectEditorServiceTests
             FloorIndex = 1,
             SourceFloorName = string.Empty,
             FloorName = "Level -4",
-            InterfloorHeight = 3.9,
-            FloorLevel = 3.9,
+            InterfloorHeight = 0,
+            FloorLevel = 0,
             Population = 0,
             EntranceFloor = false,
         });
+        document.Floors[1].InterfloorHeight = 3.9;
         document.Floors[1].SourceFloorName = originalFirstFloorName;
         document.Floors[1].FloorName = "Lobby";
 

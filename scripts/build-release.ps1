@@ -19,6 +19,46 @@ $exampleDir = Join-Path $repoRoot '.example'
 $publishDir = Join-Path $repoRoot "artifacts/publish/$Runtime"
 $releaseDir = Join-Path $repoRoot 'artifacts/release'
 $zipPath = Join-Path $releaseDir "ElevateHelper-$Runtime-$Tag.zip"
+$appExePath = Join-Path $publishDir 'ElevateHelperWinUI.exe'
+
+$requiredTemplates = @(
+    'Office.elvx',
+    'Residential.elvx',
+    'Hotel.elvx',
+    'Office.xlsx',
+    'Residential.xlsx',
+    'Hotel.xlsx'
+)
+
+function Assert-NonEmptyFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "$Description was not found: $Path"
+    }
+
+    if ((Get-Item -LiteralPath $Path).Length -le 0) {
+        throw "$Description is empty: $Path"
+    }
+}
+
+function Invoke-DotNet {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    & dotnet @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
+    }
+}
 
 $platform = switch ($Runtime) {
     'win-x64' { 'x64' }
@@ -41,38 +81,38 @@ if (Test-Path $zipPath) {
     Remove-Item -Path $zipPath -Force
 }
 
-if (-not (Test-Path $exampleDir)) {
+if (-not (Test-Path -LiteralPath $exampleDir -PathType Container)) {
     throw "Required .example template folder was not found: $exampleDir"
 }
 
-$requiredTemplates = @(
-    'Office.elvx',
-    'Residential.elvx',
-    'Hotel.elvx',
-    'Office.xlsx',
-    'Residential.xlsx',
-    'Hotel.xlsx'
-)
-
 foreach ($templateName in $requiredTemplates) {
     $templatePath = Join-Path $exampleDir $templateName
-    if (-not (Test-Path $templatePath)) {
-        throw "Required template file was not found: $templatePath"
-    }
+    Assert-NonEmptyFile -Path $templatePath -Description 'Required source template file'
 }
 
-dotnet restore $projectPath
+Invoke-DotNet -Arguments @('restore', $projectPath)
 
-dotnet publish $projectPath `
-    --configuration $Configuration `
-    -p:Platform=$platform `
-    -p:RuntimeIdentifier=$Runtime `
-    -p:WindowsPackageType=None `
-    -p:SelfContained=true `
-    -p:PublishSingleFile=false `
-    -p:PublishReadyToRun=true `
-    -p:PublishTrimmed=false `
-    --output $publishDir
+Invoke-DotNet -Arguments @(
+    'publish',
+    $projectPath,
+    '--configuration',
+    $Configuration,
+    "-p:Platform=$platform",
+    "-p:RuntimeIdentifier=$Runtime",
+    '-p:WindowsPackageType=None',
+    '-p:SelfContained=true',
+    '-p:PublishSingleFile=false',
+    '-p:PublishReadyToRun=true',
+    '-p:PublishTrimmed=false',
+    '--output',
+    $publishDir
+)
+
+Assert-NonEmptyFile -Path $appExePath -Description 'Published application executable'
+foreach ($templateName in $requiredTemplates) {
+    $publishedTemplatePath = Join-Path (Join-Path $publishDir '.example') $templateName
+    Assert-NonEmptyFile -Path $publishedTemplatePath -Description 'Published template file'
+}
 
 foreach ($fileName in @('README.md', 'LICENSE')) {
     $sourcePath = Join-Path $repoRoot $fileName
@@ -82,5 +122,6 @@ foreach ($fileName in @('README.md', 'LICENSE')) {
 }
 
 Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zipPath -Force
+Assert-NonEmptyFile -Path $zipPath -Description 'Release archive'
 
 Write-Host "Release archive created: $zipPath"

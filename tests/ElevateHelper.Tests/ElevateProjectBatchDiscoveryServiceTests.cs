@@ -49,7 +49,10 @@ public sealed class ElevateProjectBatchDiscoveryServiceTests
         ProjectBatchDiscoveryResult result = new ElevateProjectBatchDiscoveryService().Discover(workspace.RootPath);
 
         Assert.Empty(result.Jobs);
-        Assert.Contains(result.Warnings, warning => warning.Path.EndsWith(Path.Combine("Office", "G1"), StringComparison.Ordinal));
+        ProjectBatchWarning warning = Assert.Single(result.Warnings);
+        Assert.EndsWith(Path.Combine("Office", "G1"), warning.Path, StringComparison.Ordinal);
+        Assert.Equal(ProjectBatchWarningKind.GroupContainsMultipleSourceFiles, warning.Kind);
+        Assert.Equal("Office/G1", warning.Subject);
     }
 
     [Fact]
@@ -165,7 +168,37 @@ public sealed class ElevateProjectBatchDiscoveryServiceTests
 
         Assert.Empty(result.Jobs);
         Assert.Empty(result.UnknownElvxFiles);
-        Assert.Single(result.Warnings);
+        ProjectBatchWarning warning = Assert.Single(result.Warnings);
+        Assert.Equal(ProjectBatchWarningKind.FolderContainsMultipleSourceFiles, warning.Kind);
+    }
+
+    [Fact]
+    public void Discover_ReturnsStructuredWarningWhenFileTypeDiffersFromFolder()
+    {
+        using BatchDiscoveryWorkspace workspace = new();
+        _ = workspace.CreateTypedElvx(Path.Combine("Office", "G1"), "project.elvx", "3");
+
+        ProjectBatchDiscoveryResult result = new ElevateProjectBatchDiscoveryService().Discover(workspace.RootPath);
+
+        ProjectBatchWarning warning = Assert.Single(result.Warnings);
+        Assert.Equal(ProjectBatchWarningKind.BuildingTypeMismatch, warning.Kind);
+        Assert.Equal("project.elvx", warning.Subject);
+        Assert.Equal("Res", warning.ActualValue);
+        Assert.Equal("Office", warning.ExpectedValue);
+    }
+
+    [Fact]
+    public void Discover_ReturnsStructuredWarningWhenFileTypeCannotBeRead()
+    {
+        using BatchDiscoveryWorkspace workspace = new();
+        _ = workspace.CreateTypedElvx(Path.Combine("Hotel", "G1"), "project.elvx", "invalid");
+
+        ProjectBatchDiscoveryResult result = new ElevateProjectBatchDiscoveryService().Discover(workspace.RootPath);
+
+        ProjectBatchWarning warning = Assert.Single(result.Warnings);
+        Assert.Equal(ProjectBatchWarningKind.BuildingTypeUnreadable, warning.Kind);
+        Assert.Equal("project.elvx", warning.Subject);
+        Assert.Equal("Hotel", warning.ExpectedValue);
     }
 
     private sealed class BatchDiscoveryWorkspace : IDisposable

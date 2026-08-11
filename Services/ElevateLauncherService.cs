@@ -9,6 +9,9 @@ namespace ElevateHelperWinUI.Services;
 
 public sealed class ElevateLauncherService : IElevateLauncherService
 {
+    internal const string LicenseExpiredErrorMessage =
+        "Elevate cannot run because the installed copy has expired. " +
+        "Install or activate a current licensed version of Peters Research Elevate, then try again.";
     private const int RunBatchCommandId = 32819;
     private const int DialogOkControlId = 1;
     private const int DialogNoControlId = 7;
@@ -52,15 +55,13 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         hideWindows = hidden;
     }
 
-    public Task ShutdownAsync(CancellationToken cancellationToken = default)
+    public async Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
         foreach (Process process in activeProcesses.Values.ToArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ForceTerminateProcess(process);
+            await ForceTerminateProcessAsync(process, cancellationToken).ConfigureAwait(false);
         }
-
-        return Task.CompletedTask;
     }
 
     public Task LaunchResidenceAsync(string path, CancellationToken cancellationToken = default)
@@ -305,6 +306,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                     throw new InvalidOperationException("Elevate main window did not appear.");
                 }
 
+                ThrowIfElevateLicenseExpired(process.Id);
                 ApplyWindowVisibility(process.Id, mainWindowHandle);
                 await Task.Delay(StartupDelay, cancellationToken);
                 await SubmitBatchFolderAsync(
@@ -339,7 +341,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 await pendingStopTask;
             }
 
-            ForceTerminateProcess(process);
+            await ForceTerminateProcessAsync(process, CancellationToken.None).ConfigureAwait(false);
             if (process is not null)
             {
                 activeProcesses.TryRemove(process.Id, out _);
@@ -350,7 +352,9 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         }
     }
 
-    private static void ForceTerminateProcess(Process? process)
+    private static async Task ForceTerminateProcessAsync(
+        Process? process,
+        CancellationToken cancellationToken)
     {
         if (process is null)
         {
@@ -366,7 +370,16 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             }
 
             process.Kill(entireProcessTree: true);
-            _ = process.WaitForExit((int)ProcessStopGracePeriod.TotalMilliseconds);
+            using CancellationTokenSource waitTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            waitTimeout.CancelAfter(ProcessStopGracePeriod);
+            try
+            {
+                await process.WaitForExitAsync(waitTimeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // The caller owns the overall shutdown deadline; do not block its UI thread.
+            }
         }
         catch (InvalidOperationException)
         {
@@ -566,6 +579,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         for (int attempt = 0; attempt < 100; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfElevateLicenseExpired(processId);
 
             IntPtr dialogHandle = FindRunBatchDialog(processId);
             if (dialogHandle != IntPtr.Zero)
@@ -698,7 +712,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 completedOutputsSince ??= DateTimeOffset.UtcNow;
                 if (DateTimeOffset.UtcNow - completedOutputsSince >= CompletedOutputsSettleDelay)
                 {
-                    ForceTerminateProcess(process);
+                    await ForceTerminateProcessAsync(process, CancellationToken.None).ConfigureAwait(false);
                     ReportProgress(
                         progress,
                         progressContext,
@@ -1386,6 +1400,60 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         return IsResultFileOpenErrorDialogText(
             GetWindowTitle(windowHandle),
             GetChildWindowTexts(windowHandle));
+    }
+
+    private static void ThrowIfElevateLicenseExpired(int processId)
+    {
+        foreach (IntPtr dialogHandle in GetProcessWindowHandles(processId, IsLicenseExpiredDialogHandle))
+        {
+            string? errorMessage = GetStartupBlockingDialogError(
+                GetWindowTitle(dialogHandle),
+                GetChildWindowTexts(dialogHandle));
+            if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                throw new InvalidOperationException(errorMessage);
+            }
+        }
+    }
+
+    private static bool IsLicenseExpiredDialogHandle(IntPtr windowHandle)
+    {
+        if (!GetWindowClass(windowHandle).Equals("#32770", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return GetStartupBlockingDialogError(
+            GetWindowTitle(windowHandle),
+            GetChildWindowTexts(windowHandle)) is not null;
+    }
+
+    internal static string? GetStartupBlockingDialogError(
+        string? title,
+        IEnumerable<string> childTexts)
+    {
+        return IsLicenseExpiredDialogText(title, childTexts)
+            ? LicenseExpiredErrorMessage
+            : null;
+    }
+
+    internal static bool IsLicenseExpiredDialogText(string? title, IEnumerable<string> childTexts)
+    {
+        string searchText = BuildDialogSearchText(title, childTexts);
+        bool englishExpiredCopy =
+            (searchText.Contains("copy of elevate", StringComparison.OrdinalIgnoreCase) ||
+             searchText.Contains("elevate license", StringComparison.OrdinalIgnoreCase)) &&
+            (searchText.Contains("has expired", StringComparison.OrdinalIgnoreCase) ||
+             searchText.Contains("is expired", StringComparison.OrdinalIgnoreCase));
+        bool russianExpiredCopy =
+            searchText.Contains("Elevate", StringComparison.OrdinalIgnoreCase) &&
+            (searchText.Contains("копи", StringComparison.OrdinalIgnoreCase) ||
+             searchText.Contains("лиценз", StringComparison.OrdinalIgnoreCase)) &&
+            (searchText.Contains("истек", StringComparison.OrdinalIgnoreCase) ||
+             searchText.Contains("истёк", StringComparison.OrdinalIgnoreCase) ||
+             searchText.Contains("просроч", StringComparison.OrdinalIgnoreCase));
+
+        return englishExpiredCopy || russianExpiredCopy;
     }
 
     internal static bool IsResultFileOpenErrorDialogText(string? title, IEnumerable<string> childTexts)

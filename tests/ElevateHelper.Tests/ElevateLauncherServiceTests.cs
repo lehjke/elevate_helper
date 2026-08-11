@@ -119,6 +119,33 @@ public sealed class ElevateLauncherServiceTests
     }
 
     [Theory]
+    [InlineData("Elevate", "Your copy of Elevate has expired. Please request the latest upgrade.", true)]
+    [InlineData("Elevate", "Your Elevate license has expired. Please activate a current license.", true)]
+    [InlineData("Elevate", "Срок действия лицензии Elevate истёк. Обновите лицензию.", true)]
+    [InlineData("Elevate", "Could not open results file. Try again?", false)]
+    [InlineData("Elevate", "The license check completed successfully.", false)]
+    public void IsLicenseExpiredDialogText_MatchesOnlyExpiredLicenseDialogs(
+        string title,
+        string message,
+        bool expected)
+    {
+        bool actual = ElevateLauncherService.IsLicenseExpiredDialogText(title, [message]);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void GetStartupBlockingDialogError_ReturnsActionableExpiredLicenseMessage()
+    {
+        string? actual = ElevateLauncherService.GetStartupBlockingDialogError(
+            "Elevate",
+            ["Your copy of Elevate has expired. Please request the latest upgrade."]);
+
+        Assert.Equal(ElevateLauncherService.LicenseExpiredErrorMessage, actual);
+        Assert.Contains("Install or activate", actual, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("Probe 02", "Probe", true, 2)]
     [InlineData("Elevate - [Probe 09.elvx]", "Probe", true, 9)]
     [InlineData("Design 1", "Probe", false, 0)]

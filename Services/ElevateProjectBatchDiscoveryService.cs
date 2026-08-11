@@ -73,7 +73,8 @@ public sealed class ElevateProjectBatchDiscoveryService
             {
                 warnings.Add(new ProjectBatchWarning(
                     workingFolder,
-                    $"Folder '{GetRelativeGroupName(normalizedRoot, workingFolder)}' contains more than one source .elvx file and was skipped."));
+                    ProjectBatchWarningKind.FolderContainsMultipleSourceFiles,
+                    GetRelativeGroupName(normalizedRoot, workingFolder)));
                 continue;
             }
 
@@ -122,7 +123,8 @@ public sealed class ElevateProjectBatchDiscoveryService
             {
                 warnings.Add(new ProjectBatchWarning(
                     workingFolder,
-                    $"Group '{typeFolderName}/{groupName}' contains more than one source .elvx file and was skipped."));
+                    ProjectBatchWarningKind.GroupContainsMultipleSourceFiles,
+                    $"{typeFolderName}/{groupName}"));
                 continue;
             }
 
@@ -136,14 +138,19 @@ public sealed class ElevateProjectBatchDiscoveryService
                 {
                     warnings.Add(new ProjectBatchWarning(
                         groupFiles[0],
-                        $"File building type is '{resolvedTypeFolderName}', but it is stored under '{typeFolderName}'. The value from the .elvx file will be used."));
+                        ProjectBatchWarningKind.BuildingTypeMismatch,
+                        Path.GetFileName(groupFiles[0]),
+                        ActualValue: resolvedTypeFolderName,
+                        ExpectedValue: typeFolderName));
                 }
             }
             else
             {
                 warnings.Add(new ProjectBatchWarning(
                     groupFiles[0],
-                    $"Could not read BuildingType from '{Path.GetFileName(groupFiles[0])}'. Folder type '{typeFolderName}' will be used."));
+                    ProjectBatchWarningKind.BuildingTypeUnreadable,
+                    Path.GetFileName(groupFiles[0]),
+                    ExpectedValue: typeFolderName));
             }
 
             jobs.Add(new ProjectBatchJob(
@@ -382,4 +389,17 @@ public sealed record ProjectBatchJob(
     BuildingType BuildingType,
     bool IsManualBuildingType);
 
-public sealed record ProjectBatchWarning(string Path, string Message);
+public sealed record ProjectBatchWarning(
+    string Path,
+    ProjectBatchWarningKind Kind,
+    string Subject,
+    string? ActualValue = null,
+    string? ExpectedValue = null);
+
+public enum ProjectBatchWarningKind
+{
+    FolderContainsMultipleSourceFiles,
+    GroupContainsMultipleSourceFiles,
+    BuildingTypeMismatch,
+    BuildingTypeUnreadable,
+}

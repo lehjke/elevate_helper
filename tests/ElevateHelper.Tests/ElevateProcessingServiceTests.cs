@@ -168,6 +168,35 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_OfficeFlow_RemovesTrackedRootCopiesWithoutChangingSeed()
+    {
+        using TestWorkspace workspace = new();
+        string sourcePath = workspace.CreateSampleElvx("Project01.elvx");
+        byte[] sourceBefore = File.ReadAllBytes(sourcePath);
+        string trackedCopyPath = workspace.CreateSampleElvx("Project02.elvx");
+        string generatedCopiesManifestPath = System.IO.Path.Combine(
+            workspace.Path,
+            ".elevate-helper.generated-copies.txt");
+        File.WriteAllText(generatedCopiesManifestPath, "Project02.elvx");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(launcher);
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Office,
+            includeLunchPeak: false);
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal(sourceBefore, File.ReadAllBytes(sourcePath));
+        Assert.False(File.Exists(trackedCopyPath));
+        Assert.False(File.Exists(generatedCopiesManifestPath));
+        Assert.Single(launcher.OfficeCalls);
+        Assert.Equal((workspace.Path, false), launcher.OfficeCalls[0]);
+    }
+
+    [Fact]
     public async Task RunAsync_OfficeFlow_PreservesCompletedMorningWhenAddingLunch()
     {
         using TestWorkspace workspace = new();
@@ -479,8 +508,16 @@ public sealed class ElevateProcessingServiceTests
     public async Task RunAsync_ResidenceFlow_DoesNotOverwriteUntrackedElvxFiles()
     {
         using TestWorkspace workspace = new();
-        _ = workspace.CreateSampleElvx("Project01.elvx");
-        _ = workspace.CreateSampleElvx("Project02.elvx");
+        string sourcePath = workspace.CreateSampleElvx("Project01.elvx");
+        string conflictPath = workspace.CreateSampleElvx("Project02.elvx");
+        byte[] sourceBefore = File.ReadAllBytes(sourcePath);
+        byte[] conflictBefore = File.ReadAllBytes(conflictPath);
+        string batchResultsPath = System.IO.Path.Combine(workspace.Path, "batch_results.csv");
+        string projectCsvPath = System.IO.Path.Combine(workspace.Path, "Project01_elvx.csv");
+        string resultPath = System.IO.Path.Combine(workspace.Path, "Project01.elvr");
+        File.WriteAllText(batchResultsPath, "existing batch results");
+        File.WriteAllText(projectCsvPath, "existing project csv");
+        File.WriteAllText(resultPath, "existing result");
 
         FakeLauncherService launcher = new();
         ElevateProcessingService service = new(launcher);
@@ -494,6 +531,11 @@ public sealed class ElevateProcessingServiceTests
         Assert.False(result.Success);
         Assert.Contains("Cannot overwrite existing .elvx file", result.Message, StringComparison.Ordinal);
         Assert.Empty(launcher.ResidenceCalls);
+        Assert.Equal(sourceBefore, File.ReadAllBytes(sourcePath));
+        Assert.Equal(conflictBefore, File.ReadAllBytes(conflictPath));
+        Assert.Equal("existing batch results", File.ReadAllText(batchResultsPath));
+        Assert.Equal("existing project csv", File.ReadAllText(projectCsvPath));
+        Assert.Equal("existing result", File.ReadAllText(resultPath));
     }
 
     [Fact]
@@ -528,10 +570,16 @@ public sealed class ElevateProcessingServiceTests
     }
 
     [Fact]
-    public async Task RunAsync_ResidenceFlow_TracksCopiesCreatedBeforeLaterConflict()
+    public async Task RunAsync_ResidenceFlow_PreflightsAllCopyTargetsBeforeMutatingTrackedFiles()
     {
         using TestWorkspace workspace = new();
         _ = workspace.CreateSampleElvx("Project01.elvx");
+        string generatedCopyPath = workspace.CreateSampleElvx("Project02.elvx");
+        byte[] generatedCopyBefore = File.ReadAllBytes(generatedCopyPath);
+        string generatedCopiesManifestPath = System.IO.Path.Combine(
+            workspace.Path,
+            ".elevate-helper.generated-copies.txt");
+        File.WriteAllText(generatedCopiesManifestPath, "Project02.elvx");
         string conflictPath = workspace.CreateSampleElvx("Project03.elvx");
         FakeLauncherService launcher = new();
         ElevateProcessingService service = new(launcher);
@@ -542,13 +590,10 @@ public sealed class ElevateProcessingServiceTests
             buildingType: BuildingType.Residence,
             includeLunchPeak: true);
 
-        string generatedCopyPath = System.IO.Path.Combine(workspace.Path, "Project02.elvx");
-        string generatedCopiesManifestPath = System.IO.Path.Combine(
-            workspace.Path,
-            ".elevate-helper.generated-copies.txt");
         Assert.False(failedResult.Success);
         Assert.True(File.Exists(generatedCopyPath));
-        Assert.Contains("Project02.elvx", File.ReadAllLines(generatedCopiesManifestPath));
+        Assert.Equal(generatedCopyBefore, File.ReadAllBytes(generatedCopyPath));
+        Assert.Equal("Project02.elvx", File.ReadAllText(generatedCopiesManifestPath));
 
         File.Delete(conflictPath);
         ProcessingResult recoveredResult = await service.RunAsync(
@@ -560,6 +605,75 @@ public sealed class ElevateProcessingServiceTests
         Assert.True(recoveredResult.Success, recoveredResult.Message);
         Assert.True(File.Exists(generatedCopyPath));
         Assert.True(File.Exists(System.IO.Path.Combine(workspace.Path, "Project03.elvx")));
+    }
+
+    [Fact]
+    public async Task RunAsync_ResidenceFlow_PreservesGeneratedOutputsWhenSeedXmlIsMalformed()
+    {
+        using TestWorkspace workspace = new();
+        string sourcePath = System.IO.Path.Combine(workspace.Path, "Project01.elvx");
+        string batchResultsPath = System.IO.Path.Combine(workspace.Path, "batch_results.csv");
+        File.WriteAllText(sourcePath, "<Project>");
+        File.WriteAllText(batchResultsPath, "existing batch results");
+
+        ElevateProcessingService service = new(new FakeLauncherService());
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+
+        Assert.False(result.Success);
+        Assert.Equal("<Project>", File.ReadAllText(sourcePath));
+        Assert.Equal("existing batch results", File.ReadAllText(batchResultsPath));
+        Assert.False(File.Exists(System.IO.Path.Combine(workspace.Path, "Project02.elvx")));
+    }
+
+    [Fact]
+    public async Task RunAsync_ResidenceFlow_PreservesExistingArtifactsWhenSeedSaveFails()
+    {
+        using TestWorkspace workspace = new();
+        string sourcePath = workspace.CreateSampleElvx("Project01.elvx");
+        byte[] sourceBefore = File.ReadAllBytes(sourcePath);
+        string trackedCopyPath = workspace.CreateSampleElvx("Project02.elvx");
+        byte[] trackedCopyBefore = File.ReadAllBytes(trackedCopyPath);
+        string generatedCopiesManifestPath = System.IO.Path.Combine(
+            workspace.Path,
+            ".elevate-helper.generated-copies.txt");
+        File.WriteAllText(generatedCopiesManifestPath, "Project02.elvx");
+        string batchResultsPath = System.IO.Path.Combine(workspace.Path, "batch_results.csv");
+        string projectCsvPath = System.IO.Path.Combine(workspace.Path, "Project01_elvx.csv");
+        string resultPath = System.IO.Path.Combine(workspace.Path, "Project01.elvr");
+        File.WriteAllText(batchResultsPath, "existing batch results");
+        File.WriteAllText(projectCsvPath, "existing project csv");
+        File.WriteAllText(resultPath, "existing result");
+
+        FakeLauncherService launcher = new();
+        ElevateProcessingService service = new(
+            launcher,
+            (_, temporaryPath) =>
+            {
+                File.WriteAllText(temporaryPath, "partial seed content");
+                throw new IOException("Simulated seed save failure.");
+            });
+
+        ProcessingResult result = await service.RunAsync(
+            copiesCount: 2,
+            path: workspace.Path,
+            buildingType: BuildingType.Residence,
+            includeLunchPeak: true);
+
+        Assert.False(result.Success);
+        Assert.Contains("Simulated seed save failure", result.Message, StringComparison.Ordinal);
+        Assert.Equal(sourceBefore, File.ReadAllBytes(sourcePath));
+        Assert.Equal(trackedCopyBefore, File.ReadAllBytes(trackedCopyPath));
+        Assert.Equal("Project02.elvx", File.ReadAllText(generatedCopiesManifestPath));
+        Assert.Equal("existing batch results", File.ReadAllText(batchResultsPath));
+        Assert.Equal("existing project csv", File.ReadAllText(projectCsvPath));
+        Assert.Equal("existing result", File.ReadAllText(resultPath));
+        Assert.Empty(Directory.EnumerateFiles(workspace.Path, ".Project01.elvx.*.tmp"));
+        Assert.Empty(launcher.ResidenceCalls);
     }
 
     [Theory]

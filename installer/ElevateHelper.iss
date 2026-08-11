@@ -52,8 +52,18 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
+#if Runtime == "win-x86"
+ArchitecturesAllowed=x86compatible
+ArchitecturesInstallIn64BitMode=
+#elif Runtime == "win-x64"
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#elif Runtime == "win-arm64"
+ArchitecturesAllowed=arm64
+ArchitecturesInstallIn64BitMode=arm64
+#else
+  #error Unsupported Runtime value. Expected win-x86, win-x64, or win-arm64.
+#endif
 UninstallDisplayIcon={app}\{#AppExeName}
 SetupIconFile=..\Assets\AppIcon.ico
 

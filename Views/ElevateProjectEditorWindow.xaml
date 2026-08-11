@@ -5,38 +5,76 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <Grid x:Name="RootGrid" Background="{ThemeResource IosPageBackgroundBrush}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel MaxWidth="1120" Margin="20,18,20,24" HorizontalAlignment="Center" Spacing="16">
+    <Grid
+        x:Name="RootGrid"
+        Background="{ThemeResource IosPageBackgroundBrush}"
+        SizeChanged="OnRootGridSizeChanged">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="S" Modifiers="Control" Invoked="OnSaveKeyboardAcceleratorInvoked" />
+            <KeyboardAccelerator Key="O" Modifiers="Control" Invoked="OnOpenKeyboardAcceleratorInvoked" />
+            <KeyboardAccelerator Key="W" Modifiers="Control" Invoked="OnCloseKeyboardAcceleratorInvoked" />
+            <KeyboardAccelerator Key="Z" Modifiers="Control" Invoked="OnUndoKeyboardAcceleratorInvoked" />
+        </Grid.KeyboardAccelerators>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <InfoBar
+            x:Name="StatusInfoBar"
+            Grid.Row="0"
+            MaxWidth="1120"
+            Margin="20,12,20,0"
+            HorizontalAlignment="Stretch"
+            AutomationProperties.LiveSetting="Polite"
+            IsClosable="False"
+            IsOpen="False" />
+
+        <ScrollViewer
+            x:Name="MainScrollViewer"
+            Grid.Row="1"
+            HorizontalContentAlignment="Stretch"
+            HorizontalScrollBarVisibility="Disabled"
+            HorizontalScrollMode="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            VerticalScrollMode="Auto">
+            <StackPanel
+                x:Name="ContentStackPanel"
+                MaxWidth="1120"
+                Margin="20,18,20,24"
+                HorizontalAlignment="Center"
+                Spacing="16">
                 <Border Style="{StaticResource HeroCardStyle}">
-                    <Grid ColumnSpacing="20">
+                    <Grid x:Name="HeroContextGrid" ColumnSpacing="20" RowSpacing="16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="320" />
+                            <ColumnDefinition x:Name="HeroSideColumn" Width="320" />
                         </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Column="0" Spacing="12">
-                            <TextBlock x:Name="HeroTitleTextBlock" Style="{StaticResource HeroTitleTextStyle}" />
+                        <StackPanel x:Name="HeroMainPanel" Grid.Column="0" Spacing="12">
+                            <TextBlock
+                                x:Name="HeroTitleTextBlock"
+                                AutomationProperties.HeadingLevel="Level1"
+                                Style="{StaticResource HeroTitleTextStyle}" />
 
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="180" />
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0" Spacing="4">
+                            <StackPanel Spacing="12">
+                                <StackPanel Spacing="4">
                                     <TextBlock x:Name="WorkingFolderLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
                                     <TextBlock x:Name="WorkingFolderValueTextBlock" TextWrapping="WrapWholeWords" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Column="1" Spacing="4">
+                                <StackPanel Spacing="4">
                                     <TextBlock x:Name="BuildingTypeLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
                                     <TextBlock x:Name="BuildingTypeValueTextBlock" TextWrapping="WrapWholeWords" />
                                 </StackPanel>
-                            </Grid>
+                            </StackPanel>
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Spacing="8">
+                        <StackPanel x:Name="HeroSidePanel" Grid.Column="1" Spacing="8">
                             <TextBlock x:Name="SourceLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
                             <TextBlock x:Name="SourceValueTextBlock" TextWrapping="WrapWholeWords" />
                             <TextBlock x:Name="OutputLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
@@ -45,77 +83,199 @@
                     </Grid>
                 </Border>
 
-                <Grid ColumnSpacing="10">
+                <Grid x:Name="CommandGrid" ColumnSpacing="10" RowSpacing="10">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                    <Button x:Name="LoadExistingButton" Grid.Column="0" Click="OnLoadExistingButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                    <Button x:Name="LoadTemplateButton" Grid.Column="1" Click="OnLoadTemplateButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                    <Button x:Name="SaveButton" Grid.Column="2" Click="OnSaveButtonClick" Style="{StaticResource PrimaryActionButtonStyle}" />
-                    <Button x:Name="CloseButton" Grid.Column="4" Click="OnCloseButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                    <Button
+                        x:Name="LoadExistingButton"
+                        Grid.Column="0"
+                        MinHeight="40"
+                        Click="OnLoadExistingButtonClick"
+                        Style="{StaticResource ActionButtonStyle}"
+                        UseSystemFocusVisuals="True" />
+                    <Button
+                        x:Name="LoadTemplateButton"
+                        Grid.Column="1"
+                        MinHeight="40"
+                        Click="OnLoadTemplateButtonClick"
+                        Style="{StaticResource ActionButtonStyle}"
+                        UseSystemFocusVisuals="True" />
+                    <Button
+                        x:Name="SaveButton"
+                        Grid.Column="2"
+                        MinHeight="40"
+                        Click="OnSaveButtonClick"
+                        Style="{StaticResource PrimaryActionButtonStyle}"
+                        UseSystemFocusVisuals="True" />
+                    <Button
+                        x:Name="UndoButton"
+                        Grid.Column="3"
+                        MinHeight="40"
+                        Click="OnUndoButtonClick"
+                        Style="{StaticResource ActionButtonStyle}"
+                        UseSystemFocusVisuals="True" />
+
+                    <StackPanel
+                        x:Name="BusyStatePanel"
+                        Grid.Column="4"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="Collapsed">
+                        <ProgressRing
+                            x:Name="BusyProgressRing"
+                            Width="20"
+                            Height="20"
+                            IsActive="False" />
+                        <TextBlock x:Name="BusyTextBlock" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Button
+                        x:Name="CloseButton"
+                        Grid.Column="5"
+                        MinHeight="40"
+                        Click="OnCloseButtonClick"
+                        Style="{StaticResource ActionButtonStyle}"
+                        UseSystemFocusVisuals="True" />
                 </Grid>
 
-                <Border Style="{StaticResource SectionCardStyle}">
-                    <Grid ColumnSpacing="10">
+                <Border x:Name="TabsCard" Style="{StaticResource SectionCardStyle}">
+                    <Grid x:Name="TabGrid" ColumnSpacing="10" RowSpacing="10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-                        <Button x:Name="ProjectTabButton" Grid.Column="0" Click="OnProjectTabButtonClick" Style="{StaticResource PrimaryActionButtonStyle}" />
-                        <Button x:Name="BuildingTabButton" Grid.Column="1" Click="OnBuildingTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                        <Button x:Name="LiftGroupTabButton" Grid.Column="2" Click="OnLiftGroupTabButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                        <Button
+                            x:Name="ProjectTabButton"
+                            Grid.Column="0"
+                            MinHeight="40"
+                            AutomationProperties.PositionInSet="1"
+                            AutomationProperties.SizeOfSet="5"
+                            Click="OnProjectTabButtonClick"
+                            Style="{StaticResource PrimaryActionButtonStyle}"
+                            UseSystemFocusVisuals="True" />
+                        <Button
+                            x:Name="AnalysisTabButton"
+                            Grid.Column="1"
+                            MinHeight="40"
+                            AutomationProperties.PositionInSet="2"
+                            AutomationProperties.SizeOfSet="5"
+                            Click="OnAnalysisTabButtonClick"
+                            Style="{StaticResource ActionButtonStyle}"
+                            UseSystemFocusVisuals="True" />
+                        <Button
+                            x:Name="TrafficTabButton"
+                            Grid.Column="2"
+                            MinHeight="40"
+                            AutomationProperties.PositionInSet="3"
+                            AutomationProperties.SizeOfSet="5"
+                            Click="OnTrafficTabButtonClick"
+                            Style="{StaticResource ActionButtonStyle}"
+                            UseSystemFocusVisuals="True" />
+                        <Button
+                            x:Name="BuildingTabButton"
+                            Grid.Column="3"
+                            MinHeight="40"
+                            AutomationProperties.PositionInSet="4"
+                            AutomationProperties.SizeOfSet="5"
+                            Click="OnBuildingTabButtonClick"
+                            Style="{StaticResource ActionButtonStyle}"
+                            UseSystemFocusVisuals="True" />
+                        <Button
+                            x:Name="LiftGroupTabButton"
+                            Grid.Column="4"
+                            MinHeight="40"
+                            AutomationProperties.PositionInSet="5"
+                            AutomationProperties.SizeOfSet="5"
+                            Click="OnLiftGroupTabButtonClick"
+                            Style="{StaticResource ActionButtonStyle}"
+                            UseSystemFocusVisuals="True" />
                     </Grid>
                 </Border>
 
-                <Border Style="{StaticResource SectionCardStyle}">
+                <Border x:Name="SectionContentBorder" Style="{StaticResource SectionCardStyle}">
                     <Grid>
                         <StackPanel x:Name="ProjectPanel" Spacing="12">
-                            <Grid ColumnSpacing="16" RowSpacing="12">
+                            <Grid x:Name="ProjectFieldsGrid" ColumnSpacing="16" RowSpacing="12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition x:Name="ProjectRightColumn" Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="6">
+                                <StackPanel x:Name="ProjectTitleFieldPanel" Grid.Row="0" Grid.Column="0" Spacing="6">
                                     <TextBlock x:Name="ProjectTitleLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="ProjectTitleTextBox" PlaceholderText="MIG 6 Office" TextChanged="OnOutputRelevantFieldChanged" />
+                                    <TextBox
+                                        x:Name="ProjectTitleTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=ProjectTitleLabelTextBlock}" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="6">
+                                <StackPanel x:Name="ProjectNumberFieldPanel" Grid.Row="0" Grid.Column="1" Spacing="6">
                                     <TextBlock x:Name="ProjectNumberLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="ProjectNumberTextBox" PlaceholderText="R00" TextChanged="OnOutputRelevantFieldChanged" />
+                                    <TextBox
+                                        x:Name="ProjectNumberTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=ProjectNumberLabelTextBlock}" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6">
+                                <StackPanel x:Name="ProjectCalculationFieldPanel" Grid.Row="1" Grid.Column="0" Spacing="6">
                                     <TextBlock x:Name="ProjectCalculationTitleLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="ProjectCalculationTitleTextBox" PlaceholderText="Moscow / Office" />
+                                    <TextBox
+                                        x:Name="ProjectCalculationTitleTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=ProjectCalculationTitleLabelTextBlock}" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6">
+                                <StackPanel x:Name="ProjectCompanyFieldPanel" Grid.Row="1" Grid.Column="1" Spacing="6">
                                     <TextBlock x:Name="ProjectCompanyLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="ProjectCompanyTextBox" PlaceholderText="Meteor" />
+                                    <TextBox
+                                        x:Name="ProjectCompanyTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=ProjectCompanyLabelTextBlock}" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Row="2" Grid.Column="0" Spacing="6">
+                                <StackPanel x:Name="ProjectMadeByFieldPanel" Grid.Row="2" Grid.Column="0" Spacing="6">
                                     <TextBlock x:Name="ProjectMadeByLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="ProjectMadeByTextBox" PlaceholderText="Aleskey" />
+                                    <TextBox
+                                        x:Name="ProjectMadeByTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=ProjectMadeByLabelTextBlock}" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Row="2" Grid.Column="1" Spacing="6">
+                                <StackPanel x:Name="ProjectCheckedByFieldPanel" Grid.Row="2" Grid.Column="1" Spacing="6">
                                     <TextBlock x:Name="ProjectCheckedByLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="ProjectCheckedByTextBox" PlaceholderText="Reviewer" />
+                                    <TextBox
+                                        x:Name="ProjectCheckedByTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=ProjectCheckedByLabelTextBlock}" />
                                 </StackPanel>
                             </Grid>
                         </StackPanel>
@@ -123,152 +283,281 @@
                         <StackPanel x:Name="AnalysisPanel" Spacing="12" Visibility="Collapsed">
                             <StackPanel Spacing="6">
                                 <TextBlock x:Name="DispatcherLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                <ComboBox x:Name="DispatcherComboBox" DisplayMemberPath="DisplayName" />
+                                <ComboBox
+                                    x:Name="DispatcherComboBox"
+                                    MinHeight="40"
+                                    AutomationProperties.LabeledBy="{Binding ElementName=DispatcherLabelTextBlock}"
+                                    DisplayMemberPath="DisplayName"
+                                    IsEnabled="False"
+                                    IsTabStop="False" />
+                                <TextBlock
+                                    x:Name="AnalysisRuleHintTextBlock"
+                                    Style="{StaticResource SectionHintStyle}"
+                                    TextWrapping="Wrap" />
                             </StackPanel>
 
                             <StackPanel Spacing="6">
                                 <TextBlock x:Name="SimulationsLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                <TextBox x:Name="SimulationCountTextBox" PlaceholderText="10" />
+                                <TextBox
+                                    x:Name="SimulationCountTextBox"
+                                    MinHeight="40"
+                                    AutomationProperties.LabeledBy="{Binding ElementName=SimulationsLabelTextBlock}"
+                                    PlaceholderText="10" />
                             </StackPanel>
                         </StackPanel>
 
                         <StackPanel x:Name="TrafficPanel" Spacing="18" Visibility="Collapsed">
                             <TextBlock
                                 x:Name="TrafficSplitTitleTextBlock"
+                                AutomationProperties.HeadingLevel="Level2"
                                 FontSize="18"
                                 FontWeight="SemiBold" />
 
-                            <Grid ColumnSpacing="12" RowSpacing="12">
+                            <Grid x:Name="TrafficSplitGrid" ColumnSpacing="12" RowSpacing="12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition x:Name="TrafficSplitMiddleColumn" Width="*" />
+                                    <ColumnDefinition x:Name="TrafficSplitRightColumn" Width="*" />
                                 </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
 
-                                <StackPanel Grid.Column="0" Spacing="6">
+                                <StackPanel x:Name="IncomingFieldPanel" Grid.Column="0" Spacing="6">
                                     <TextBlock x:Name="IncomingLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="IncomingTextBox" PlaceholderText="100" />
+                                    <TextBox
+                                        x:Name="IncomingTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=IncomingLabelTextBlock}"
+                                        PlaceholderText="100" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Column="1" Spacing="6">
+                                <StackPanel x:Name="OutgoingFieldPanel" Grid.Column="1" Spacing="6">
                                     <TextBlock x:Name="OutgoingLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="OutgoingTextBox" PlaceholderText="0" />
+                                    <TextBox
+                                        x:Name="OutgoingTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=OutgoingLabelTextBlock}"
+                                        PlaceholderText="0" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Column="2" Spacing="6">
+                                <StackPanel x:Name="InterfloorFieldPanel" Grid.Column="2" Spacing="6">
                                     <TextBlock x:Name="InterfloorLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="InterfloorTextBox" PlaceholderText="0" />
+                                    <TextBox
+                                        x:Name="InterfloorTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=InterfloorLabelTextBlock}"
+                                        PlaceholderText="0" />
                                 </StackPanel>
                             </Grid>
 
                             <TextBlock
                                 x:Name="TrafficParametersTitleTextBlock"
                                 Margin="0,8,0,0"
+                                AutomationProperties.HeadingLevel="Level2"
                                 FontSize="18"
                                 FontWeight="SemiBold" />
 
-                            <Grid ColumnSpacing="12" RowSpacing="12">
+                            <Grid x:Name="TrafficParametersGrid" ColumnSpacing="12" RowSpacing="12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition x:Name="TrafficParametersMiddleColumn" Width="*" />
+                                    <ColumnDefinition x:Name="TrafficParametersRightColumn" Width="*" />
                                 </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
 
-                                <StackPanel Grid.Column="0" Spacing="6">
+                                <StackPanel x:Name="HandlingCapacityFieldPanel" Grid.Column="0" Spacing="6">
                                     <TextBlock x:Name="HandlingCapacityLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="HandlingCapacityTextBox" PlaceholderText="12" />
+                                    <TextBox
+                                        x:Name="HandlingCapacityTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=HandlingCapacityLabelTextBlock}"
+                                        PlaceholderText="12" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Column="1" Spacing="6">
+                                <StackPanel x:Name="LoadingTimeFieldPanel" Grid.Column="1" Spacing="6">
                                     <TextBlock x:Name="LoadingTimeLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="LoadingTimeTextBox" PlaceholderText="1" />
+                                    <TextBox
+                                        x:Name="LoadingTimeTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=LoadingTimeLabelTextBlock}"
+                                        PlaceholderText="1" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Column="2" Spacing="6">
+                                <StackPanel x:Name="UnloadingTimeFieldPanel" Grid.Column="2" Spacing="6">
                                     <TextBlock x:Name="UnloadingTimeLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="UnloadingTimeTextBox" PlaceholderText="1" />
+                                    <TextBox
+                                        x:Name="UnloadingTimeTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=UnloadingTimeLabelTextBlock}"
+                                        PlaceholderText="1" />
                                 </StackPanel>
                             </Grid>
                         </StackPanel>
 
                         <StackPanel x:Name="BuildingPanel" Spacing="16" Visibility="Collapsed">
-                            <Grid ColumnSpacing="10">
+                            <Grid ColumnSpacing="10" RowSpacing="10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
 
-                                <Button x:Name="AddFloorAboveButton" Grid.Column="0" Click="OnAddFloorAboveButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                                <Button x:Name="AddFloorBelowButton" Grid.Column="1" Click="OnAddFloorBelowButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                                <Button x:Name="SortTopFirstButton" Grid.Column="2" Click="OnSortTopFirstButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                                <Button x:Name="SortBottomFirstButton" Grid.Column="3" Click="OnSortBottomFirstButtonClick" Style="{StaticResource ActionButtonStyle}" />
+                                <Button
+                                    x:Name="AddFloorAboveButton"
+                                    Grid.Row="0"
+                                    Grid.Column="0"
+                                    MinHeight="40"
+                                    Click="OnAddFloorAboveButtonClick"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    UseSystemFocusVisuals="True" />
+                                <Button
+                                    x:Name="AddFloorBelowButton"
+                                    Grid.Row="0"
+                                    Grid.Column="1"
+                                    MinHeight="40"
+                                    Click="OnAddFloorBelowButtonClick"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    UseSystemFocusVisuals="True" />
+                                <Button
+                                    x:Name="SortTopFirstButton"
+                                    Grid.Row="1"
+                                    Grid.Column="0"
+                                    MinHeight="40"
+                                    Click="OnSortTopFirstButtonClick"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    UseSystemFocusVisuals="True" />
+                                <Button
+                                    x:Name="SortBottomFirstButton"
+                                    Grid.Row="1"
+                                    Grid.Column="1"
+                                    MinHeight="40"
+                                    Click="OnSortBottomFirstButtonClick"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    UseSystemFocusVisuals="True" />
                             </Grid>
 
                             <Border x:Name="AbsenteeismCard" Style="{StaticResource SectionCardStyle}">
                                 <StackPanel Spacing="6">
                                     <TextBlock x:Name="AbsenteeismLabelTextBlock" Style="{StaticResource SectionHintStyle}" />
-                                    <TextBox x:Name="AbsenteeismTextBox" PlaceholderText="20" />
+                                    <TextBox
+                                        x:Name="AbsenteeismTextBox"
+                                        MinHeight="40"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=AbsenteeismLabelTextBlock}"
+                                        IsReadOnly="True"
+                                        PlaceholderText="20" />
+                                    <TextBlock
+                                        x:Name="AbsenteeismRuleHintTextBlock"
+                                        Style="{StaticResource SectionHintStyle}"
+                                        TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
 
-                            <Border
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="16">
-                                <StackPanel>
-                                    <Grid Padding="12,10" Background="{ThemeResource IosAccentBrush}">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="2.2*" />
-                                            <ColumnDefinition Width="1.3*" />
-                                            <ColumnDefinition Width="1.1*" />
-                                            <ColumnDefinition Width="1.1*" />
-                                            <ColumnDefinition Width="0.8*" />
-                                        </Grid.ColumnDefinitions>
+                            <ScrollViewer
+                                HorizontalScrollBarVisibility="Auto"
+                                HorizontalScrollMode="Auto"
+                                VerticalScrollBarVisibility="Disabled"
+                                VerticalScrollMode="Disabled">
+                                <Border
+                                    MinWidth="900"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="16">
+                                    <StackPanel>
+                                        <Grid Padding="12,10" Background="{ThemeResource IosAccentBrush}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2.2*" />
+                                                <ColumnDefinition Width="1.3*" />
+                                                <ColumnDefinition Width="1.1*" />
+                                                <ColumnDefinition Width="1.1*" />
+                                                <ColumnDefinition Width="0.8*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
 
-                                        <TextBlock x:Name="FloorNameColumnTextBlock" FontWeight="SemiBold" Foreground="White" />
-                                        <TextBlock x:Name="InterfloorHeightColumnTextBlock" Grid.Column="1" FontWeight="SemiBold" Foreground="White" />
-                                        <TextBlock x:Name="PopulationColumnTextBlock" Grid.Column="2" FontWeight="SemiBold" Foreground="White" />
-                                        <TextBlock x:Name="EntranceBiasColumnTextBlock" Grid.Column="3" FontWeight="SemiBold" Foreground="White" />
-                                        <TextBlock x:Name="EntranceColumnTextBlock" Grid.Column="4" FontWeight="SemiBold" Foreground="White" />
-                                    </Grid>
+                                            <TextBlock x:Name="FloorNameColumnTextBlock" FontWeight="SemiBold" Foreground="{ThemeResource IosOnAccentBrush}" />
+                                            <TextBlock x:Name="InterfloorHeightColumnTextBlock" Grid.Column="1" FontWeight="SemiBold" Foreground="{ThemeResource IosOnAccentBrush}" />
+                                            <TextBlock x:Name="PopulationColumnTextBlock" Grid.Column="2" FontWeight="SemiBold" Foreground="{ThemeResource IosOnAccentBrush}" />
+                                            <TextBlock x:Name="EntranceBiasColumnTextBlock" Grid.Column="3" FontWeight="SemiBold" Foreground="{ThemeResource IosOnAccentBrush}" />
+                                            <TextBlock x:Name="EntranceColumnTextBlock" Grid.Column="4" FontWeight="SemiBold" Foreground="{ThemeResource IosOnAccentBrush}" />
+                                            <TextBlock x:Name="FloorActionsColumnTextBlock" Grid.Column="5" FontWeight="SemiBold" Foreground="{ThemeResource IosOnAccentBrush}" />
+                                        </Grid>
 
-                                    <ItemsControl x:Name="FloorsItemsControl">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,8">
-                                                    <Grid ColumnSpacing="10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="2.2*" />
-                                                            <ColumnDefinition Width="1.3*" />
-                                                            <ColumnDefinition Width="1.1*" />
-                                                            <ColumnDefinition Width="1.1*" />
-                                                            <ColumnDefinition Width="0.8*" />
-                                                        </Grid.ColumnDefinitions>
+                                        <ItemsControl x:Name="FloorsItemsControl">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+                                                        <Grid ColumnSpacing="10">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="2.2*" />
+                                                                <ColumnDefinition Width="1.3*" />
+                                                                <ColumnDefinition Width="1.1*" />
+                                                                <ColumnDefinition Width="1.1*" />
+                                                                <ColumnDefinition Width="0.8*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
 
-                                                        <TextBox PlaceholderText="Level 1" Text="{Binding FloorName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox Grid.Column="1" PlaceholderText="3,9" Text="{Binding InterfloorHeightText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox Grid.Column="2" PlaceholderText="150" Text="{Binding PopulationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <TextBox Grid.Column="3" PlaceholderText="0" Text="{Binding EntranceBiasText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <ToggleButton
-                                                            Grid.Column="4"
-                                                            HorizontalAlignment="Center"
-                                                            IsChecked="{Binding EntranceFloor, Mode=TwoWay}"
-                                                            Style="{StaticResource RoundCheckToggleStyle}" />
-                                                    </Grid>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
+                                                            <TextBox
+                                                                MinHeight="40"
+                                                                AutomationProperties.Name="{Binding FloorNameAutomationName}"
+                                                                Text="{Binding FloorName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBox
+                                                                Grid.Column="1"
+                                                                MinHeight="40"
+                                                                AutomationProperties.Name="{Binding InterfloorHeightAutomationName}"
+                                                                PlaceholderText="3.9"
+                                                                Text="{Binding InterfloorHeightText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBox
+                                                                Grid.Column="2"
+                                                                MinHeight="40"
+                                                                AutomationProperties.Name="{Binding PopulationAutomationName}"
+                                                                PlaceholderText="150"
+                                                                Text="{Binding PopulationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBox
+                                                                Grid.Column="3"
+                                                                MinHeight="40"
+                                                                AutomationProperties.Name="{Binding EntranceBiasAutomationName}"
+                                                                PlaceholderText="0"
+                                                                Text="{Binding EntranceBiasText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <CheckBox
+                                                                Grid.Column="4"
+                                                                MinWidth="40"
+                                                                MinHeight="40"
+                                                                HorizontalAlignment="Center"
+                                                                AutomationProperties.Name="{Binding EntranceAutomationName}"
+                                                                IsChecked="{Binding EntranceFloor, Mode=TwoWay}"
+                                                                UseSystemFocusVisuals="True" />
+                                                            <Button
+                                                                Grid.Column="5"
+                                                                MinHeight="40"
+                                                                AutomationProperties.Name="{Binding RemoveFloorAutomationName}"
+                                                                Click="OnRemoveFloorButtonClick"
+                                                                Content="{Binding RemoveFloorLabel}"
+                                                                Style="{StaticResource ActionButtonStyle}"
+                                                                Tag="{Binding}"
+                                                                UseSystemFocusVisuals="True" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </ScrollViewer>
                         </StackPanel>
 
                         <StackPanel x:Name="LiftGroupPanel" Spacing="16" Visibility="Collapsed">
@@ -279,8 +568,19 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <Button x:Name="AddLiftButton" Grid.Column="0" Click="OnAddLiftButtonClick" Style="{StaticResource ActionButtonStyle}" />
-                                    <TextBlock x:Name="LiftCountSummaryTextBlock" Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                    <Button
+                                        x:Name="AddLiftButton"
+                                        Grid.Column="0"
+                                        MinHeight="40"
+                                        Click="OnAddLiftButtonClick"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        UseSystemFocusVisuals="True" />
+                                    <TextBlock
+                                        x:Name="LiftCountSummaryTextBlock"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.LiveSetting="Polite"
+                                        FontWeight="SemiBold" />
                                 </Grid>
                             </Border>
 
@@ -295,13 +595,25 @@
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
 
-                                                    <TextBlock VerticalAlignment="Center" FontSize="18" FontWeight="SemiBold" Text="{Binding Title}" />
-                                                    <Button Grid.Column="1" Click="OnRemoveLiftCardButtonClick" Content="{Binding RemoveButtonLabel}" Style="{StaticResource ActionButtonStyle}" Tag="{Binding}" />
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        AutomationProperties.HeadingLevel="Level3"
+                                                        FontSize="18"
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding Title}" />
+                                                    <Button
+                                                        Grid.Column="1"
+                                                        MinHeight="40"
+                                                        AutomationProperties.Name="{Binding RemoveAutomationName}"
+                                                        Click="OnRemoveLiftCardButtonClick"
+                                                        Content="{Binding RemoveButtonLabel}"
+                                                        Style="{StaticResource ActionButtonStyle}"
+                                                        Tag="{Binding}"
+                                                        UseSystemFocusVisuals="True" />
                                                 </Grid>
 
                                                 <Grid ColumnSpacing="12" RowSpacing="12">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="*" />
                                                     </Grid.ColumnDefinitions>
@@ -309,42 +621,66 @@
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
 
-                                                    <StackPanel Grid.Row="0" Grid.Column="0" Spacing="6">
-                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding CapacityLabel}" />
-                                                        <ComboBox ItemsSource="{Binding CapacityOptions}" SelectedItem="{Binding CapacityOption, Mode=TwoWay}" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="0" Grid.Column="1" Spacing="6">
-                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding CabWidthLabel}" />
-                                                        <TextBox PlaceholderText="1600" Text="{Binding CabWidthText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="0" Grid.Column="2" Spacing="6">
-                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding CabHeightLabel}" />
-                                                        <TextBox PlaceholderText="2100" Text="{Binding CabHeightText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6">
-                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding SpeedLabel}" />
-                                                        <ComboBox ItemsSource="{Binding SpeedOptions}" SelectedItem="{Binding SpeedOption, Mode=TwoWay}" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6">
-                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding DoorWidthLabel}" />
-                                                        <ComboBox ItemsSource="{Binding DoorWidthOptions}" SelectedItem="{Binding SelectedDoorWidth, Mode=TwoWay}" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="1" Grid.Column="2" Spacing="6">
-                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding DoorOpeningLabel}" />
-                                                        <ComboBox DisplayMemberPath="DisplayName" ItemsSource="{Binding DoorOpeningOptions}" SelectedItem="{Binding SelectedDoorOpening, Mode=TwoWay}" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="2" Grid.Column="0" Spacing="6">
-                                                        <TextBlock Style="{StaticResource SectionHintStyle}" Text="{Binding HomeFloorLabel}" />
-                                                        <TextBox PlaceholderText="1" Text="{Binding HomeFloor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </StackPanel>
+                                                    <ComboBox
+                                                        Grid.Row="0"
+                                                        Grid.Column="0"
+                                                        MinHeight="40"
+                                                        AutomationProperties.Name="{Binding CapacityAutomationName}"
+                                                        Header="{Binding CapacityLabel}"
+                                                        ItemsSource="{Binding CapacityOptions}"
+                                                        SelectedItem="{Binding CapacityOption, Mode=TwoWay}" />
+                                                    <TextBox
+                                                        Grid.Row="0"
+                                                        Grid.Column="1"
+                                                        MinHeight="40"
+                                                        AutomationProperties.Name="{Binding CabWidthAutomationName}"
+                                                        Header="{Binding CabWidthLabel}"
+                                                        PlaceholderText="1600"
+                                                        Text="{Binding CabWidthText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox
+                                                        Grid.Row="1"
+                                                        Grid.Column="0"
+                                                        MinHeight="40"
+                                                        AutomationProperties.Name="{Binding CabHeightAutomationName}"
+                                                        Header="{Binding CabHeightLabel}"
+                                                        PlaceholderText="2100"
+                                                        Text="{Binding CabHeightText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <ComboBox
+                                                        Grid.Row="1"
+                                                        Grid.Column="1"
+                                                        MinHeight="40"
+                                                        AutomationProperties.Name="{Binding SpeedAutomationName}"
+                                                        Header="{Binding SpeedLabel}"
+                                                        ItemsSource="{Binding SpeedOptions}"
+                                                        SelectedItem="{Binding SpeedOption, Mode=TwoWay}" />
+                                                    <ComboBox
+                                                        Grid.Row="2"
+                                                        Grid.Column="0"
+                                                        MinHeight="40"
+                                                        AutomationProperties.Name="{Binding DoorWidthAutomationName}"
+                                                        Header="{Binding DoorWidthLabel}"
+                                                        ItemsSource="{Binding DoorWidthOptions}"
+                                                        SelectedItem="{Binding SelectedDoorWidth, Mode=TwoWay}" />
+                                                    <ComboBox
+                                                        Grid.Row="2"
+                                                        Grid.Column="1"
+                                                        MinHeight="40"
+                                                        AutomationProperties.Name="{Binding DoorOpeningAutomationName}"
+                                                        DisplayMemberPath="DisplayName"
+                                                        Header="{Binding DoorOpeningLabel}"
+                                                        ItemsSource="{Binding DoorOpeningOptions}"
+                                                        SelectedItem="{Binding SelectedDoorOpening, Mode=TwoWay}" />
+                                                    <TextBox
+                                                        Grid.Row="3"
+                                                        Grid.Column="0"
+                                                        MinHeight="40"
+                                                        AutomationProperties.Name="{Binding HomeFloorAutomationName}"
+                                                        Header="{Binding HomeFloorLabel}"
+                                                        PlaceholderText="1"
+                                                        Text="{Binding HomeFloor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                 </Grid>
                                             </StackPanel>
                                         </Border>
@@ -352,14 +688,16 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollBarVisibility="Disabled">
-                                <StackPanel x:Name="LiftGroupTablesPanel" MinWidth="1040" Spacing="16" />
+                            <ScrollViewer
+                                HorizontalScrollBarVisibility="Auto"
+                                HorizontalScrollMode="Auto"
+                                VerticalScrollBarVisibility="Disabled"
+                                VerticalScrollMode="Disabled">
+                                <StackPanel x:Name="LiftGroupTablesPanel" MinWidth="760" Spacing="16" />
                             </ScrollViewer>
                         </StackPanel>
                     </Grid>
                 </Border>
-
-                <InfoBar x:Name="StatusInfoBar" IsClosable="False" IsOpen="False" />
             </StackPanel>
         </ScrollViewer>
     </Grid>

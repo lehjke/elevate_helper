@@ -81,14 +81,101 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             Directory.CreateDirectory(outputDirectory);
         }
 
-        xDocument.Save(outputPath, SaveOptions.DisableFormatting);
+        SaveAtomically(xDocument, outputPath);
 
         document.SourcePath = outputPath;
         return Task.FromResult(ProcessingResult.Ok("ELVX saved: " + outputPath));
     }
 
+    internal static void SaveAtomically(
+        XDocument document,
+        string outputPath,
+        Action<XDocument, string>? writeTemporaryFile = null)
+    {
+        string outputDirectory = Path.GetDirectoryName(outputPath) ?? string.Empty;
+        string temporaryPath = Path.Combine(
+            outputDirectory,
+            $".{Path.GetFileName(outputPath)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            if (writeTemporaryFile is null)
+            {
+                document.Save(temporaryPath, SaveOptions.DisableFormatting);
+            }
+            else
+            {
+                writeTemporaryFile(document, temporaryPath);
+            }
+
+            if (File.Exists(outputPath))
+            {
+                File.Replace(temporaryPath, outputPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(temporaryPath, outputPath);
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch (IOException)
+                {
+                    // Preserve the original save/replace failure; cleanup is best effort.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Preserve the original save/replace failure; cleanup is best effort.
+                }
+            }
+        }
+    }
+
     internal static string? ValidateDocument(ElevateProjectEditorDocument document)
     {
+        if (!Enum.IsDefined(document.Building.BuildingType))
+        {
+            return "Unknown building type: " + document.Building.BuildingType;
+        }
+
+        if (document.Analysis.SimulationsPerConfiguration <= 0)
+        {
+            return "Simulation count must be greater than zero.";
+        }
+
+        ElevateProjectEditorTrafficSection traffic = document.Traffic;
+        if (!double.IsFinite(traffic.IncomingPercent) ||
+            !double.IsFinite(traffic.OutgoingPercent) ||
+            !double.IsFinite(traffic.InterfloorPercent) ||
+            traffic.IncomingPercent < 0d || traffic.IncomingPercent > 100d ||
+            traffic.OutgoingPercent < 0d || traffic.OutgoingPercent > 100d ||
+            traffic.InterfloorPercent < 0d || traffic.InterfloorPercent > 100d)
+        {
+            return "Traffic split percentages must each be between 0% and 100%.";
+        }
+
+        double trafficSplitTotal = traffic.IncomingPercent + traffic.OutgoingPercent + traffic.InterfloorPercent;
+        if (Math.Abs(trafficSplitTotal - 100d) > 0.01d)
+        {
+            return "Traffic split percentages must total 100%.";
+        }
+
+        if (!double.IsFinite(traffic.HandlingCapacity) ||
+            !double.IsFinite(traffic.LoadingTimeSeconds) ||
+            !double.IsFinite(traffic.UnloadingTimeSeconds) ||
+            traffic.HandlingCapacity < 0d ||
+            traffic.LoadingTimeSeconds < 0d ||
+            traffic.UnloadingTimeSeconds < 0d)
+        {
+            return "Traffic handling capacity and loading times cannot be negative.";
+        }
+
         if (document.Floors.Count == 0)
         {
             return "Building table must contain at least one floor.";
@@ -112,9 +199,13 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
                 return $"Floor name '{floorName}' is duplicated.";
             }
 
-            if (!double.IsFinite(floor.InterfloorHeight) || floor.InterfloorHeight < 0d)
+            if (!double.IsFinite(floor.InterfloorHeight) ||
+                (index == 0 && Math.Abs(floor.InterfloorHeight) > 1e-9d) ||
+                (index > 0 && floor.InterfloorHeight <= 0d))
             {
-                return $"Floor '{floorName}' has an invalid interfloor height.";
+                return index == 0
+                    ? $"The base floor '{floorName}' must have a 0 m level."
+                    : $"Floor '{floorName}' must have an interfloor height greater than zero.";
             }
 
             if (!double.IsFinite(floor.Population) || floor.Population < 0d)
@@ -155,9 +246,45 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             return "Lift group must contain at least one elevator.";
         }
 
+        HashSet<int> homeShafts = [];
         for (int index = 0; index < document.Cars.Count; index++)
         {
             ElevateProjectEditorCar car = document.Cars[index];
+            if (!double.TryParse(car.CapacityKg, NumberStyles.Float, CultureInfo.InvariantCulture, out double capacityKg) ||
+                !double.IsFinite(capacityKg) ||
+                capacityKg <= 0d)
+            {
+                return $"Elevator {index + 1} must have a capacity greater than zero.";
+            }
+
+            if (!double.TryParse(car.Speed, NumberStyles.Float, CultureInfo.InvariantCulture, out double speed) ||
+                !double.IsFinite(speed) ||
+                speed <= 0d)
+            {
+                return $"Elevator {index + 1} must have a speed greater than zero.";
+            }
+
+            string homeShaftValue = string.IsNullOrWhiteSpace(car.HomeShaft)
+                ? (index + 1).ToString(CultureInfo.InvariantCulture)
+                : car.HomeShaft.Trim();
+            if (!int.TryParse(homeShaftValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int homeShaft) ||
+                homeShaft <= 0)
+            {
+                return $"Elevator {index + 1} must have a positive home shaft number.";
+            }
+
+            if (!homeShafts.Add(homeShaft))
+            {
+                return $"Home shaft {homeShaft} is assigned to more than one elevator.";
+            }
+
+            if (!int.TryParse(car.HomeFloor, NumberStyles.Integer, CultureInfo.InvariantCulture, out int homeFloor) ||
+                homeFloor < 1 ||
+                homeFloor > document.Floors.Count)
+            {
+                return $"Elevator {index + 1} has a home floor outside the building range.";
+            }
+
             if (car.ServedFloorIndexes.Count == 0)
             {
                 return $"Elevator {index + 1} must serve at least one floor.";
@@ -201,14 +328,20 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             ?? throw new InvalidOperationException("PassengerData section is missing.");
         XElement algorithm = analysisData.Element("Dispatcher")?.Element("Algorithm")
             ?? throw new InvalidOperationException("Dispatcher algorithm section is missing.");
-        XElement? simulationParameters = analysisData.Element("SimulationParameters");
+        XElement simulationParameters = analysisData.Element("SimulationParameters")
+            ?? throw new InvalidOperationException("AnalysisData/SimulationParameters section is missing.");
         XElement standardPassenger = passengerData.Element("Standard")
             ?? throw new InvalidOperationException("PassengerData/Standard section is missing.");
         XElement? trafficPeriod = passengerData
             .Element("Traffic")?
             .Elements("Period")
             .FirstOrDefault(period => string.Equals((string?)period.Attribute("Id"), "0", StringComparison.Ordinal));
-        XElement? configuration = elevatorData.Element("Advanced")?.Element("Configuration");
+        XElement configuration = elevatorData.Element("Advanced")?.Element("Configuration")
+            ?? throw new InvalidOperationException("ElevatorData/Advanced/Configuration section is missing.");
+        if (!configuration.Elements("Car").Any())
+        {
+            throw new InvalidOperationException("ElevatorData/Advanced/Configuration must contain at least one Car.");
+        }
 
         BuildingType buildingType = ParseBuildingType((string?)buildingData.Attribute("BuildingType"));
 
@@ -235,9 +368,9 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             {
                 DispatcherAlgorithmName = (string?)algorithm.Attribute("AlgorithmName") ?? string.Empty,
                 TrafficMode = (string?)algorithm.Attribute("Mode") ?? string.Empty,
-                SimulationsPerConfiguration = ParseInt((string?)simulationParameters?.Attribute("NoOfSimulationsToRunForEachConfiguration")),
-                LearningRuns = ParseInt((string?)simulationParameters?.Attribute("NoOfLearningRuns")),
-                RandomSeed = ParseInt((string?)simulationParameters?.Attribute("RandomNumberSeedForPassengerGenerator")),
+                SimulationsPerConfiguration = ParseInt((string?)simulationParameters.Attribute("NoOfSimulationsToRunForEachConfiguration")),
+                LearningRuns = ParseInt((string?)simulationParameters.Attribute("NoOfLearningRuns")),
+                RandomSeed = ParseInt((string?)simulationParameters.Attribute("RandomNumberSeedForPassengerGenerator")),
             },
             Building = new ElevateProjectEditorBuildingSection
             {
@@ -275,14 +408,20 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             ?? throw new InvalidOperationException("PassengerData section is missing.");
         XElement algorithm = analysisData.Element("Dispatcher")?.Element("Algorithm")
             ?? throw new InvalidOperationException("Dispatcher algorithm section is missing.");
-        XElement? simulationParameters = analysisData.Element("SimulationParameters");
+        XElement simulationParameters = analysisData.Element("SimulationParameters")
+            ?? throw new InvalidOperationException("AnalysisData/SimulationParameters section is missing.");
         XElement standardPassenger = passengerData.Element("Standard")
             ?? throw new InvalidOperationException("PassengerData/Standard section is missing.");
         XElement? trafficPeriod = passengerData
             .Element("Traffic")?
             .Elements("Period")
             .FirstOrDefault(period => string.Equals((string?)period.Attribute("Id"), "0", StringComparison.Ordinal));
-        XElement? configuration = elevatorData.Element("Advanced")?.Element("Configuration");
+        XElement configuration = elevatorData.Element("Advanced")?.Element("Configuration")
+            ?? throw new InvalidOperationException("ElevatorData/Advanced/Configuration section is missing.");
+        if (!configuration.Elements("Car").Any())
+        {
+            throw new InvalidOperationException("ElevatorData/Advanced/Configuration must contain at least one Car.");
+        }
         BuildingType normalizedBuildingType = document.Building.BuildingType;
         string dispatcherAlgorithmName = ResolveDispatcherAlgorithmName(normalizedBuildingType);
         double absenteeismPercent = ResolveAbsenteeismPercent(normalizedBuildingType);
@@ -296,6 +435,8 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
         List<string> originalFloorNames = buildingData.Elements("Floor")
             .Select(floorElement => (string?)floorElement.Attribute("FloorName") ?? string.Empty)
             .ToList();
+        List<(XAttribute Attribute, string TargetValue)> floorReferenceUpdates =
+            CaptureFloorReferenceUpdates(root, document.Floors);
 
         SetAttribute(jobData, "JobTitle", document.Job.Title);
         SetAttribute(jobData, "JobNo", document.Job.Number);
@@ -309,12 +450,9 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
         SetAttribute(algorithm, "AlgorithmSource", "Standard");
         SetAttribute(algorithm, "AlgorithmName", dispatcherAlgorithmName);
         SetAttribute(algorithm, "Mode", document.Analysis.TrafficMode);
-        if (simulationParameters is not null)
-        {
-            SetAttribute(simulationParameters, "NoOfSimulationsToRunForEachConfiguration", document.Analysis.SimulationsPerConfiguration.ToString(CultureInfo.InvariantCulture));
-            SetAttribute(simulationParameters, "NoOfLearningRuns", document.Analysis.LearningRuns.ToString(CultureInfo.InvariantCulture));
-            SetAttribute(simulationParameters, "RandomNumberSeedForPassengerGenerator", document.Analysis.RandomSeed.ToString(CultureInfo.InvariantCulture));
-        }
+        SetAttribute(simulationParameters, "NoOfSimulationsToRunForEachConfiguration", document.Analysis.SimulationsPerConfiguration.ToString(CultureInfo.InvariantCulture));
+        SetAttribute(simulationParameters, "NoOfLearningRuns", document.Analysis.LearningRuns.ToString(CultureInfo.InvariantCulture));
+        SetAttribute(simulationParameters, "RandomNumberSeedForPassengerGenerator", document.Analysis.RandomSeed.ToString(CultureInfo.InvariantCulture));
 
         SetAttribute(buildingData, "BuildingType", ToBuildingTypeCode(normalizedBuildingType));
         SetAttribute(buildingData, "AbsenteeismPercent", FormatDouble(absenteeismPercent));
@@ -326,7 +464,7 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             document.Floors,
             UsesDestinationCallStations(dispatcherAlgorithmName));
         RebuildPassengerDemand(passengerData.Element("Advanced"), document.Floors);
-        UpdateFloorReferences(root, document.Floors);
+        ApplyFloorReferenceUpdates(floorReferenceUpdates);
 
         standardPassenger.SetElementValue("Incoming", FormatDouble(document.Traffic.IncomingPercent));
         standardPassenger.SetElementValue("Outgoing", FormatDouble(document.Traffic.OutgoingPercent));
@@ -343,10 +481,7 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             SetAttribute(trafficPeriod, "SplitInterfloor", FormatDouble(document.Traffic.InterfloorPercent));
         }
 
-        if (configuration is not null)
-        {
-            RebuildConfiguration(configuration, normalizedCars, document.Floors);
-        }
+        RebuildConfiguration(configuration, normalizedCars, document.Floors);
     }
 
     private static ElevateProjectEditorCar NormalizeCarRules(ElevateProjectEditorCar car)
@@ -846,32 +981,36 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
         }
     }
 
-    private static void UpdateFloorReferences(
+    private static List<(XAttribute Attribute, string TargetValue)> CaptureFloorReferenceUpdates(
         XElement root,
         IReadOnlyList<ElevateProjectEditorFloor> floors)
     {
-        foreach (ElevateProjectEditorFloor floor in floors)
+        Dictionary<string, string> renameMap = floors
+            .Where(floor =>
+                !string.IsNullOrWhiteSpace(floor.SourceFloorName) &&
+                !string.Equals(floor.SourceFloorName, floor.FloorName, StringComparison.Ordinal))
+            .ToDictionary(floor => floor.SourceFloorName, floor => floor.FloorName, StringComparer.Ordinal);
+
+        return root
+            .Descendants()
+            .Attributes()
+            .Where(attribute => attribute.Name == "FloorName" || attribute.Name == "Data")
+            .Where(attribute => renameMap.ContainsKey(attribute.Value))
+            .Select(attribute => (attribute, renameMap[attribute.Value]))
+            .ToList();
+    }
+
+    private static void ApplyFloorReferenceUpdates(
+        IReadOnlyList<(XAttribute Attribute, string TargetValue)> updates)
+    {
+        foreach ((XAttribute attribute, string targetValue) in updates)
         {
-            if (string.IsNullOrWhiteSpace(floor.SourceFloorName) ||
-                string.Equals(floor.SourceFloorName, floor.FloorName, StringComparison.Ordinal))
+            // Rebuilt floor structures already contain their final values. Only update
+            // references that survived the rebuild, using the value captured before any
+            // rename so swaps and chains cannot be applied more than once.
+            if (attribute.Parent?.Document is not null)
             {
-                continue;
-            }
-
-            foreach (XAttribute attribute in root
-                         .Descendants()
-                         .Attributes("FloorName")
-                         .Where(attribute => string.Equals(attribute.Value, floor.SourceFloorName, StringComparison.Ordinal)))
-            {
-                attribute.Value = floor.FloorName;
-            }
-
-            foreach (XAttribute attribute in root
-                         .Descendants()
-                         .Attributes("Data")
-                         .Where(attribute => string.Equals(attribute.Value, floor.SourceFloorName, StringComparison.Ordinal)))
-            {
-                attribute.Value = floor.FloorName;
+                attribute.Value = targetValue;
             }
         }
     }
@@ -947,15 +1086,17 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
 
     private static BuildingType ParseBuildingType(string? rawValue)
     {
-        return (rawValue ?? string.Empty).Trim() switch
+        string value = (rawValue ?? string.Empty).Trim();
+        return value switch
         {
             "1" => BuildingType.Office,
             "2" => BuildingType.Hotel,
             "3" => BuildingType.Residence,
-            string value when value.Equals("Office", StringComparison.OrdinalIgnoreCase) => BuildingType.Office,
-            string value when value.Equals("Hotel", StringComparison.OrdinalIgnoreCase) => BuildingType.Hotel,
-            string value when value.Equals("Residential", StringComparison.OrdinalIgnoreCase) => BuildingType.Residence,
-            _ => BuildingType.Office,
+            string text when text.Equals("Office", StringComparison.OrdinalIgnoreCase) => BuildingType.Office,
+            string text when text.Equals("Hotel", StringComparison.OrdinalIgnoreCase) => BuildingType.Hotel,
+            string text when text.Equals("Residential", StringComparison.OrdinalIgnoreCase) => BuildingType.Residence,
+            _ => throw new InvalidOperationException(
+                "Unknown building type: " + (string.IsNullOrWhiteSpace(value) ? "<missing>" : value)),
         };
     }
 
@@ -966,7 +1107,7 @@ public sealed class ElevateProjectEditorService : IElevateProjectEditorService
             BuildingType.Office => "1",
             BuildingType.Hotel => "2",
             BuildingType.Residence => "3",
-            _ => "1",
+            _ => throw new InvalidOperationException("Unknown building type: " + buildingType),
         };
     }
 

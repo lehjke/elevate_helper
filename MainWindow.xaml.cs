@@ -6,9 +6,9 @@ namespace ElevateHelperWinUI;
 
 public sealed partial class MainWindow : Window
 {
-    private const int PreferredWidth = 1100;
-    private const int PreferredHeight = 900;
-    private const int WorkAreaMargin = 80;
+    private const int PreferredClientWidth = 1100;
+    private const int PreferredClientHeight = 900;
+    private const int WorkAreaMargin = 40;
     private bool closeAllowed;
     private bool shutdownInProgress;
 
@@ -18,7 +18,14 @@ public sealed partial class MainWindow : Window
         this.Title = "Elevate Helper";
         ConfigureWindowIcon();
         ConfigureWindowSize();
+        MainPageContent.Loaded += OnMainPageContentLoaded;
         AppWindow.Closing += OnAppWindowClosing;
+    }
+
+    private void OnMainPageContentLoaded(object sender, RoutedEventArgs e)
+    {
+        MainPageContent.Loaded -= OnMainPageContentLoaded;
+        ConfigureWindowSize();
     }
 
     private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -35,20 +42,37 @@ public sealed partial class MainWindow : Window
         }
 
         shutdownInProgress = true;
+        bool shutdownConfirmed;
         try
         {
+            shutdownConfirmed = await MainPageContent.ConfirmShutdownAsync();
+        }
+        catch
+        {
+            // If confirmation cannot be shown, keep the app open rather than discard work.
+            shutdownInProgress = false;
+            return;
+        }
+
+        if (!shutdownConfirmed)
+        {
+            shutdownInProgress = false;
+            return;
+        }
+
+        try
+        {
+            MainPageContent.BeginShutdownFeedback();
             await MainPageContent.ShutdownAsync();
         }
         catch
         {
             // Closing must still complete after best-effort process and COM cleanup.
         }
-        finally
-        {
-            closeAllowed = true;
-            shutdownInProgress = false;
-            Close();
-        }
+
+        shutdownInProgress = false;
+        closeAllowed = true;
+        Close();
     }
 
     private void ConfigureWindowIcon()
@@ -74,13 +98,19 @@ public sealed partial class MainWindow : Window
             DisplayAreaFallback.Primary);
         RectInt32 workArea = displayArea.WorkArea;
 
-        int width = Math.Min(PreferredWidth, Math.Max(1, workArea.Width - WorkAreaMargin));
-        int height = Math.Min(PreferredHeight, Math.Max(1, workArea.Height - WorkAreaMargin));
+        double rasterizationScale = MainPageContent.XamlRoot?.RasterizationScale ?? 1d;
+        int margin = Math.Max(WorkAreaMargin, (int)Math.Round(WorkAreaMargin * rasterizationScale));
+        int width = Math.Min(
+            (int)Math.Round(PreferredClientWidth * rasterizationScale),
+            Math.Max(1, workArea.Width - (margin * 2)));
+        int height = Math.Min(
+            (int)Math.Round(PreferredClientHeight * rasterizationScale),
+            Math.Max(1, workArea.Height - (margin * 2)));
 
-        AppWindow.Resize(new SizeInt32(width, height));
+        AppWindow.ResizeClient(new SizeInt32(width, height));
 
-        int x = workArea.X + Math.Max(0, (workArea.Width - width) / 2);
-        int y = workArea.Y + Math.Max(0, (workArea.Height - height) / 2);
+        int x = workArea.X + Math.Max(0, (workArea.Width - AppWindow.Size.Width) / 2);
+        int y = workArea.Y + Math.Max(0, (workArea.Height - AppWindow.Size.Height) / 2);
         AppWindow.Move(new PointInt32(x, y));
     }
 }
