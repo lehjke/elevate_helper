@@ -57,7 +57,7 @@
 
         <Grid
             MaxWidth="1040"
-            HorizontalAlignment="Center"
+            HorizontalAlignment="Stretch"
             RowSpacing="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />

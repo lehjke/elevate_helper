@@ -666,18 +666,26 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        PathTextBox.Text = folderPath;
-        loadedEditorDocument = null;
-        ResetEditorStatus();
+        ApplySelectedWorkingFolder(folderPath);
     }
 
     private async void OnBrowseProjectBatchFolderButtonClick(object sender, RoutedEventArgs e)
     {
         string? folderPath = await PickFolderPathAsync();
-        if (folderPath is not null)
+        if (folderPath is null)
         {
-            ProjectBatchPathTextBox.Text = folderPath;
+            return;
         }
+
+        ApplySelectedWorkingFolder(folderPath);
+    }
+
+    private void ApplySelectedWorkingFolder(string folderPath)
+    {
+        PathTextBox.Text = folderPath;
+        SyncProjectBatchPathFromMainPath();
+        loadedEditorDocument = null;
+        ResetEditorStatus();
     }
 
     private void OnProjectBatchUnlimitedRunsOptionTapped(object sender, TappedRoutedEventArgs e)
@@ -3189,9 +3197,33 @@ public sealed partial class MainPage : Page
         ReportButton.Visibility = isOffice ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void RefreshProjectInputMode()
+    private void ApplyAnalyzedProjectInputMode(ProjectPathAnalysis analysis)
     {
-        ScheduleProjectPathAnalysis(immediate: true);
+        string currentPath = PathTextBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(currentPath) ||
+            !Directory.Exists(currentPath) ||
+            !string.Equals(
+                NormalizeProcessingFolder(currentPath),
+                analysis.Path,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ProjectInputMode analyzedMode = analysis.SuggestedBatchMode
+            ? ProjectInputMode.ProjectBatch
+            : ProjectInputMode.Standard;
+        if (projectInputMode == analyzedMode)
+        {
+            SyncProjectBatchPathFromMainPath();
+            ApplyProjectPathAnalysisState();
+            return;
+        }
+
+        projectInputMode = analyzedMode;
+        UpdateProjectInputModeSelection();
+        SyncProjectBatchPathFromMainPath();
+        UpdateProjectInputModeVisibility();
     }
 
     private void ScheduleProjectPathAnalysis(bool immediate = false)
@@ -3250,7 +3282,7 @@ public sealed partial class MainPage : Page
             }
 
             lastProjectPathAnalysis = analysis;
-            ApplyProjectPathAnalysisState();
+            ApplyAnalyzedProjectInputMode(analysis);
         }
         catch (OperationCanceledException) when (source.IsCancellationRequested)
         {

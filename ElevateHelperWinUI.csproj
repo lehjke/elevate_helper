@@ -17,10 +17,10 @@
         <LangVersion>latest</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <RootNamespace>ElevateHelperWinUI</RootNamespace>
-        <Version>2.1.8</Version>
-        <AssemblyVersion>2.1.8.0</AssemblyVersion>
-        <FileVersion>2.1.8.0</FileVersion>
-        <InformationalVersion>2.1.8</InformationalVersion>
+        <Version>2.1.9</Version>
+        <AssemblyVersion>2.1.9.0</AssemblyVersion>
+        <FileVersion>2.1.9.0</FileVersion>
+        <InformationalVersion>2.1.9</InformationalVersion>
         <RepositoryUrl>https://github.com/lehjke/elevate_helper</RepositoryUrl>
 
         <!-- App Options -->
