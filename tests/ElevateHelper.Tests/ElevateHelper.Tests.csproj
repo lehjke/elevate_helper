@@ -14,6 +14,7 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
@@ -32,6 +33,7 @@
     <Compile Include="../../Models/ElevateResultMetrics.cs" Link="Source/Models/ElevateResultMetrics.cs" />
     <Compile Include="../../Models/PersistedJobSnapshot.cs" Link="Source/Models/PersistedJobSnapshot.cs" />
     <Compile Include="../../Models/ProcessingResult.cs" Link="Source/Models/ProcessingResult.cs" />
+    <Compile Include="../../Models/Reports/ReportDocumentModel.cs" Link="Source/Models/Reports/ReportDocumentModel.cs" />
     <Compile Include="../../Services/AppLocalizationService.cs" Link="Source/Services/AppLocalizationService.cs" />
     <Compile Include="../../Services/AppUpdateService.cs" Link="Source/Services/AppUpdateService.cs" />
     <Compile Include="../../Services/IElevateProjectEditorService.cs" Link="Source/Services/IElevateProjectEditorService.cs" />
@@ -44,6 +46,8 @@
     <Compile Include="../../Services/IElevateReportService.cs" Link="Source/Services/IElevateReportService.cs" />
     <Compile Include="../../Services/GeneratedReportPublisher.cs" Link="Source/Services/GeneratedReportPublisher.cs" />
     <Compile Include="../../Services/ElevateReportService.cs" Link="Source/Services/ElevateReportService.cs" />
+    <Compile Include="../../Services/Reports/ReportFontResolver.cs" Link="Source/Services/Reports/ReportFontResolver.cs" />
+    <Compile Include="../../Services/Reports/ReportPdfRenderer.cs" Link="Source/Services/Reports/ReportPdfRenderer.cs" />
     <Compile Include="../../Services/IElevateProcessingService.cs" Link="Source/Services/IElevateProcessingService.cs" />
     <Compile Include="../../Services/ElevateRunManifestService.cs" Link="Source/Services/ElevateRunManifestService.cs" />
     <Compile Include="../../Services/ElevateWorkflowRunner.cs" Link="Source/Services/ElevateWorkflowRunner.cs" />

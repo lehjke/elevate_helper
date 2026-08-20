@@ -19,6 +19,7 @@ wheels/
 artifacts/
 bin/
 obj/
+/tmp/
 tests/**/bin/
 tests/**/obj/
 build_diag.log

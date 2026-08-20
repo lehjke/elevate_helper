@@ -289,6 +289,22 @@ public sealed class ElevateReportServiceTests
     }
 
     [Fact]
+    public void PublishGeneratedReport_ReplacesOnlyTheRequestedPdf()
+    {
+        using ReportTestWorkspace workspace = new();
+        string destinationPdfPath = Path.Combine(workspace.RootPath, "report.pdf");
+        string temporaryPdfPath = Path.Combine(workspace.RootPath, "temporary.pdf");
+        File.WriteAllText(destinationPdfPath, "old pdf");
+        File.WriteAllText(temporaryPdfPath, "new pdf");
+
+        GeneratedReportPublisher.Publish(temporaryPdfPath, destinationPdfPath);
+
+        Assert.Equal("new pdf", File.ReadAllText(destinationPdfPath));
+        Assert.False(File.Exists(temporaryPdfPath));
+        Assert.Empty(Directory.EnumerateFiles(workspace.RootPath, "*.xlsx"));
+    }
+
+    [Fact]
     public void PublishGeneratedReports_RestoresExcelWhenPdfPublicationFails()
     {
         using ReportTestWorkspace workspace = new();

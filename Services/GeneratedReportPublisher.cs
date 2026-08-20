@@ -2,61 +2,70 @@ namespace ElevateHelperWinUI.Services;
 
 internal static class GeneratedReportPublisher
 {
+    public static void Publish(string temporaryPath, string destinationPath)
+    {
+        PublishCore([new PublicationFile(temporaryPath, destinationPath)]);
+    }
+
+    // Retained for the legacy paired-report path. The redesigned report flow publishes
+    // only the PDF through the two-argument overload above.
     public static void Publish(
         string temporaryExcelPath,
         string destinationExcelPath,
         string temporaryPdfPath,
         string destinationPdfPath)
     {
-        ValidateTemporaryFile(temporaryExcelPath);
-        ValidateTemporaryFile(temporaryPdfPath);
-        RecoverInterruptedPublication(destinationExcelPath, destinationPdfPath);
+        PublishCore(
+        [
+            new PublicationFile(temporaryExcelPath, destinationExcelPath),
+            new PublicationFile(temporaryPdfPath, destinationPdfPath),
+        ]);
+    }
 
-        string? excelBackupPath = null;
-        string? pdfBackupPath = null;
-        bool excelPublished = false;
-        bool pdfPublished = false;
+    private static void PublishCore(IReadOnlyList<PublicationFile> files)
+    {
+        foreach (PublicationFile file in files)
+        {
+            ValidateTemporaryFile(file.TemporaryPath);
+        }
+        RecoverInterruptedPublication(files.Select(file => file.DestinationPath).ToArray());
+
+        List<PublicationState> states = files.Select(file => new PublicationState(file)).ToList();
         bool publicationCompleted = false;
         string transactionId = Guid.NewGuid().ToString("N");
 
         try
         {
-            excelBackupPath = MoveDestinationToBackup(destinationExcelPath, transactionId);
-            pdfBackupPath = MoveDestinationToBackup(destinationPdfPath, transactionId);
+            foreach (PublicationState state in states)
+            {
+                state.BackupPath = MoveDestinationToBackup(state.File.DestinationPath, transactionId);
+            }
 
-            File.Move(temporaryExcelPath, destinationExcelPath);
-            excelPublished = true;
-            File.Move(temporaryPdfPath, destinationPdfPath);
-            pdfPublished = true;
+            foreach (PublicationState state in states)
+            {
+                File.Move(state.File.TemporaryPath, state.File.DestinationPath);
+                state.Published = true;
+            }
             publicationCompleted = true;
         }
         catch (Exception publicationException)
         {
             List<Exception> rollbackErrors = [];
-            if (TryRollBackDestination(
-                    destinationPdfPath,
-                    pdfBackupPath,
-                    pdfPublished,
-                    out Exception? pdfRollbackError))
+            for (int index = states.Count - 1; index >= 0; index--)
             {
-                pdfBackupPath = null;
-            }
-            else if (pdfRollbackError is not null)
-            {
-                rollbackErrors.Add(pdfRollbackError);
-            }
-
-            if (TryRollBackDestination(
-                    destinationExcelPath,
-                    excelBackupPath,
-                    excelPublished,
-                    out Exception? excelRollbackError))
-            {
-                excelBackupPath = null;
-            }
-            else if (excelRollbackError is not null)
-            {
-                rollbackErrors.Add(excelRollbackError);
+                PublicationState state = states[index];
+                if (TryRollBackDestination(
+                        state.File.DestinationPath,
+                        state.BackupPath,
+                        state.Published,
+                        out Exception? rollbackError))
+                {
+                    state.BackupPath = null;
+                }
+                else if (rollbackError is not null)
+                {
+                    rollbackErrors.Add(rollbackError);
+                }
             }
 
             if (rollbackErrors.Count > 0)
@@ -72,8 +81,10 @@ internal static class GeneratedReportPublisher
         {
             if (publicationCompleted)
             {
-                TryDeleteBackup(excelBackupPath);
-                TryDeleteBackup(pdfBackupPath);
+                foreach (PublicationState state in states)
+                {
+                    TryDeleteBackup(state.BackupPath);
+                }
             }
         }
     }
@@ -98,40 +109,51 @@ internal static class GeneratedReportPublisher
         return backupPath;
     }
 
-    private static void RecoverInterruptedPublication(
-        string destinationExcelPath,
-        string destinationPdfPath)
+    private static void RecoverInterruptedPublication(IReadOnlyList<string> destinationPaths)
     {
-        Dictionary<string, string> excelBackups = FindBackups(destinationExcelPath);
-        Dictionary<string, string> pdfBackups = FindBackups(destinationPdfPath);
+        Dictionary<string, string>[] backupsByDestination = destinationPaths
+            .Select(FindBackups)
+            .ToArray();
+        IEnumerable<string> sharedTransactionIds = backupsByDestination.Length == 0
+            ? []
+            : backupsByDestination
+                .Skip(1)
+                .Aggregate(
+                    backupsByDestination[0].Keys.AsEnumerable(),
+                    (current, backups) => current.Intersect(backups.Keys, StringComparer.OrdinalIgnoreCase));
 
-        foreach (string transactionId in excelBackups.Keys
-                     .Intersect(pdfBackups.Keys, StringComparer.OrdinalIgnoreCase)
-                     .ToList())
+        foreach (string transactionId in sharedTransactionIds.ToList())
         {
-            string excelBackup = excelBackups[transactionId];
-            string pdfBackup = pdfBackups[transactionId];
-            bool publicationLooksComplete =
-                File.Exists(destinationExcelPath) && File.Exists(destinationPdfPath);
+            bool publicationLooksComplete = destinationPaths.All(File.Exists);
             if (publicationLooksComplete)
             {
-                DeleteIfExists(excelBackup);
-                DeleteIfExists(pdfBackup);
+                foreach (Dictionary<string, string> backups in backupsByDestination)
+                {
+                    DeleteIfExists(backups[transactionId]);
+                }
             }
             else
             {
-                DeleteIfExists(destinationExcelPath);
-                DeleteIfExists(destinationPdfPath);
-                File.Move(excelBackup, destinationExcelPath);
-                File.Move(pdfBackup, destinationPdfPath);
+                foreach (string destinationPath in destinationPaths)
+                {
+                    DeleteIfExists(destinationPath);
+                }
+                for (int index = 0; index < destinationPaths.Count; index++)
+                {
+                    File.Move(backupsByDestination[index][transactionId], destinationPaths[index]);
+                }
             }
 
-            excelBackups.Remove(transactionId);
-            pdfBackups.Remove(transactionId);
+            foreach (Dictionary<string, string> backups in backupsByDestination)
+            {
+                backups.Remove(transactionId);
+            }
         }
 
-        RecoverIndependentBackups(destinationExcelPath, excelBackups.Values);
-        RecoverIndependentBackups(destinationPdfPath, pdfBackups.Values);
+        for (int index = 0; index < destinationPaths.Count; index++)
+        {
+            RecoverIndependentBackups(destinationPaths[index], backupsByDestination[index].Values);
+        }
     }
 
     private static void RecoverIndependentBackups(
@@ -244,5 +266,16 @@ internal static class GeneratedReportPublisher
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
         }
+    }
+
+    private readonly record struct PublicationFile(string TemporaryPath, string DestinationPath);
+
+    private sealed class PublicationState(PublicationFile file)
+    {
+        public PublicationFile File { get; } = file;
+
+        public string? BackupPath { get; set; }
+
+        public bool Published { get; set; }
     }
 }

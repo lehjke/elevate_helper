@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml.Linq;
 using ElevateHelperWinUI.Models;
+using ElevateHelperWinUI.Models.Reports;
+using ElevateHelperWinUI.Services.Reports;
 
 namespace ElevateHelperWinUI.Services;
 
@@ -20,7 +22,6 @@ public sealed class ElevateReportService : IElevateReportService
     private const int XlShiftDown = -4121;
     private const int XlFormatFromLeftOrAbove = 0;
     private const int XlFormatFromRightOrBelow = 1;
-    private const int XlFixedFormatTypePdf = 0;
     private const int XlOpenXmlWorkbook = 51;
     private const int XlWhole = 1;
     private const int XlPart = 2;
@@ -166,7 +167,7 @@ public sealed class ElevateReportService : IElevateReportService
                 cancellationToken);
 
             return ProcessingResult.Ok(
-                $"Report generated: Excel {outputPaths.ExcelPath}; PDF {outputPaths.PdfPath}");
+                $"Report generated: PDF {outputPaths.PdfPath}");
         }
         catch (OperationCanceledException)
         {
@@ -234,6 +235,18 @@ public sealed class ElevateReportService : IElevateReportService
             workbook = workbooks.Open(templatePath);
 
             bool[] isServed = CalculateServedFloors(elevatorData, buildingData, out int servedFloors);
+            ReportDocumentModel reportModel = BuildReportDocumentModel(
+                xmlFolder,
+                awt,
+                attd,
+                ais,
+                alw,
+                jobData,
+                buildingData,
+                elevatorData,
+                passengerData,
+                servedFloors,
+                isServed);
 
             FillTitleSheet(workbook, jobData);
             FillBuildingSheet(workbook, buildingData, isServed);
@@ -255,7 +268,11 @@ public sealed class ElevateReportService : IElevateReportService
             cancellationToken.ThrowIfCancellationRequested();
             workbook.Save();
             cancellationToken.ThrowIfCancellationRequested();
-            workbook.ExportAsFixedFormat(XlFixedFormatTypePdf, temporaryPdfPath, Type.Missing, true, false);
+            string reportAssetRoot = ResolveReportAssetRoot(templatePath);
+            using (ReportPdfRenderer renderer = new(reportModel, reportAssetRoot))
+            {
+                renderer.Generate(temporaryPdfPath);
+            }
             cancellationToken.ThrowIfCancellationRequested();
             generationSucceeded = true;
         }
@@ -309,9 +326,13 @@ public sealed class ElevateReportService : IElevateReportService
                 OwnedExcelProcessIds.TryRemove(excelProcessId.Value, out _);
             }
 
+            // The legacy workbook generator remains available internally, but only the
+            // redesigned PDF is published to the user.
+            TryDeleteTemporaryFile(temporaryExcelPath);
+            temporaryExcelPath = null;
+
             if (!generationSucceeded)
             {
-                TryDeleteTemporaryFile(temporaryExcelPath);
                 TryDeleteTemporaryFile(temporaryPdfPath);
             }
         }
@@ -320,17 +341,13 @@ public sealed class ElevateReportService : IElevateReportService
         {
             cancellationToken.ThrowIfCancellationRequested();
             GeneratedReportPublisher.Publish(
-                temporaryExcelPath!,
-                outputPaths.ExcelPath,
                 temporaryPdfPath!,
                 outputPaths.PdfPath);
-            temporaryExcelPath = null;
             temporaryPdfPath = null;
             return outputPaths;
         }
         finally
         {
-            TryDeleteTemporaryFile(temporaryExcelPath);
             TryDeleteTemporaryFile(temporaryPdfPath);
         }
     }
@@ -842,47 +859,13 @@ public sealed class ElevateReportService : IElevateReportService
             }
         }
 
-        int gLimit;
-        int nSteps;
-        if (buildingData.BuildingType.Equals("Residential", StringComparison.OrdinalIgnoreCase))
-        {
-            gLimit = 120;
-            nSteps = 8;
-        }
-        else
-        {
-            gLimit = 80;
-            nSteps = 13;
-        }
-
-        int nStepsFromMain = awt.Length - 1;
-        ResizeMetrics(ref awt, nSteps, gLimit, nStepsFromMain);
-        ResizeMetrics(ref attd, nSteps, gLimit, nStepsFromMain);
-        ResizeMetrics(ref ais, nSteps, gLimit, nStepsFromMain);
-        ResizeMetrics(ref alw, nSteps, gLimit, nStepsFromMain);
-
-        SortOneBased(awt);
-        SortOneBased(attd);
-        SortOneBased(ais);
-        SortOneBased(alw);
-
-        int lastHC5 = nSteps;
-        for (int i = 1; i <= nSteps; i++)
-        {
-            if (awt[i] > gLimit)
-            {
-                lastHC5 = i - 1;
-                break;
-            }
-        }
-
-        if (lastHC5 > 0)
-        {
-            ApplyLinest(ais, lastHC5);
-            ApplyLinest(alw, lastHC5);
-            SortOneBased(ais);
-            SortOneBased(alw);
-        }
+        PreparedReportMetrics preparedMetrics = PrepareReportMetrics(awt, attd, ais, alw, buildingData.BuildingType);
+        awt = preparedMetrics.Awt;
+        attd = preparedMetrics.Attd;
+        ais = preparedMetrics.Ais;
+        alw = preparedMetrics.Alw;
+        int gLimit = preparedMetrics.GuardLimit;
+        int nSteps = preparedMetrics.SimulationCount;
 
         dynamic recordCell = assessmentSheet.UsedRange.Find("Record", Type.Missing, Type.Missing, XlWhole);
         if (recordCell is null)
@@ -1440,6 +1423,409 @@ public sealed class ElevateReportService : IElevateReportService
             $"Входной пассажиропоток ({incoming}%) - пассажиропоток с конкретного посадочного этажа при входе в здание.{Environment.NewLine}" +
             $"Выходной пассажиропоток ({outgoing}%) - пассажиропоток с этажей здания на выход из здания.{Environment.NewLine}" +
             $"Межэтажный пассажиропоток ({interfloor}%) - одновременное перемещение пассажиров между этажами здания.";
+    }
+
+    private static ReportDocumentModel BuildReportDocumentModel(
+        string projectFolder,
+        double[] awt,
+        double[] attd,
+        double[] ais,
+        double[] alw,
+        string[] jobData,
+        BuildingDataModel buildingData,
+        ElevatorDataModel elevatorData,
+        PassengerDataModel passengerData,
+        int servedFloors,
+        bool[] isServed)
+    {
+        PreparedReportMetrics metrics = PrepareReportMetrics(awt, attd, ais, alw, buildingData.BuildingType);
+        int sourcePointCount = Math.Min(
+            metrics.SimulationCount,
+            new[] { awt.Length - 1, attd.Length - 1, ais.Length - 1, alw.Length - 1 }.Min());
+        sourcePointCount = Math.Max(1, sourcePointCount);
+
+        List<ReportMetricPointModel> simulationPoints = new(sourcePointCount);
+        for (int hc5 = 1; hc5 <= sourcePointCount; hc5++)
+        {
+            simulationPoints.Add(new ReportMetricPointModel(
+                hc5,
+                metrics.Awt[hc5],
+                metrics.Attd[hc5],
+                metrics.Ais[hc5],
+                metrics.Alw[hc5],
+                IsInterpolated: false));
+        }
+
+        IReadOnlyList<ReportMetricPointModel> displayPoints = InterpolateMetricPoints(simulationPoints);
+        ReportCriteriaProfileModel activeProfile = ResolveCriteriaProfile(buildingData, passengerData);
+        (int rating, int selectedHc5) = EvaluateReportRating(metrics, buildingData, passengerData, sourcePointCount);
+        selectedHc5 = Math.Clamp(selectedHc5, 1, sourcePointCount);
+        ReportMetricPointModel selected = simulationPoints[selectedHc5 - 1];
+        ReportCriteriaThresholdModel activeThreshold = rating switch
+        {
+            5 => activeProfile.FiveStars,
+            4 => activeProfile.FourStars,
+            _ => activeProfile.ThreeStars,
+        };
+
+        string trafficProfile = $"{ToShortPercent(passengerData.Incoming)} / {ToShortPercent(passengerData.Outgoing)} / {ToShortPercent(passengerData.Interfloor)}";
+        string servedFloorSummary = $"{servedFloors} / {buildingData.NoFloors}";
+        string elevatorSummary = BuildCompactElevatorSummary(elevatorData);
+
+        List<ReportLiftModel> lifts = new(elevatorData.NoElevators);
+        for (int index = 1; index <= elevatorData.NoElevators; index++)
+        {
+            (string doorWidth, string doorType) = ResolveReportedDoorInfo(elevatorData, index);
+            string[] equipment = BuildReportEquipmentSpecValues(elevatorData.Spec, elevatorData.DoorPreOpening, doorType, index);
+            lifts.Add(new ReportLiftModel(
+                index,
+                equipment[0],
+                ResolveReportedCabinArea(projectFolder, elevatorData, index),
+                equipment[1],
+                equipment[2],
+                equipment[3],
+                equipment[4],
+                doorWidth,
+                doorType,
+                equipment[5],
+                equipment[6],
+                equipment[7],
+                equipment[8]));
+        }
+
+        List<ReportFloorServiceModel> serviceMatrix = new(buildingData.NoFloors);
+        List<ReportBuildingFloorModel> buildingFloors = new(buildingData.NoFloors);
+        List<ReportTrafficFloorModel> trafficFloors = new(buildingData.NoFloors);
+        int occupiedLevels = 0;
+
+        for (int floor = 1; floor <= buildingData.NoFloors; floor++)
+        {
+            string floorLabel = FormatFloorForDisplay(buildingData.FloorName[floor]).TrimStart('\'');
+            List<bool> servedByLift = new(elevatorData.NoElevators);
+            for (int lift = 1; lift <= elevatorData.NoElevators; lift++)
+            {
+                servedByLift.Add(ShouldPrintGroupServedMark(isServed[floor], elevatorData.FloorsServed[lift, floor]));
+            }
+
+            serviceMatrix.Add(new ReportFloorServiceModel(floorLabel, servedByLift));
+
+            double presence = isServed[floor] && !NearlyEquals(buildingData.NoPeople[floor], 0d)
+                ? buildingData.FloorFactor[floor]
+                : 0d;
+            double calculatedPopulation = buildingData.NoPeople[floor] * presence;
+            if (calculatedPopulation > 0)
+            {
+                occupiedLevels++;
+            }
+
+            buildingFloors.Add(new ReportBuildingFloorModel(
+                floorLabel,
+                buildingData.FloorHeight[floor],
+                buildingData.FloorLevel[floor],
+                buildingData.FloorType[floor],
+                buildingData.NoPeople[floor],
+                presence,
+                calculatedPopulation));
+
+            trafficFloors.Add(BuildTrafficFloorModel(floor, floorLabel, buildingData, passengerData, isServed));
+        }
+
+        string dispatcher = elevatorData.Dispatcher.Contains("ACA", StringComparison.OrdinalIgnoreCase) ||
+                            elevatorData.Dispatcher.Contains("Double", StringComparison.OrdinalIgnoreCase)
+            ? "На этаж назначения (DDS)"
+            : "Собирательная при движении вверх и вниз";
+
+        ReportMetadataModel metadata = new(
+            DisplayText(jobData.ElementAtOrDefault(1)),
+            DisplayText(jobData.ElementAtOrDefault(3)),
+            DisplayText(jobData.ElementAtOrDefault(2)),
+            DisplayText(jobData.ElementAtOrDefault(4)),
+            DateTime.Now,
+            ResolveBuildingTypeLabel(buildingData.BuildingType),
+            "Симуляционное моделирование");
+
+        ReportAssessmentModel assessment = new(
+            rating,
+            trafficProfile,
+            elevatorSummary,
+            sourcePointCount,
+            ResolveTargetWt(buildingData, passengerData),
+            simulationPoints,
+            displayPoints,
+            new ReportAssessmentResultModel(selected.Hc5, selected.Wt, selected.Ttd, selected.IntermediateStops, selected.LongWaitPercent, rating),
+            activeThreshold);
+
+        ReportLiftGroupModel liftGroup = new(dispatcher, servedFloorSummary, lifts, serviceMatrix);
+        ReportBuildingModel building = new(
+            buildingData.NoFloors,
+            occupiedLevels,
+            buildingData.CTotalPeople,
+            BuildPresenceSummary(buildingData),
+            servedFloorSummary,
+            buildingFloors);
+        ReportTrafficModel traffic = new(
+            passengerData.Incoming,
+            passengerData.Outgoing,
+            passengerData.Interfloor,
+            sourcePointCount,
+            displayPoints.Count,
+            trafficFloors);
+
+        IReadOnlyList<ReportCriteriaProfileModel> profiles = BuildCriteriaProfiles();
+        const string legalNote =
+            "Результаты отчета действительны при исследовании теоретических сценариев движения вертикального транспорта с использованием оборудования, сервисов и инструментов планирования пассажиропотока MLT. Результаты отчета зависят от значений параметров работы оборудования, используемых в качестве исходных данных, и применимы только совместно с ними.\n\n" +
+            "Результаты не следует интерпретировать как заявление или гарантию работоспособности какой-либо фактической системы вертикального транспорта. MLT ни при каких обстоятельствах не несёт ответственности за любой ущерб, причиненный или понесенный в связи с использованием результатов отчета. Запрещено копировать, воспроизводить или изменять результаты отчета, а также передавать их третьим лицам.";
+        ReportCriteriaModel criteria = new(activeProfile.Name, profiles, BuildFlowText(passengerData), legalNote);
+        return new ReportDocumentModel(metadata, assessment, liftGroup, building, traffic, criteria);
+    }
+
+    internal static IReadOnlyList<ReportMetricPointModel> InterpolateMetricPoints(IReadOnlyList<ReportMetricPointModel> simulationPoints)
+    {
+        List<ReportMetricPointModel> points = new(Math.Max(0, simulationPoints.Count * 2 - 1));
+        for (int index = 0; index < simulationPoints.Count; index++)
+        {
+            ReportMetricPointModel current = simulationPoints[index];
+            points.Add(current with { IsInterpolated = false });
+            if (index >= simulationPoints.Count - 1)
+            {
+                continue;
+            }
+
+            ReportMetricPointModel next = simulationPoints[index + 1];
+            points.Add(new ReportMetricPointModel(
+                (current.Hc5 + next.Hc5) / 2d,
+                (current.Wt + next.Wt) / 2d,
+                (current.Ttd + next.Ttd) / 2d,
+                (current.IntermediateStops + next.IntermediateStops) / 2d,
+                (current.LongWaitPercent + next.LongWaitPercent) / 2d,
+                IsInterpolated: true));
+        }
+
+        return points;
+    }
+
+    private static PreparedReportMetrics PrepareReportMetrics(
+        double[] sourceAwt,
+        double[] sourceAttd,
+        double[] sourceAis,
+        double[] sourceAlw,
+        string buildingType)
+    {
+        int guardLimit = buildingType.Equals("Residential", StringComparison.OrdinalIgnoreCase) ? 120 : 80;
+        int simulationCount = buildingType.Equals("Residential", StringComparison.OrdinalIgnoreCase) ? 8 : 13;
+        int sourceCount = sourceAwt.Length - 1;
+        double[] awt = (double[])sourceAwt.Clone();
+        double[] attd = (double[])sourceAttd.Clone();
+        double[] ais = (double[])sourceAis.Clone();
+        double[] alw = (double[])sourceAlw.Clone();
+
+        ResizeMetrics(ref awt, simulationCount, guardLimit, sourceCount);
+        ResizeMetrics(ref attd, simulationCount, guardLimit, sourceCount);
+        ResizeMetrics(ref ais, simulationCount, guardLimit, sourceCount);
+        ResizeMetrics(ref alw, simulationCount, guardLimit, sourceCount);
+        SortOneBased(awt);
+        SortOneBased(attd);
+        SortOneBased(ais);
+        SortOneBased(alw);
+
+        int lastHc5 = simulationCount;
+        for (int index = 1; index <= simulationCount; index++)
+        {
+            if (awt[index] > guardLimit)
+            {
+                lastHc5 = index - 1;
+                break;
+            }
+        }
+
+        if (lastHc5 > 0)
+        {
+            ApplyLinest(ais, lastHc5);
+            ApplyLinest(alw, lastHc5);
+            SortOneBased(ais);
+            SortOneBased(alw);
+        }
+
+        return new PreparedReportMetrics(awt, attd, ais, alw, simulationCount, guardLimit);
+    }
+
+    private static (int Rating, int Hc5) EvaluateReportRating(
+        PreparedReportMetrics metrics,
+        BuildingDataModel building,
+        PassengerDataModel passenger,
+        int availablePoints)
+    {
+        int WorstHc5()
+        {
+            for (int index = availablePoints; index >= 1; index--)
+            {
+                if (metrics.Awt[index] < metrics.GuardLimit)
+                {
+                    return index;
+                }
+            }
+
+            return 1;
+        }
+
+        bool Pass(int hc5, int wt, int ttd) => hc5 <= availablePoints && metrics.Awt[hc5] < wt && metrics.Attd[hc5] < ttd;
+
+        if (building.BuildingType.Equals("Office", StringComparison.OrdinalIgnoreCase))
+        {
+            if (NearlyEquals(passenger.Incoming, 100))
+            {
+                if (Pass(13, 25, 80)) return (5, 13);
+                if (Pass(12, 30, 100)) return (4, 12);
+                if (Pass(11, 40, 120)) return (3, 11);
+            }
+            else
+            {
+                if (Pass(12, 25, 80)) return (5, 12);
+                if (Pass(11, 40, 100)) return (4, 11);
+                if (Pass(10, 40, 120)) return (3, 10);
+            }
+
+            return (1, WorstHc5());
+        }
+
+        if (building.BuildingType.Equals("Hotel", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Pass(13, 25, 80)) return (5, 13);
+            if (Pass(12, 40, 100)) return (4, 12);
+            if (Pass(11, 40, 120)) return (3, 11);
+            return (1, WorstHc5());
+        }
+
+        if (Pass(8, 40, 90)) return (5, 8);
+        if (Pass(7, 60, 120)) return (4, 7);
+        if (Pass(6, 60, 150)) return (3, 6);
+        return (1, WorstHc5());
+    }
+
+    private static ReportCriteriaProfileModel ResolveCriteriaProfile(BuildingDataModel building, PassengerDataModel passenger)
+    {
+        IReadOnlyList<ReportCriteriaProfileModel> profiles = BuildCriteriaProfiles();
+        if (building.BuildingType.Equals("Office", StringComparison.OrdinalIgnoreCase))
+        {
+            return NearlyEquals(passenger.Incoming, 100) ? profiles[0] : profiles[1];
+        }
+
+        return building.BuildingType.Equals("Hotel", StringComparison.OrdinalIgnoreCase) ? profiles[2] : profiles[3];
+    }
+
+    private static IReadOnlyList<ReportCriteriaProfileModel> BuildCriteriaProfiles()
+    {
+        return
+        [
+            new("Офис · 100 / 0 / 0", new(11, 40, 120), new(12, 30, 100), new(13, 25, 80)),
+            new("Офис · 45 / 45 / 10", new(10, 40, 120), new(11, 40, 100), new(12, 25, 80)),
+            new("Гостиница · 50 / 50 / 0", new(11, 40, 120), new(12, 40, 100), new(13, 25, 80)),
+            new("Жильё · 50 / 50 / 0", new(6, 60, 150), new(7, 60, 120), new(8, 40, 90)),
+        ];
+    }
+
+    private static double? ResolveTargetWt(BuildingDataModel building, PassengerDataModel passenger)
+    {
+        if (building.BuildingType.Equals("Residential", StringComparison.OrdinalIgnoreCase)) return 60;
+        if (building.BuildingType.Equals("Hotel", StringComparison.OrdinalIgnoreCase)) return 40;
+        if (NearlyEquals(passenger.Incoming, 100)) return 30;
+        if (NearlyEquals(passenger.Incoming, 85)) return 35;
+        if (NearlyEquals(passenger.Incoming, 45) || NearlyEquals(passenger.Incoming, 40)) return 40;
+        return null;
+    }
+
+    private static ReportTrafficFloorModel BuildTrafficFloorModel(
+        int floor,
+        string floorLabel,
+        BuildingDataModel building,
+        PassengerDataModel passenger,
+        bool[] isServed)
+    {
+        bool entrance = IsYes(building.EntranceFloor[floor]);
+        bool occupied = isServed[floor] && !NearlyEquals(building.NoPeople[floor], 0d);
+        string incoming = "—";
+        string outgoing = "—";
+        string interfloor = "—";
+
+        if (!NearlyEquals(passenger.Incoming, 0d))
+        {
+            if (entrance && !NearlyEquals(building.Bias[floor], 0d)) incoming = $"{ToShortPercent(building.Bias[floor])}% ↑";
+            else if (!entrance && occupied) incoming = "по доле ↓";
+        }
+
+        if (!NearlyEquals(passenger.Outgoing, 0d))
+        {
+            if (!entrance && occupied) outgoing = "по доле ↑";
+            else if (entrance && !NearlyEquals(building.Bias[floor], 0d)) outgoing = $"{ToShortPercent(building.Bias[floor])}% ↓";
+        }
+
+        if (!NearlyEquals(passenger.Interfloor, 0d) && !entrance && occupied)
+        {
+            interfloor = "по доле ↕";
+        }
+
+        return new ReportTrafficFloorModel(
+            floorLabel,
+            1,
+            ToShortPercent(building.NoPeople[floor]),
+            ToShortPercent(isServed[floor] ? building.FloorFactor[floor] : 0d),
+            incoming,
+            outgoing,
+            interfloor);
+    }
+
+    private static string BuildCompactElevatorSummary(ElevatorDataModel elevator)
+    {
+        string capacity = elevator.NoElevators > 0 ? DisplayText(elevator.Spec[1, 1]) : "—";
+        string speed = elevator.NoElevators > 0 ? DisplayText(elevator.Spec[1, 2]) : "—";
+        return $"{elevator.NoElevators} × {capacity} кг · {speed} м/с";
+    }
+
+    private static string BuildPresenceSummary(BuildingDataModel building)
+    {
+        string[] values = building.FloorFactor.Skip(1)
+            .Where(value => value > 0)
+            .Distinct()
+            .OrderBy(value => value)
+            .Select(ToShortPercent)
+            .ToArray();
+        return values.Length == 0 ? "—" : string.Join(" · ", values);
+    }
+
+    private static string ResolveBuildingTypeLabel(string buildingType)
+    {
+        return buildingType switch
+        {
+            "Office" => "Офисное здание",
+            "Residential" => "Жилой комплекс",
+            "Hotel" => "Гостиница",
+            _ => DisplayText(buildingType),
+        };
+    }
+
+    private static string DisplayText(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
+
+    private static string ResolveReportAssetRoot(string templatePath)
+    {
+        string repositoryRoot = Directory.GetParent(Path.GetDirectoryName(templatePath)
+            ?? throw new InvalidOperationException($"Cannot resolve template directory for {templatePath}."))?.FullName
+            ?? throw new InvalidOperationException($"Cannot resolve repository root for {templatePath}.");
+        string[] candidates =
+        [
+            Path.Combine(AppContext.BaseDirectory, "Assets", "Reports"),
+            Path.Combine(repositoryRoot, "Assets", "Reports"),
+        ];
+
+        foreach (string candidate in candidates)
+        {
+            if (File.Exists(Path.Combine(candidate, "Fonts", "Geologica-Regular.ttf")) &&
+                File.Exists(Path.Combine(candidate, "Images", "MLT_logo_RU_W_Lifts_W@4x.png")))
+            {
+                return candidate;
+            }
+        }
+
+        throw new DirectoryNotFoundException("Report assets were not found in the application or repository Assets/Reports folder.");
     }
 
     private static void ResizeMetrics(ref double[] data, int nSteps, int gLimit, int nStepsFromMain)
@@ -3606,6 +3992,14 @@ public sealed class ElevateReportService : IElevateReportService
     internal readonly record struct ReportOutputTarget(string OutputFolder);
 
     internal readonly record struct GeneratedReportPaths(string ExcelPath, string PdfPath);
+
+    private sealed record PreparedReportMetrics(
+        double[] Awt,
+        double[] Attd,
+        double[] Ais,
+        double[] Alw,
+        int SimulationCount,
+        int GuardLimit);
 
     private sealed class ProjectParsedData
     {
