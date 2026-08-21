@@ -28,6 +28,27 @@ public sealed class ReportPdfRendererTests
     }
 
     [Fact]
+    public void LiftConfigurationSummary_AccountsForEveryLift()
+    {
+        ReportDocumentModel model = CreateModel(floorCount: 14, elevatorCount: 7);
+
+        Assert.Equal(2, ReportLiftConfiguration.CountDistinct(model.LiftGroup.Lifts));
+        Assert.Equal("7 лифтов · 2 конфигурации", ElevateReportService.BuildCompactElevatorSummary(model.LiftGroup.Lifts));
+        Assert.Equal("1600 / 2000 кг",
+            ReportPdfRenderer.SummarizeLiftValues(model.LiftGroup.Lifts, lift => lift.CapacityKg, "кг"));
+    }
+
+    [Fact]
+    public void FitLogoDestination_PreservesVisibleLogoAspectRatio()
+    {
+        var destination = ReportPdfRenderer.FitLogoDestination(32, 28, 106, 35);
+
+        Assert.Equal(278.25 / 94.25, destination.Width / destination.Height, 10);
+        Assert.True(destination.Width <= 106);
+        Assert.True(destination.Height <= 35);
+    }
+
+    [Fact]
     public void Generate_FigmaSizedScenario_CreatesSixA4Pages()
     {
         ReportDocumentModel model = CreateModel(floorCount: 14, elevatorCount: 7);
@@ -116,8 +137,11 @@ public sealed class ReportPdfRendererTests
             .ToList();
         IReadOnlyList<ReportMetricPointModel> display = ElevateReportService.InterpolateMetricPoints(simulation);
         List<ReportLiftModel> lifts = Enumerable.Range(1, elevatorCount)
-            .Select(index => new ReportLiftModel(index, "1600", 3.36, "2,5", "0,9", "1,0", "0,5", "1100", "ЦО",
-                "0,5", "1,9", "3,1", "2,0"))
+            .Select(index => index == elevatorCount && elevatorCount > 1
+                ? new ReportLiftModel(index, "2000", 4.20, "3,0", "1,0", "1,2", "0,6", "1200", "ЦО",
+                    "0,5", "2,0", "3,3", "2,2")
+                : new ReportLiftModel(index, "1600", 3.36, "2,5", "0,9", "1,0", "0,5", "1100", "ЦО",
+                    "0,5", "1,9", "3,1", "2,0"))
             .ToList();
         List<ReportFloorServiceModel> service = Enumerable.Range(1, floorCount)
             .Select(floor => new ReportFloorServiceModel(floor.ToString(), Enumerable.Repeat(true, elevatorCount).ToArray()))
@@ -138,7 +162,7 @@ public sealed class ReportPdfRendererTests
         return new ReportDocumentModel(
             new ReportMetadataModel("Б. Тульская 10 БЦ · Группа 1 · утренний пик", "г. Москва, ул. Большая Тульская, 10", "R13",
                 "Лесничий", new DateTime(2026, 8, 20), "Офисное здание", "Симуляционное моделирование"),
-            new ReportAssessmentModel(5, "100 / 0 / 0", $"{elevatorCount} × 1600 кг · 2,5 м/с", simulationCount, 30,
+            new ReportAssessmentModel(5, "100 / 0 / 0", ElevateReportService.BuildCompactElevatorSummary(lifts), simulationCount, 30,
                 simulation, display, new ReportAssessmentResultModel(13, simulation[^1].Wt, simulation[^1].Ttd,
                     simulation[^1].IntermediateStops, simulation[^1].LongWaitPercent, 5), morning.FiveStars),
             new ReportLiftGroupModel("На этаж назначения (DDS)", $"{floorCount} / {floorCount}", lifts, service),

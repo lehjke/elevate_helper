@@ -1470,8 +1470,6 @@ public sealed class ElevateReportService : IElevateReportService
 
         string trafficProfile = $"{ToShortPercent(passengerData.Incoming)} / {ToShortPercent(passengerData.Outgoing)} / {ToShortPercent(passengerData.Interfloor)}";
         string servedFloorSummary = $"{servedFloors} / {buildingData.NoFloors}";
-        string elevatorSummary = BuildCompactElevatorSummary(elevatorData);
-
         List<ReportLiftModel> lifts = new(elevatorData.NoElevators);
         for (int index = 1; index <= elevatorData.NoElevators; index++)
         {
@@ -1492,6 +1490,8 @@ public sealed class ElevateReportService : IElevateReportService
                 equipment[7],
                 equipment[8]));
         }
+
+        string elevatorSummary = BuildCompactElevatorSummary(lifts);
 
         List<ReportFloorServiceModel> serviceMatrix = new(buildingData.NoFloors);
         List<ReportBuildingFloorModel> buildingFloors = new(buildingData.NoFloors);
@@ -1774,11 +1774,21 @@ public sealed class ElevateReportService : IElevateReportService
             interfloor);
     }
 
-    private static string BuildCompactElevatorSummary(ElevatorDataModel elevator)
+    internal static string BuildCompactElevatorSummary(IReadOnlyList<ReportLiftModel> lifts)
     {
-        string capacity = elevator.NoElevators > 0 ? DisplayText(elevator.Spec[1, 1]) : "—";
-        string speed = elevator.NoElevators > 0 ? DisplayText(elevator.Spec[1, 2]) : "—";
-        return $"{elevator.NoElevators} × {capacity} кг · {speed} м/с";
+        if (lifts.Count == 0)
+        {
+            return "0 лифтов · нет конфигураций";
+        }
+
+        int configurationCount = ReportLiftConfiguration.CountDistinct(lifts);
+        if (configurationCount == 1)
+        {
+            ReportLiftModel first = lifts[0];
+            return $"{lifts.Count} × {DisplayText(first.CapacityKg)} кг · {DisplayText(first.SpeedMetresPerSecond)} м/с";
+        }
+
+        return $"{ReportLiftConfiguration.DescribeLiftCount(lifts.Count)} · {ReportLiftConfiguration.DescribeConfigurationCount(configurationCount)}";
     }
 
     private static string BuildPresenceSummary(BuildingDataModel building)

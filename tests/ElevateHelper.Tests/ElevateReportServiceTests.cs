@@ -596,6 +596,39 @@ public sealed class ElevateReportServiceTests
             actual);
     }
 
+    [Fact]
+    public void BuildReportEquipmentSpecValues_UsesTheRequestedElevatorConfiguration()
+    {
+        string[,] spec = new string[3, 11];
+        spec[1, 1] = "1600";
+        spec[1, 2] = "2,50";
+        spec[2, 1] = "2000";
+        spec[2, 2] = "3,00";
+        spec[2, 3] = "1,00";
+        spec[2, 4] = "1,20";
+        spec[2, 6] = "2,00";
+        spec[2, 7] = "3,30";
+        spec[2, 8] = "2,20";
+        spec[2, 9] = "0,60";
+        double[] doorPreOpening = [double.NaN, 0.5, 0.3];
+
+        string[] actual = ElevateReportService.BuildReportEquipmentSpecValues(
+            spec,
+            doorPreOpening,
+            "ЦО",
+            2);
+
+        Assert.Equal("2000", actual[0]);
+        Assert.Equal("3,00", actual[1]);
+        Assert.Equal("1,00", actual[2]);
+        Assert.Equal("1,20", actual[3]);
+        Assert.Equal("0,60", actual[4]);
+        Assert.Equal("0,30", actual[5]);
+        Assert.Equal("2,00", actual[6]);
+        Assert.Equal("3,30", actual[7]);
+        Assert.Equal("2,20", actual[8]);
+    }
+
     [Theory]
     [InlineData(double.NaN, "ЦО", "0,50")]
     [InlineData(double.NaN, "ТО", "0,00")]

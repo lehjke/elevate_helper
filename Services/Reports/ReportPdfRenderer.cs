@@ -31,6 +31,7 @@ internal sealed class ReportPdfRenderer : IDisposable
     private static readonly XColor Deep10 = XColor.FromArgb(0xD7, 0xDA, 0xE3);
     private static readonly XColor Line = XColor.FromArgb(0xDF, 0xE2, 0xE9);
     private static readonly XColor Panel = XColor.FromArgb(0xFA, 0xFB, 0xFC);
+    private static readonly XRect VisibleLogoSource = new(11.75, 10.75, 278.25, 94.25);
 
     private readonly ReportDocumentModel model;
     private readonly XImage logo;
@@ -125,7 +126,7 @@ internal sealed class ReportPdfRenderer : IDisposable
     {
         const double y = 792;
         graphics.DrawLine(new XPen(Deep10, 1), PageLeft, y, PageWidth - PageRight, y);
-        DrawString(graphics, "MLT · Концепт отчёта на согласование", Regular(7), Deep60,
+        DrawString(graphics, "MLT · Анализ пассажиропотока", Regular(7), Deep60,
             new XRect(PageLeft, y + 9, 240, 10), XStringFormats.TopLeft);
         DrawString(graphics, $"{model.Metadata.ProjectName} · {model.Metadata.Revision}", Regular(7), Deep60,
             new XRect(270, y + 9, PageWidth - PageRight - 270, 10), XStringFormats.TopRight);
@@ -485,14 +486,15 @@ internal sealed class ReportPdfRenderer : IDisposable
         double tableY;
         if (firstPage)
         {
+            int configurationCount = ReportLiftConfiguration.CountDistinct(model.LiftGroup.Lifts);
             DrawStatStrip(
                 graphics,
                 154,
                 [
                     (model.LiftGroup.Lifts.Count.ToString(CultureInfo.InvariantCulture), "лифтов в группе"),
-                    (lifts.FirstOrDefault()?.CapacityKg is string capacity ? $"{capacity} кг" : "—", "номинальная грузоподъёмность"),
-                    (lifts.FirstOrDefault()?.SpeedMetresPerSecond is string speed ? $"{speed} м/с" : "—", "номинальная скорость"),
-                    (lifts.FirstOrDefault() is ReportLiftModel lift ? $"{Format(lift.CabinAreaSquareMetres, 2)} м²" : "—", "площадь кабины"),
+                    (configurationCount.ToString(CultureInfo.InvariantCulture), "конфигураций оборудования"),
+                    (SummarizeLiftValues(model.LiftGroup.Lifts, lift => lift.CapacityKg, "кг"), "грузоподъёмность в группе"),
+                    (SummarizeLiftValues(model.LiftGroup.Lifts, lift => lift.SpeedMetresPerSecond, "м/с"), "скорость в группе"),
                 ],
                 61);
             tableY = 231;
@@ -513,7 +515,7 @@ internal sealed class ReportPdfRenderer : IDisposable
         if (noteY + 42 <= ContentBottom)
         {
             DrawInfoNote(graphics, noteY,
-                "● этаж обслуживается · ЦО — центральное открывание · ТО — телескопическое открывание. Все значения поступают из проекта автоматически.");
+                "● этаж обслуживается · ЦО — центральное открывание · ТО — телескопическое открывание.");
         }
         _ = lastPageForChunk;
     }
@@ -718,7 +720,7 @@ internal sealed class ReportPdfRenderer : IDisposable
             DrawTableCell(graphics, PageLeft, totalY, labelWidth, rowHeight, "Итоговое расчётное население",
                 SemiBold(7.3), Deep, XColors.White, XParagraphAlignment.Left, 7);
             DrawTableCell(graphics, PageLeft + labelWidth, totalY, widths[6], rowHeight, Format(model.Building.CalculatedPopulation),
-                SemiBold(7.3), Deep, XColors.White, XParagraphAlignment.Left, 7);
+                SemiBold(7.3), Deep, XColors.White, XParagraphAlignment.Center, 4);
         }
     }
 
@@ -1008,11 +1010,38 @@ internal sealed class ReportPdfRenderer : IDisposable
 
     private void DrawLogo(XGraphics graphics, double x, double y, double width, double height)
     {
-        XRect destination = new(x, y, width, height);
-        // The @4x PNG is 288 dpi, so its visible alpha bounds (47,43)-(1160,420)
-        // correspond to the following source rectangle in PDF points.
-        XRect visibleSource = new(11.75, 10.75, 278.25, 94.25);
-        graphics.DrawImage(logo, destination, visibleSource, XGraphicsUnit.Point);
+        XRect destination = FitLogoDestination(x, y, width, height);
+        graphics.DrawImage(logo, destination, VisibleLogoSource, XGraphicsUnit.Point);
+    }
+
+    internal static XRect FitLogoDestination(double x, double y, double width, double height)
+    {
+        double scale = Math.Min(width / VisibleLogoSource.Width, height / VisibleLogoSource.Height);
+        double fittedWidth = VisibleLogoSource.Width * scale;
+        double fittedHeight = VisibleLogoSource.Height * scale;
+        return new XRect(
+            x + (width - fittedWidth) / 2,
+            y + (height - fittedHeight) / 2,
+            fittedWidth,
+            fittedHeight);
+    }
+
+    internal static string SummarizeLiftValues(
+        IReadOnlyList<ReportLiftModel> lifts,
+        Func<ReportLiftModel, string> selector,
+        string unit)
+    {
+        string[] values = lifts
+            .Select(selector)
+            .Where(value => !string.IsNullOrWhiteSpace(value) && value != "—" && value != "-")
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return values.Length switch
+        {
+            0 => "—",
+            <= 3 => $"{string.Join(" / ", values)} {unit}",
+            _ => $"{values.Length} значений",
+        };
     }
 
     private static void DrawHeaderRow(

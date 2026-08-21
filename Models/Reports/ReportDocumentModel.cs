@@ -65,6 +65,48 @@ internal sealed record ReportLiftModel(
     string DoorClosingSeconds,
     string LightCurtainDelaySeconds);
 
+internal static class ReportLiftConfiguration
+{
+    internal static int CountDistinct(IReadOnlyList<ReportLiftModel> lifts) =>
+        lifts.Select(BuildKey).Distinct(StringComparer.Ordinal).Count();
+
+    internal static string DescribeLiftCount(int count) =>
+        $"{count} {SelectRussianNoun(count, "лифт", "лифта", "лифтов")}";
+
+    internal static string DescribeConfigurationCount(int count) =>
+        $"{count} {SelectRussianNoun(count, "конфигурация", "конфигурации", "конфигураций")}";
+
+    private static string BuildKey(ReportLiftModel lift) => string.Join('\u001f',
+        lift.CapacityKg,
+        lift.CabinAreaSquareMetres.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        lift.SpeedMetresPerSecond,
+        lift.AccelerationMetresPerSecondSquared,
+        lift.JerkMetresPerSecondCubed,
+        lift.MotorStartDelaySeconds,
+        lift.DoorWidthMillimetres,
+        lift.DoorType,
+        lift.DoorPreOpeningSeconds,
+        lift.DoorOpeningSeconds,
+        lift.DoorClosingSeconds,
+        lift.LightCurtainDelaySeconds);
+
+    private static string SelectRussianNoun(int count, string singular, string paucal, string plural)
+    {
+        int lastTwoDigits = Math.Abs(count) % 100;
+        if (lastTwoDigits is >= 11 and <= 14)
+        {
+            return plural;
+        }
+
+        return (Math.Abs(count) % 10) switch
+        {
+            1 => singular,
+            2 or 3 or 4 => paucal,
+            _ => plural,
+        };
+    }
+}
+
 internal sealed record ReportFloorServiceModel(
     string Floor,
     IReadOnlyList<bool> ServedByLift);
