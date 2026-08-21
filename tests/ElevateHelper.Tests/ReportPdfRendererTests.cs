@@ -152,7 +152,7 @@ public sealed class ReportPdfRendererTests
             .ToList();
         List<ReportTrafficFloorModel> trafficFloors = Enumerable.Range(1, floorCount)
             .Select(floor => new ReportTrafficFloorModel(floor.ToString(), 1, floor == 1 ? "0" : "100", floor == 1 ? "0" : "0,8",
-                floor == 1 ? "100% ↑" : "по доле ↓", "—", "—"))
+                floor == 1 ? "100% ↑" : $"{(100d / Math.Max(100, (floorCount - 1) * 100) * 100d).ToString("0.0", System.Globalization.CultureInfo.GetCultureInfo("ru-RU"))}% ↓", "—", "—"))
             .ToList();
         ReportCriteriaProfileModel morning = new("Офис · 100 / 0 / 0", new(11, 40, 120), new(12, 30, 100), new(13, 25, 80));
         ReportCriteriaProfileModel lunch = new("Офис · 45 / 45 / 10", new(10, 40, 120), new(11, 40, 100), new(12, 25, 80));

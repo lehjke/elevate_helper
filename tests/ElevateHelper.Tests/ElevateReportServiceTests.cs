@@ -630,6 +630,29 @@ public sealed class ElevateReportServiceTests
     }
 
     [Theory]
+    [InlineData(18, 1000, "↓", "1,8% ↓")]
+    [InlineData(5, 1040, "↑", "0,5% ↑")]
+    [InlineData(100, 1040, "↕", "9,6% ↕")]
+    public void FormatTrafficPopulationShare_UsesLegacyPopulationRatio(
+        double floorPopulation,
+        double totalPopulation,
+        string direction,
+        string expected)
+    {
+        string actual = ElevateReportService.FormatTrafficPopulationShare(floorPopulation, totalPopulation, direction);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(0, 1000)]
+    [InlineData(100, 0)]
+    public void FormatTrafficPopulationShare_ReturnsDashWhenRatioIsUndefined(double floorPopulation, double totalPopulation)
+    {
+        Assert.Equal("—", ElevateReportService.FormatTrafficPopulationShare(floorPopulation, totalPopulation, "↓"));
+    }
+
+    [Theory]
     [InlineData(double.NaN, "ЦО", "0,50")]
     [InlineData(double.NaN, "ТО", "0,00")]
     [InlineData(0.3, "", "0,30")]

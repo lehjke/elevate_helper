@@ -1750,18 +1750,18 @@ public sealed class ElevateReportService : IElevateReportService
         if (!NearlyEquals(passenger.Incoming, 0d))
         {
             if (entrance && !NearlyEquals(building.Bias[floor], 0d)) incoming = $"{ToShortPercent(building.Bias[floor])}% ↑";
-            else if (!entrance && occupied) incoming = "по доле ↓";
+            else if (!entrance && occupied) incoming = FormatTrafficPopulationShare(building.NoPeople[floor], building.TotalPeople, "↓");
         }
 
         if (!NearlyEquals(passenger.Outgoing, 0d))
         {
-            if (!entrance && occupied) outgoing = "по доле ↑";
+            if (!entrance && occupied) outgoing = FormatTrafficPopulationShare(building.NoPeople[floor], building.TotalPeople, "↑");
             else if (entrance && !NearlyEquals(building.Bias[floor], 0d)) outgoing = $"{ToShortPercent(building.Bias[floor])}% ↓";
         }
 
         if (!NearlyEquals(passenger.Interfloor, 0d) && !entrance && occupied)
         {
-            interfloor = "по доле ↕";
+            interfloor = FormatTrafficPopulationShare(building.NoPeople[floor], building.TotalPeople, "↕");
         }
 
         return new ReportTrafficFloorModel(
@@ -1772,6 +1772,20 @@ public sealed class ElevateReportService : IElevateReportService
             incoming,
             outgoing,
             interfloor);
+    }
+
+    internal static string FormatTrafficPopulationShare(double floorPopulation, double totalPopulation, string direction)
+    {
+        if (!double.IsFinite(floorPopulation) ||
+            !double.IsFinite(totalPopulation) ||
+            floorPopulation <= 0d ||
+            totalPopulation <= 0d)
+        {
+            return "—";
+        }
+
+        double percentage = floorPopulation / totalPopulation * 100d;
+        return $"{percentage.ToString("0.0", CultureInfo.GetCultureInfo("ru-RU"))}% {direction}";
     }
 
     internal static string BuildCompactElevatorSummary(IReadOnlyList<ReportLiftModel> lifts)
