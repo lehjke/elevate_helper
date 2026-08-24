@@ -143,7 +143,10 @@ internal sealed record ReportTrafficFloorModel(
     string PresenceFactor,
     string Incoming,
     string Outgoing,
-    string Interfloor);
+    string Interfloor,
+    double? IncomingPercentValue = null,
+    double? OutgoingPercentValue = null,
+    double? InterfloorPercentValue = null);
 
 internal sealed record ReportCriteriaModel(
     string ActiveProfile,

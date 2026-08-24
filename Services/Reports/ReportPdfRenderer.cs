@@ -229,16 +229,16 @@ internal sealed class ReportPdfRenderer : IDisposable
         const double chartHeight = 184;
         DrawMetricChart(graphics, PageLeft, chartY, chartWidth, chartHeight, "WT · среднее ожидание",
             model.Assessment.Result.Wt, "с", model.Assessment.TargetWt is double target ? $"Target WT {Format(target)} с" : string.Empty,
-            point => point.Wt, model.Assessment.TargetWt, "с");
+            point => point.Wt, model.Assessment.TargetWt, "с", 150, "Цель WT");
         DrawMetricChart(graphics, PageLeft + chartWidth + 10, chartY, chartWidth, chartHeight, "TTD · время до назначения",
             model.Assessment.Result.Ttd, "с", $"порог категории < {model.Assessment.ActiveThreshold.TtdSeconds} с",
-            point => point.Ttd, null, "с");
+            point => point.Ttd, model.Assessment.ActiveThreshold.TtdSeconds, "с", 150, "Порог TTD");
         DrawMetricChart(graphics, PageLeft, chartY + chartHeight + 10, chartWidth, chartHeight, "IS · промежуточные остановки",
             model.Assessment.Result.IntermediateStops, string.Empty, "справочный показатель",
-            point => point.IntermediateStops, null, "ост.");
+            point => point.IntermediateStops, null, "ост.", null, string.Empty);
         DrawMetricChart(graphics, PageLeft + chartWidth + 10, chartY + chartHeight + 10, chartWidth, chartHeight, "LW · ожидание ≥ 90 с",
             model.Assessment.Result.LongWaitPercent, "%", "чем ниже, тем лучше",
-            point => point.LongWaitPercent, null, "%");
+            point => point.LongWaitPercent, null, "%", null, string.Empty);
 
         DrawHc5Strip(graphics, PageLeft, 630, ContentWidth, model.Assessment.DisplayPoints);
         DrawAssessmentResultTable(graphics, PageLeft, 683, ContentWidth);
@@ -295,20 +295,31 @@ internal sealed class ReportPdfRenderer : IDisposable
         string note,
         Func<ReportMetricPointModel, double> valueSelector,
         double? target,
-        string axisUnit)
+        string axisUnit,
+        double? graphMaximum,
+        string targetLegend)
     {
         graphics.DrawRoundedRectangle(new XPen(Line, 1), XBrushes.White, x, y, width, height, 4, 4);
         DrawString(graphics, name, SemiBold(9), Deep, new XRect(x + 11, y + 10, width * 0.62, 13), XStringFormats.TopLeft);
         DrawString(graphics, $"{Format(result)} {resultUnit}".Trim(), SemiBold(15), Deep,
             new XRect(x + width * 0.56, y + 9, width * 0.40 - 11, 18), XStringFormats.TopRight);
         DrawString(graphics, note, Regular(6.5), Deep60,
-            new XRect(x + width * 0.46, y + 29, width * 0.50 - 11, 10), XStringFormats.TopRight);
+            new XRect(x + 11, y + 29, width * 0.54 - 11, 10), XStringFormats.TopLeft);
+        DrawString(graphics, FormatMetricHc5Caption(model.Assessment.Result.Hc5), SemiBold(6.5), Blue,
+            new XRect(x + width * 0.54, y + 29, width * 0.42 - 11, 10), XStringFormats.TopRight);
         DrawString(graphics, "Провозная способность HC5, %", Regular(6.8), Deep,
             new XRect(x + 11, y + 42, width - 22, 10), XStringFormats.TopRight);
 
         IReadOnlyList<ReportMetricPointModel> points = model.Assessment.DisplayPoints;
-        double maxValue = Math.Max(points.Select(valueSelector).DefaultIfEmpty(0).Max(), target ?? 0);
-        AxisScale scale = BuildAxisScale(maxValue * 1.18);
+        CappedMetricSeries? cappedSeries = graphMaximum is double maximum
+            ? BuildCappedTimeSeries(points, valueSelector, maximum)
+            : null;
+        IReadOnlyList<double?> plotValues = cappedSeries?.Values
+            ?? points.Select(point => (double?)valueSelector(point)).ToArray();
+        double maxValue = Math.Max(plotValues.Where(value => value.HasValue).Select(value => value!.Value).DefaultIfEmpty(0).Max(), target ?? 0);
+        AxisScale scale = graphMaximum is double fixedMaximum
+            ? BuildFixedAxisScale(fixedMaximum, 5)
+            : BuildAxisScale(maxValue * 1.18);
         double plotX = x + 44.25;
         double plotY = y + 59.408;
         double plotWidth = 196.725;
@@ -340,22 +351,41 @@ internal sealed class ReportPdfRenderer : IDisposable
             graphics.DrawLine(new XPen(Gold, 1.8), plotX, targetY, plotX + plotWidth, targetY);
         }
 
-        XPoint[] linePoints = new XPoint[points.Count];
+        List<XPoint> linePoints = new(points.Count + 1);
         for (int i = 0; i < points.Count; i++)
         {
+            if (plotValues[i] is not double value)
+            {
+                continue;
+            }
+
             double pointX = plotX + plotWidth * i / Math.Max(points.Count - 1, 1);
-            double pointY = plotY + plotHeight - Math.Min(valueSelector(points[i]), scale.Maximum) / scale.Maximum * plotHeight;
-            linePoints[i] = new XPoint(pointX, pointY);
+            double pointY = plotY + plotHeight - Math.Min(value, scale.Maximum) / scale.Maximum * plotHeight;
+            linePoints.Add(new XPoint(pointX, pointY));
         }
 
-        if (linePoints.Length > 1)
+        if (linePoints.Count > 1)
         {
-            graphics.DrawLines(new XPen(Blue, 2), linePoints);
+            graphics.DrawLines(new XPen(Blue, 2), linePoints.ToArray());
+        }
+
+        if (cappedSeries?.BoundaryIndex is int boundaryIndex && linePoints.Count > 0)
+        {
+            double boundaryX = plotX + plotWidth * boundaryIndex / Math.Max(points.Count - 1, 1);
+            XPen clippedSegmentPen = new(Blue, 2) { DashStyle = XDashStyle.Dash };
+            graphics.DrawLine(clippedSegmentPen, linePoints[^1], new XPoint(boundaryX, plotY));
         }
 
         for (int i = 0; i < points.Count; i++)
         {
-            XPoint point = linePoints[i];
+            if (plotValues[i] is not double value)
+            {
+                continue;
+            }
+
+            double pointX = plotX + plotWidth * i / Math.Max(points.Count - 1, 1);
+            double pointY = plotY + plotHeight - Math.Min(value, scale.Maximum) / scale.Maximum * plotHeight;
+            XPoint point = new(pointX, pointY);
             if (points[i].IsInterpolated)
             {
                 graphics.DrawEllipse(new XPen(Gold, 1.05), XBrushes.White, point.X - 1.45, point.Y - 1.45, 2.9, 2.9);
@@ -367,14 +397,31 @@ internal sealed class ReportPdfRenderer : IDisposable
         }
 
         double legendY = y + 163;
-        graphics.DrawEllipse(new XSolidBrush(Blue), x + 12, legendY, 6, 6);
-        DrawString(graphics, "Моделирование · 1%", Regular(5.6), Deep60, new XRect(x + 23, legendY - 1, 80, 8), XStringFormats.TopLeft);
-        graphics.DrawEllipse(new XPen(Gold, 1.2), XBrushes.White, x + 110, legendY, 6, 6);
-        DrawString(graphics, "Интерполяция · 0,5%", Regular(5.6), Deep60, new XRect(x + 121, legendY - 1, 92, 8), XStringFormats.TopLeft);
         if (target.HasValue)
         {
-            graphics.DrawLine(new XPen(Gold, 2), x + 214, legendY + 3, x + 230, legendY + 3);
-            DrawString(graphics, "Цель WT", Regular(5.6), Deep60, new XRect(x + 235, legendY - 1, 35, 8), XStringFormats.TopLeft);
+            graphics.DrawEllipse(new XSolidBrush(Blue), x + 12, legendY, 6, 6);
+            DrawString(graphics, "Моделирование · 1%", Regular(5.2), Deep60,
+                new XRect(x + 23, legendY - 1, 68, 8), XStringFormats.TopLeft);
+            graphics.DrawEllipse(new XPen(Gold, 1.2), XBrushes.White, x + 95, legendY, 6, 6);
+            DrawString(graphics, "Интерполяция · 0,5%", Regular(5.2), Deep60,
+                new XRect(x + 106, legendY - 1, 84, 8), XStringFormats.TopLeft);
+            XFont targetLegendFont = Regular(5.2);
+            double targetTextWidth = graphics.MeasureString(targetLegend, targetLegendFont).Width;
+            double targetTextRight = x + width - 9;
+            double targetTextX = targetTextRight - targetTextWidth;
+            double targetLineEnd = targetTextX - 4;
+            graphics.DrawLine(new XPen(Gold, 2), targetLineEnd - 14, legendY + 3, targetLineEnd, legendY + 3);
+            DrawString(graphics, targetLegend, targetLegendFont, Deep60,
+                new XRect(targetTextX, legendY - 1, targetTextWidth + 0.5, 8), XStringFormats.TopLeft);
+        }
+        else
+        {
+            graphics.DrawEllipse(new XSolidBrush(Blue), x + 12, legendY, 6, 6);
+            DrawString(graphics, "Моделирование · 1%", Regular(5.6), Deep60,
+                new XRect(x + 23, legendY - 1, 80, 8), XStringFormats.TopLeft);
+            graphics.DrawEllipse(new XPen(Gold, 1.2), XBrushes.White, x + 110, legendY, 6, 6);
+            DrawString(graphics, "Интерполяция · 0,5%", Regular(5.6), Deep60,
+                new XRect(x + 121, legendY - 1, 92, 8), XStringFormats.TopLeft);
         }
     }
 
@@ -385,6 +432,7 @@ internal sealed class ReportPdfRenderer : IDisposable
         double cellWidth = (width - labelWidth) / Math.Max(points.Count, 1);
         DrawTableCell(graphics, x, y, labelWidth, rowHeight, "HC5, %", SemiBold(6.6), XColors.White, Blue, XParagraphAlignment.Center);
         DrawTableCell(graphics, x, y + rowHeight, labelWidth, rowHeight, "WT, с", SemiBold(6.6), XColors.White, Deep, XParagraphAlignment.Center);
+        CappedMetricSeries wtSeries = BuildCappedTimeSeries(points, point => point.Wt, 150);
 
         for (int i = 0; i < points.Count; i++)
         {
@@ -392,9 +440,62 @@ internal sealed class ReportPdfRenderer : IDisposable
             XColor fill = points[i].IsInterpolated ? Gold10 : XColors.White;
             XColor textColor = points[i].IsInterpolated ? Blue : Deep60;
             DrawTableCell(graphics, cellX, y, cellWidth, rowHeight, FormatHc5(points[i].Hc5), Regular(6.6), textColor, fill, XParagraphAlignment.Center);
-            DrawTableCell(graphics, cellX, y + rowHeight, cellWidth, rowHeight, Format(points[i].Wt, 1), SemiBold(6.6), Deep, fill, XParagraphAlignment.Center);
+            string wtValue = wtSeries.Values[i] is double value ? Format(value, 1) : "—";
+            DrawTableCell(graphics, cellX, y + rowHeight, cellWidth, rowHeight, wtValue, SemiBold(6.6), Deep, fill, XParagraphAlignment.Center);
         }
     }
+
+    internal static CappedMetricSeries BuildCappedTimeSeries(
+        IReadOnlyList<ReportMetricPointModel> points,
+        Func<ReportMetricPointModel, double> valueSelector,
+        double maximum)
+    {
+        double?[] values = points
+            .Select(point => valueSelector(point))
+            .Select(value => double.IsFinite(value) ? (double?)value : null)
+            .ToArray();
+        int boundaryIndex = -1;
+        for (int index = 0; index < points.Count; index++)
+        {
+            if (!points[index].IsInterpolated && values[index] is double value && value > maximum)
+            {
+                boundaryIndex = index;
+                break;
+            }
+        }
+
+        if (boundaryIndex < 0)
+        {
+            return new CappedMetricSeries(values, null);
+        }
+
+        int previousSimulationIndex = -1;
+        for (int index = boundaryIndex - 1; index >= 0; index--)
+        {
+            if (!points[index].IsInterpolated)
+            {
+                previousSimulationIndex = index;
+                break;
+            }
+        }
+
+        if (previousSimulationIndex >= 0 &&
+            values[previousSimulationIndex] is double previousValue &&
+            boundaryIndex - previousSimulationIndex == 2 &&
+            points[boundaryIndex - 1].IsInterpolated)
+        {
+            values[boundaryIndex - 1] = (previousValue + maximum) / 2d;
+        }
+
+        for (int index = boundaryIndex; index < values.Length; index++)
+        {
+            values[index] = null;
+        }
+
+        return new CappedMetricSeries(values, boundaryIndex);
+    }
+
+    internal static string FormatMetricHc5Caption(double hc5) => $"при HC5 {FormatHc5(hc5)}%";
 
     private void DrawAssessmentResultTable(XGraphics graphics, double x, double y, double width)
     {
@@ -784,7 +885,7 @@ internal sealed class ReportPdfRenderer : IDisposable
         if (firstPage && tableBottom + 57 <= ContentBottom)
         {
             DrawInfoNote(graphics, tableBottom + 15,
-                "Диапазон объединяется только при полном совпадении населения, коэффициента присутствия и трёх направлений потока. Иначе каждый этаж выводится отдельно.");
+                "Диапазон объединяется только при совпадении населения, коэффициента присутствия и всех направлений потока. Проценты в строке диапазона указаны суммарно.");
         }
         _ = lastPage;
     }
@@ -835,7 +936,7 @@ internal sealed class ReportPdfRenderer : IDisposable
         return y + headerHeight + rowCount * rowHeight;
     }
 
-    private static IReadOnlyList<ReportTrafficFloorModel> GroupTrafficRows(
+    internal static IReadOnlyList<ReportTrafficFloorModel> GroupTrafficRows(
         IReadOnlyList<ReportTrafficFloorModel> rows)
     {
         if (rows.Count < 2) return rows;
@@ -856,6 +957,9 @@ internal sealed class ReportPdfRenderer : IDisposable
             {
                 Floor = BuildRangeLabel(first.Floor, rows[end].Floor, end - start + 1),
                 FloorCount = floorCount,
+                Incoming = FormatGroupedTrafficShare(rows, start, end, row => row.IncomingPercentValue, first.Incoming),
+                Outgoing = FormatGroupedTrafficShare(rows, start, end, row => row.OutgoingPercentValue, first.Outgoing),
+                Interfloor = FormatGroupedTrafficShare(rows, start, end, row => row.InterfloorPercentValue, first.Interfloor),
             });
             start = end + 1;
         }
@@ -868,7 +972,38 @@ internal sealed class ReportPdfRenderer : IDisposable
         left.PresenceFactor == right.PresenceFactor &&
         left.Incoming == right.Incoming &&
         left.Outgoing == right.Outgoing &&
-        left.Interfloor == right.Interfloor;
+        left.Interfloor == right.Interfloor &&
+        left.IncomingPercentValue == right.IncomingPercentValue &&
+        left.OutgoingPercentValue == right.OutgoingPercentValue &&
+        left.InterfloorPercentValue == right.InterfloorPercentValue;
+
+    private static string FormatGroupedTrafficShare(
+        IReadOnlyList<ReportTrafficFloorModel> rows,
+        int start,
+        int end,
+        Func<ReportTrafficFloorModel, double?> valueSelector,
+        string fallback)
+    {
+        if (end <= start || fallback == "—")
+        {
+            return fallback;
+        }
+
+        double total = 0d;
+        for (int index = start; index <= end; index++)
+        {
+            if (valueSelector(rows[index]) is not double value || !double.IsFinite(value))
+            {
+                return fallback;
+            }
+
+            total += value;
+        }
+
+        int suffixIndex = fallback.IndexOf('%');
+        string suffix = suffixIndex >= 0 ? fallback[(suffixIndex + 1)..] : string.Empty;
+        return $"{total.ToString("0.0", CultureInfo.GetCultureInfo("ru-RU"))}%{suffix}";
+    }
 
     private static string BuildRangeLabel(string first, string last, int count) =>
         count <= 1 || first == last ? first : $"{first}–{last}";
@@ -1218,6 +1353,12 @@ internal sealed class ReportPdfRenderer : IDisposable
         return new AxisScale(maximum, Enumerable.Range(0, count + 1).Select(index => index * step).ToArray());
     }
 
+    private static AxisScale BuildFixedAxisScale(double maximum, int intervalCount)
+    {
+        double step = maximum / intervalCount;
+        return new AxisScale(maximum, Enumerable.Range(0, intervalCount + 1).Select(index => index * step).ToArray());
+    }
+
     private static string AxisLabel(double value, string unit)
     {
         int precision = Math.Abs(value) < 10 && !NearlyInteger(value) ? 1 : 0;
@@ -1303,3 +1444,5 @@ internal sealed class ReportPdfRenderer : IDisposable
 
     private sealed record AxisScale(double Maximum, IReadOnlyList<double> Values);
 }
+
+internal sealed record CappedMetricSeries(IReadOnlyList<double?> Values, int? BoundaryIndex);
