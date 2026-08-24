@@ -42,8 +42,12 @@ public sealed class ReportPdfRendererTests
         CappedMetricSeries ttd = ReportPdfRenderer.BuildCappedTimeSeries(points, point => point.Ttd, 150);
 
         Assert.Equal(2, wt.BoundaryIndex);
+        Assert.Equal(2, wt.BoundaryHc5);
+        Assert.Null(wt.SyntheticBridge);
         Assert.Equal(new double?[] { 35, 92.5, null, null, null }, wt.Values);
         Assert.Equal(2, ttd.BoundaryIndex);
+        Assert.Equal(2, ttd.BoundaryHc5);
+        Assert.Null(ttd.SyntheticBridge);
         Assert.Equal(new double?[] { 110, 130, null, null, null }, ttd.Values);
     }
 
@@ -60,7 +64,45 @@ public sealed class ReportPdfRendererTests
         CappedMetricSeries series = ReportPdfRenderer.BuildCappedTimeSeries(points, point => point.Wt, 150);
 
         Assert.Null(series.BoundaryIndex);
+        Assert.Null(series.BoundaryHc5);
+        Assert.Null(series.SyntheticBridge);
         Assert.Equal(new double?[] { 150, 145, 140 }, series.Values);
+    }
+
+    [Fact]
+    public void BuildCappedTimeSeries_EarlyStopAddsHalfStepAndDashedBoundary()
+    {
+        ReportMetricPointModel[] simulation =
+        [
+            new(5, 30, 70, 1, 2, false),
+            new(6, 40, 90, 2, 4, false),
+        ];
+        IReadOnlyList<ReportMetricPointModel> points = ElevateReportService.InterpolateMetricPoints(simulation);
+
+        CappedMetricSeries wt = ReportPdfRenderer.BuildCappedTimeSeries(points, point => point.Wt, 150, 13);
+        CappedMetricSeries ttd = ReportPdfRenderer.BuildCappedTimeSeries(points, point => point.Ttd, 150, 13);
+
+        Assert.Null(wt.BoundaryIndex);
+        Assert.Equal(7, wt.BoundaryHc5);
+        Assert.Equal(new CappedMetricBridge(6.5, 95), wt.SyntheticBridge);
+        Assert.Equal(new double?[] { 30, 35, 40 }, wt.Values);
+        Assert.Null(ttd.BoundaryIndex);
+        Assert.Equal(7, ttd.BoundaryHc5);
+        Assert.Equal(new CappedMetricBridge(6.5, 120), ttd.SyntheticBridge);
+        Assert.Equal(new double?[] { 70, 80, 90 }, ttd.Values);
+    }
+
+    [Fact]
+    public void CalculateUnweightedPopulation_SumsPopulationBeforePresenceFactor()
+    {
+        ReportBuildingFloorModel[] floors =
+        [
+            new("1", 4.2, 0, "Лобби", 0, 0, 0),
+            new("2", 4.2, 4.2, "Офис", 100, 0.8, 80),
+            new("3", 4.2, 8.4, "Офис", 100, 0.8, 80),
+        ];
+
+        Assert.Equal(200, ReportPdfRenderer.CalculateUnweightedPopulation(floors));
     }
 
     [Theory]
@@ -114,7 +156,7 @@ public sealed class ReportPdfRendererTests
     [Fact]
     public void GroupTrafficRows_AggregatesEntranceAndDestinationRangesIndependently()
     {
-        const double destinationShare = 155d / 3863d * 100d;
+        const double destinationShare = 155d / 3565d * 100d;
         List<ReportTrafficFloorModel> floors =
         [
             new("−2", 1, "149", "1,2", "5% ↑", "—", "—", 5d),
@@ -130,7 +172,7 @@ public sealed class ReportPdfRendererTests
         Assert.Equal("−2–−1", grouped[0].Floor);
         Assert.Equal("10,0% ↑", grouped[0].Incoming);
         Assert.Equal("2–24", grouped[2].Floor);
-        Assert.Equal("92,3% ↓", grouped[2].Incoming);
+        Assert.Equal("100,0% ↓", grouped[2].Incoming);
     }
 
     [Fact]
@@ -237,7 +279,7 @@ public sealed class ReportPdfRendererTests
                 ActiveThreshold = original.Assessment.ActiveThreshold with { TtdSeconds = 120 },
             },
         };
-        string pdfPath = Path.Combine(Path.GetTempPath(), $"elevate-report-capped-time-series-net{Environment.Version.Major}.pdf");
+        string pdfPath = Path.Combine(Path.GetTempPath(), $"elevate-report-capped-time-series-{TargetFrameworkSuffix()}.pdf");
 
         using (ReportPdfRenderer renderer = new(model, FindAssetRoot()))
         {
@@ -277,7 +319,52 @@ public sealed class ReportPdfRendererTests
                 DisplayPointCount = display.Count,
             },
         };
-        string pdfPath = Path.Combine(Path.GetTempPath(), $"elevate-report-early-stopped-net{Environment.Version.Major}.pdf");
+        string pdfPath = Path.Combine(Path.GetTempPath(), $"elevate-report-early-stopped-{TargetFrameworkSuffix()}.pdf");
+
+        using (ReportPdfRenderer renderer = new(model, FindAssetRoot()))
+        {
+            renderer.Generate(pdfPath);
+        }
+
+        using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
+        Assert.Equal(6, document.PageCount);
+        Assert.True(new FileInfo(pdfPath).Length > 20_000);
+    }
+
+    [Fact]
+    public void Generate_ParkingEntrances_UsesOnlyDestinationFloorsForDescendingPercentages()
+    {
+        ReportDocumentModel original = CreateModel(floorCount: 26, elevatorCount: 7);
+        const double destinationShare = 155d / 3565d * 100d;
+        List<ReportBuildingFloorModel> buildingFloors =
+        [
+            new("−2", 3.3, -6.6, "Паркинг", 149, 1.2, 178.8),
+            new("−1", 3.3, -3.3, "Паркинг", 149, 1.2, 178.8),
+            new("1", 4.2, 0, "Лобби", 0, 0, 0),
+            .. Enumerable.Range(2, 23).Select(floor => new ReportBuildingFloorModel(
+                floor.ToString(), 4.2, (floor - 1) * 4.2, "Офис", 155, 0.8, 124)),
+        ];
+        List<ReportTrafficFloorModel> trafficFloors =
+        [
+            new("−2", 1, "149", "1,2", "5% ↑", "—", "—", 5d),
+            new("−1", 1, "149", "1,2", "5% ↑", "—", "—", 5d),
+            new("1", 1, "0", "0", "90% ↑", "—", "—", 90d),
+            .. Enumerable.Range(2, 23).Select(floor => new ReportTrafficFloorModel(
+                floor.ToString(), 1, "155", "0,8", "4,3% ↓", "—", "—", destinationShare)),
+        ];
+        ReportDocumentModel model = original with
+        {
+            Building = original.Building with
+            {
+                TotalLevels = buildingFloors.Count,
+                OccupiedLevels = 25,
+                CalculatedPopulation = 3209.6,
+                PresenceSummary = "0,8 / 1,2",
+                Floors = buildingFloors,
+            },
+            Traffic = original.Traffic with { Floors = trafficFloors },
+        };
+        string pdfPath = Path.Combine(Path.GetTempPath(), $"elevate-report-parking-normalization-{TargetFrameworkSuffix()}.pdf");
 
         using (ReportPdfRenderer renderer = new(model, FindAssetRoot()))
         {
@@ -295,6 +382,13 @@ public sealed class ReportPdfRendererTests
         using ReportPdfRenderer renderer = new(model, FindAssetRoot());
         renderer.Generate(output);
         return output;
+    }
+
+    private static string TargetFrameworkSuffix()
+    {
+        string frameworkName = AppContext.TargetFrameworkName ?? $"runtime-{Environment.Version.Major}";
+        string framework = new string(frameworkName.Where(char.IsLetterOrDigit).ToArray());
+        return $"{framework}-{Environment.ProcessId}";
     }
 
     internal static string FindAssetRoot()

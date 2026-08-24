@@ -1496,6 +1496,12 @@ public sealed class ElevateReportService : IElevateReportService
         List<ReportFloorServiceModel> serviceMatrix = new(buildingData.NoFloors);
         List<ReportBuildingFloorModel> buildingFloors = new(buildingData.NoFloors);
         List<ReportTrafficFloorModel> trafficFloors = new(buildingData.NoFloors);
+        double descendingTrafficPopulation = CalculateDescendingTrafficPopulation(
+            Enumerable.Range(1, buildingData.NoFloors)
+                .Select(floor => (
+                    Population: buildingData.NoPeople[floor],
+                    IsEntrance: IsYes(buildingData.EntranceFloor[floor]),
+                    IsServed: isServed[floor])));
         int occupiedLevels = 0;
 
         for (int floor = 1; floor <= buildingData.NoFloors; floor++)
@@ -1527,7 +1533,13 @@ public sealed class ElevateReportService : IElevateReportService
                 presence,
                 calculatedPopulation));
 
-            trafficFloors.Add(BuildTrafficFloorModel(floor, floorLabel, buildingData, passengerData, isServed));
+            trafficFloors.Add(BuildTrafficFloorModel(
+                floor,
+                floorLabel,
+                buildingData,
+                passengerData,
+                isServed,
+                descendingTrafficPopulation));
         }
 
         string dispatcher = elevatorData.Dispatcher.Contains("ACA", StringComparison.OrdinalIgnoreCase) ||
@@ -1739,7 +1751,8 @@ public sealed class ElevateReportService : IElevateReportService
         string floorLabel,
         BuildingDataModel building,
         PassengerDataModel passenger,
-        bool[] isServed)
+        bool[] isServed,
+        double descendingTrafficPopulation)
     {
         bool entrance = IsYes(building.EntranceFloor[floor]);
         bool occupied = isServed[floor] && !NearlyEquals(building.NoPeople[floor], 0d);
@@ -1759,8 +1772,8 @@ public sealed class ElevateReportService : IElevateReportService
             }
             else if (!entrance && occupied)
             {
-                incomingPercent = CalculateTrafficPopulationShare(building.NoPeople[floor], building.TotalPeople);
-                incoming = FormatTrafficPopulationShare(building.NoPeople[floor], building.TotalPeople, "↓");
+                incomingPercent = CalculateTrafficPopulationShare(building.NoPeople[floor], descendingTrafficPopulation);
+                incoming = FormatTrafficPopulationShare(building.NoPeople[floor], descendingTrafficPopulation, "↓");
             }
         }
 
@@ -1803,6 +1816,18 @@ public sealed class ElevateReportService : IElevateReportService
         return percentage is double value
             ? $"{value.ToString("0.0", CultureInfo.GetCultureInfo("ru-RU"))}% {direction}"
             : "—";
+    }
+
+    internal static double CalculateDescendingTrafficPopulation(
+        IEnumerable<(double Population, bool IsEntrance, bool IsServed)> floors)
+    {
+        return floors
+            .Where(floor =>
+                floor.IsServed &&
+                !floor.IsEntrance &&
+                double.IsFinite(floor.Population) &&
+                floor.Population > 0d)
+            .Sum(floor => floor.Population);
     }
 
     private static double? CalculateTrafficPopulationShare(double floorPopulation, double totalPopulation)

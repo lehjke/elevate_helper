@@ -312,7 +312,7 @@ internal sealed class ReportPdfRenderer : IDisposable
 
         IReadOnlyList<ReportMetricPointModel> points = model.Assessment.DisplayPoints;
         CappedMetricSeries? cappedSeries = graphMaximum is double maximum
-            ? BuildCappedTimeSeries(points, valueSelector, maximum)
+            ? BuildCappedTimeSeries(points, valueSelector, maximum, model.Assessment.Hc5Maximum)
             : null;
         IReadOnlyList<double?> plotValues = cappedSeries?.Values
             ?? points.Select(point => (double?)valueSelector(point)).ToArray();
@@ -366,14 +366,21 @@ internal sealed class ReportPdfRenderer : IDisposable
             linePoints.Add(new XPoint(pointX, pointY));
         }
 
+        if (cappedSeries?.SyntheticBridge is CappedMetricBridge bridge)
+        {
+            double bridgeX = plotX + plotWidth * Hc5PositionRatio(bridge.Hc5, model.Assessment.Hc5Maximum);
+            double bridgeY = plotY + plotHeight - Math.Min(bridge.Value, scale.Maximum) / scale.Maximum * plotHeight;
+            linePoints.Add(new XPoint(bridgeX, bridgeY));
+        }
+
         if (linePoints.Count > 1)
         {
             graphics.DrawLines(new XPen(Blue, 2), linePoints.ToArray());
         }
 
-        if (cappedSeries?.BoundaryIndex is int boundaryIndex && linePoints.Count > 0)
+        if (cappedSeries?.BoundaryHc5 is double boundaryHc5 && linePoints.Count > 0)
         {
-            double boundaryX = plotX + plotWidth * Hc5PositionRatio(points[boundaryIndex].Hc5, model.Assessment.Hc5Maximum);
+            double boundaryX = plotX + plotWidth * Hc5PositionRatio(boundaryHc5, model.Assessment.Hc5Maximum);
             XPen clippedSegmentPen = new(Blue, 2) { DashStyle = XDashStyle.Dash };
             graphics.DrawLine(clippedSegmentPen, linePoints[^1], new XPoint(boundaryX, plotY));
         }
@@ -396,6 +403,13 @@ internal sealed class ReportPdfRenderer : IDisposable
             {
                 graphics.DrawEllipse(new XSolidBrush(Blue), point.X - 2.1, point.Y - 2.1, 4.2, 4.2);
             }
+        }
+
+        if (cappedSeries?.SyntheticBridge is CappedMetricBridge syntheticBridge)
+        {
+            double bridgeX = plotX + plotWidth * Hc5PositionRatio(syntheticBridge.Hc5, model.Assessment.Hc5Maximum);
+            double bridgeY = plotY + plotHeight - Math.Min(syntheticBridge.Value, scale.Maximum) / scale.Maximum * plotHeight;
+            graphics.DrawEllipse(new XPen(Gold, 1.05), XBrushes.White, bridgeX - 1.45, bridgeY - 1.45, 2.9, 2.9);
         }
 
         double legendY = y + 163;
@@ -441,7 +455,7 @@ internal sealed class ReportPdfRenderer : IDisposable
         double cellWidth = (width - labelWidth) / hc5AxisValues.Count;
         DrawTableCell(graphics, x, y, labelWidth, rowHeight, "HC5, %", SemiBold(6.6), XColors.White, Blue, XParagraphAlignment.Center);
         DrawTableCell(graphics, x, y + rowHeight, labelWidth, rowHeight, "WT, с", SemiBold(6.6), XColors.White, Deep, XParagraphAlignment.Center);
-        CappedMetricSeries wtSeries = BuildCappedTimeSeries(points, point => point.Wt, 150);
+        CappedMetricSeries wtSeries = BuildCappedTimeSeries(points, point => point.Wt, 150, hc5Maximum);
         Dictionary<double, int> pointIndexes = points
             .Select((point, index) => (point.Hc5, Index: index))
             .ToDictionary(item => item.Hc5, item => item.Index);
@@ -454,9 +468,19 @@ internal sealed class ReportPdfRenderer : IDisposable
             XColor fill = interpolatedTick ? Gold10 : XColors.White;
             XColor textColor = interpolatedTick ? Blue : Deep60;
             DrawTableCell(graphics, cellX, y, cellWidth, rowHeight, FormatHc5(hc5), Regular(6.6), textColor, fill, XParagraphAlignment.Center);
-            string wtValue = pointIndexes.TryGetValue(hc5, out int pointIndex) && wtSeries.Values[pointIndex] is double value
-                ? Format(value, 1)
-                : "—";
+            string wtValue;
+            if (pointIndexes.TryGetValue(hc5, out int pointIndex) && wtSeries.Values[pointIndex] is double value)
+            {
+                wtValue = Format(value, 1);
+            }
+            else if (wtSeries.SyntheticBridge is CappedMetricBridge bridge && Math.Abs(bridge.Hc5 - hc5) < 0.001)
+            {
+                wtValue = Format(bridge.Value, 1);
+            }
+            else
+            {
+                wtValue = "—";
+            }
             DrawTableCell(graphics, cellX, y + rowHeight, cellWidth, rowHeight, wtValue, SemiBold(6.6), Deep, fill, XParagraphAlignment.Center);
         }
     }
@@ -478,7 +502,8 @@ internal sealed class ReportPdfRenderer : IDisposable
     internal static CappedMetricSeries BuildCappedTimeSeries(
         IReadOnlyList<ReportMetricPointModel> points,
         Func<ReportMetricPointModel, double> valueSelector,
-        double maximum)
+        double maximum,
+        int? hc5Maximum = null)
     {
         double?[] values = points
             .Select(point => valueSelector(point))
@@ -496,7 +521,21 @@ internal sealed class ReportPdfRenderer : IDisposable
 
         if (boundaryIndex < 0)
         {
-            return new CappedMetricSeries(values, null);
+            ReportMetricPointModel? lastSimulationPoint = points.LastOrDefault(point => !point.IsInterpolated);
+            if (hc5Maximum is int chartHc5Maximum &&
+                lastSimulationPoint is not null &&
+                lastSimulationPoint.Hc5 < chartHc5Maximum &&
+                valueSelector(lastSimulationPoint) is double lastValue &&
+                double.IsFinite(lastValue) &&
+                lastValue < maximum)
+            {
+                double boundaryHc5 = Math.Min(lastSimulationPoint.Hc5 + 1d, chartHc5Maximum);
+                double bridgeHc5 = lastSimulationPoint.Hc5 + 0.5d;
+                CappedMetricBridge bridge = new(bridgeHc5, (lastValue + maximum) / 2d);
+                return new CappedMetricSeries(values, null, boundaryHc5, bridge);
+            }
+
+            return new CappedMetricSeries(values, null, null, null);
         }
 
         int previousSimulationIndex = -1;
@@ -522,7 +561,7 @@ internal sealed class ReportPdfRenderer : IDisposable
             values[index] = null;
         }
 
-        return new CappedMetricSeries(values, boundaryIndex);
+        return new CappedMetricSeries(values, boundaryIndex, points[boundaryIndex].Hc5, null);
     }
 
     internal static string FormatMetricHc5Caption(double hc5) => $"при HC5 {FormatHc5(hc5)}%";
@@ -852,16 +891,25 @@ internal sealed class ReportPdfRenderer : IDisposable
         if (includeTotal)
         {
             double totalY = y + headerHeight + rowCount * rowHeight;
-            double labelWidth = widths.Take(6).Sum();
-            DrawTableCell(graphics, PageLeft, totalY, labelWidth, rowHeight, "Итоговое расчётное население",
+            double labelWidth = widths.Take(4).Sum();
+            DrawTableCell(graphics, PageLeft, totalY, labelWidth, rowHeight, "Итого",
                 SemiBold(7.3), Deep, XColors.White, XParagraphAlignment.Left, 7);
-            DrawTableCell(graphics, PageLeft + labelWidth, totalY, widths[6], rowHeight, Format(model.Building.CalculatedPopulation),
+            DrawTableCell(graphics, PageLeft + labelWidth, totalY, widths[4], rowHeight,
+                Format(CalculateUnweightedPopulation(model.Building.Floors)), SemiBold(7.3), Deep,
+                XColors.White, XParagraphAlignment.Center, 4);
+            DrawTableCell(graphics, PageLeft + labelWidth + widths[4], totalY, widths[5], rowHeight, "—",
+                Regular(7.3), Deep60, XColors.White, XParagraphAlignment.Center, 4);
+            DrawTableCell(graphics, PageLeft + labelWidth + widths[4] + widths[5], totalY, widths[6], rowHeight,
+                Format(model.Building.CalculatedPopulation),
                 SemiBold(7.3), Deep, XColors.White, XParagraphAlignment.Center, 4);
             return totalY + rowHeight;
         }
 
         return y + headerHeight + rowCount * rowHeight;
     }
+
+    internal static double CalculateUnweightedPopulation(IReadOnlyList<ReportBuildingFloorModel> floors) =>
+        floors.Where(floor => double.IsFinite(floor.Population)).Sum(floor => floor.Population);
 
     private void BuildTrafficPagePlans()
     {
@@ -1483,4 +1531,10 @@ internal sealed class ReportPdfRenderer : IDisposable
     private sealed record AxisScale(double Maximum, IReadOnlyList<double> Values);
 }
 
-internal sealed record CappedMetricSeries(IReadOnlyList<double?> Values, int? BoundaryIndex);
+internal sealed record CappedMetricSeries(
+    IReadOnlyList<double?> Values,
+    int? BoundaryIndex,
+    double? BoundaryHc5,
+    CappedMetricBridge? SyntheticBridge);
+
+internal sealed record CappedMetricBridge(double Hc5, double Value);

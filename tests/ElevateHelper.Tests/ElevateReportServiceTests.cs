@@ -652,6 +652,23 @@ public sealed class ElevateReportServiceTests
         Assert.Equal("—", ElevateReportService.FormatTrafficPopulationShare(floorPopulation, totalPopulation, "↓"));
     }
 
+    [Fact]
+    public void CalculateDescendingTrafficPopulation_ExcludesEntranceAndUnservedFloors()
+    {
+        List<(double Population, bool IsEntrance, bool IsServed)> floors =
+        [
+            (149, true, true),
+            (149, true, true),
+            (0, true, true),
+            .. Enumerable.Repeat((Population: 155d, IsEntrance: false, IsServed: true), 23),
+            (200, false, false),
+        ];
+
+        double actual = ElevateReportService.CalculateDescendingTrafficPopulation(floors);
+
+        Assert.Equal(3565, actual);
+    }
+
     [Theory]
     [InlineData(double.NaN, "ЦО", "0,50")]
     [InlineData(double.NaN, "ТО", "0,00")]
