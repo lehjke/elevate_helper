@@ -71,6 +71,27 @@ public sealed class ReportPdfRendererTests
         Assert.Equal(expected, ReportPdfRenderer.FormatMetricHc5Caption(hc5));
     }
 
+    [Theory]
+    [InlineData(13, 25, 13)]
+    [InlineData(8, 15, 8)]
+    public void BuildHc5AxisValues_AlwaysCoversBuildingTypeMaximum(int maximum, int expectedCount, double expectedLast)
+    {
+        IReadOnlyList<double> values = ReportPdfRenderer.BuildHc5AxisValues(maximum);
+
+        Assert.Equal(expectedCount, values.Count);
+        Assert.Equal(1, values[0]);
+        Assert.Equal(expectedLast, values[^1]);
+    }
+
+    [Fact]
+    public void Hc5PositionRatio_DoesNotStretchEarlyStoppedSeriesToChartEnd()
+    {
+        Assert.Equal(0, ReportPdfRenderer.Hc5PositionRatio(1, 13));
+        Assert.Equal(5d / 12d, ReportPdfRenderer.Hc5PositionRatio(6, 13), 10);
+        Assert.Equal(1, ReportPdfRenderer.Hc5PositionRatio(13, 13));
+        Assert.Equal(1, ReportPdfRenderer.Hc5PositionRatio(8, 8));
+    }
+
     [Fact]
     public void GroupTrafficRows_SumsExactSharesBeforeRounding()
     {
@@ -217,6 +238,46 @@ public sealed class ReportPdfRendererTests
             },
         };
         string pdfPath = Path.Combine(Path.GetTempPath(), $"elevate-report-capped-time-series-net{Environment.Version.Major}.pdf");
+
+        using (ReportPdfRenderer renderer = new(model, FindAssetRoot()))
+        {
+            renderer.Generate(pdfPath);
+        }
+
+        using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
+        Assert.Equal(6, document.PageCount);
+        Assert.True(new FileInfo(pdfPath).Length > 20_000);
+    }
+
+    [Fact]
+    public void Generate_EarlyStoppedOfficeSeries_KeepsFullHc5Scale()
+    {
+        ReportDocumentModel original = CreateModel(floorCount: 14, elevatorCount: 7);
+        List<ReportMetricPointModel> simulation = original.Assessment.SimulationPoints.Take(6).ToList();
+        IReadOnlyList<ReportMetricPointModel> display = ElevateReportService.InterpolateMetricPoints(simulation);
+        ReportMetricPointModel selected = simulation[^1];
+        ReportDocumentModel model = original with
+        {
+            Assessment = original.Assessment with
+            {
+                Hc5Maximum = 13,
+                SimulationPoints = simulation,
+                DisplayPoints = display,
+                Result = new ReportAssessmentResultModel(
+                    selected.Hc5,
+                    selected.Wt,
+                    selected.Ttd,
+                    selected.IntermediateStops,
+                    selected.LongWaitPercent,
+                    original.Assessment.Rating),
+            },
+            Traffic = original.Traffic with
+            {
+                SimulationCount = simulation.Count,
+                DisplayPointCount = display.Count,
+            },
+        };
+        string pdfPath = Path.Combine(Path.GetTempPath(), $"elevate-report-early-stopped-net{Environment.Version.Major}.pdf");
 
         using (ReportPdfRenderer renderer = new(model, FindAssetRoot()))
         {

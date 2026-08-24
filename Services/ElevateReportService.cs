@@ -1548,7 +1548,7 @@ public sealed class ElevateReportService : IElevateReportService
             rating,
             trafficProfile,
             elevatorSummary,
-            sourcePointCount,
+            metrics.SimulationCount,
             ResolveTargetWt(buildingData, passengerData),
             simulationPoints,
             displayPoints,

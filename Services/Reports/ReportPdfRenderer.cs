@@ -240,7 +240,7 @@ internal sealed class ReportPdfRenderer : IDisposable
             model.Assessment.Result.LongWaitPercent, "%", "чем ниже, тем лучше",
             point => point.LongWaitPercent, null, "%", null, string.Empty);
 
-        DrawHc5Strip(graphics, PageLeft, 630, ContentWidth, model.Assessment.DisplayPoints);
+        DrawHc5Strip(graphics, PageLeft, 630, ContentWidth, model.Assessment.DisplayPoints, model.Assessment.Hc5Maximum);
         DrawAssessmentResultTable(graphics, PageLeft, 683, ContentWidth);
     }
 
@@ -324,6 +324,7 @@ internal sealed class ReportPdfRenderer : IDisposable
         double plotY = y + 59.408;
         double plotWidth = 196.725;
         double plotHeight = 75.674;
+        IReadOnlyList<double> hc5AxisValues = BuildHc5AxisValues(model.Assessment.Hc5Maximum);
 
         for (int i = 0; i < scale.Values.Count; i++)
         {
@@ -334,14 +335,15 @@ internal sealed class ReportPdfRenderer : IDisposable
                 new XRect(x + 3, gridY - 3, 37, 8), XStringFormats.TopRight);
         }
 
-        for (int i = 0; i < points.Count; i++)
+        foreach (double hc5 in hc5AxisValues)
         {
-            double pointX = plotX + plotWidth * i / Math.Max(points.Count - 1, 1);
-            graphics.DrawLine(new XPen(points[i].IsInterpolated ? XColor.FromArgb(0xE8, 0xEA, 0xF0) : Deep10,
-                points[i].IsInterpolated ? 0.4 : 0.55), pointX, plotY, pointX, plotY + plotHeight);
+            bool interpolatedTick = !NearlyInteger(hc5);
+            double pointX = plotX + plotWidth * Hc5PositionRatio(hc5, model.Assessment.Hc5Maximum);
+            graphics.DrawLine(new XPen(interpolatedTick ? XColor.FromArgb(0xE8, 0xEA, 0xF0) : Deep10,
+                interpolatedTick ? 0.4 : 0.55), pointX, plotY, pointX, plotY + plotHeight);
             graphics.DrawLine(new XPen(Blue40, 0.7), pointX, plotY + plotHeight, pointX,
-                plotY + plotHeight + (points[i].IsInterpolated ? 1.7 : 2.5));
-            DrawString(graphics, FormatHc5(points[i].Hc5), Regular(points.Count > 15 ? 3.7 : 4.6), Deep60,
+                plotY + plotHeight + (interpolatedTick ? 1.7 : 2.5));
+            DrawString(graphics, FormatHc5(hc5), Regular(hc5AxisValues.Count > 15 ? 3.7 : 4.6), Deep60,
                 new XRect(pointX - 8, plotY + plotHeight + 5, 16, 7), XStringFormats.TopCenter);
         }
 
@@ -359,7 +361,7 @@ internal sealed class ReportPdfRenderer : IDisposable
                 continue;
             }
 
-            double pointX = plotX + plotWidth * i / Math.Max(points.Count - 1, 1);
+            double pointX = plotX + plotWidth * Hc5PositionRatio(points[i].Hc5, model.Assessment.Hc5Maximum);
             double pointY = plotY + plotHeight - Math.Min(value, scale.Maximum) / scale.Maximum * plotHeight;
             linePoints.Add(new XPoint(pointX, pointY));
         }
@@ -371,7 +373,7 @@ internal sealed class ReportPdfRenderer : IDisposable
 
         if (cappedSeries?.BoundaryIndex is int boundaryIndex && linePoints.Count > 0)
         {
-            double boundaryX = plotX + plotWidth * boundaryIndex / Math.Max(points.Count - 1, 1);
+            double boundaryX = plotX + plotWidth * Hc5PositionRatio(points[boundaryIndex].Hc5, model.Assessment.Hc5Maximum);
             XPen clippedSegmentPen = new(Blue, 2) { DashStyle = XDashStyle.Dash };
             graphics.DrawLine(clippedSegmentPen, linePoints[^1], new XPoint(boundaryX, plotY));
         }
@@ -383,7 +385,7 @@ internal sealed class ReportPdfRenderer : IDisposable
                 continue;
             }
 
-            double pointX = plotX + plotWidth * i / Math.Max(points.Count - 1, 1);
+            double pointX = plotX + plotWidth * Hc5PositionRatio(points[i].Hc5, model.Assessment.Hc5Maximum);
             double pointY = plotY + plotHeight - Math.Min(value, scale.Maximum) / scale.Maximum * plotHeight;
             XPoint point = new(pointX, pointY);
             if (points[i].IsInterpolated)
@@ -425,24 +427,52 @@ internal sealed class ReportPdfRenderer : IDisposable
         }
     }
 
-    private void DrawHc5Strip(XGraphics graphics, double x, double y, double width, IReadOnlyList<ReportMetricPointModel> points)
+    private void DrawHc5Strip(
+        XGraphics graphics,
+        double x,
+        double y,
+        double width,
+        IReadOnlyList<ReportMetricPointModel> points,
+        int hc5Maximum)
     {
         const double labelWidth = 48;
         const double rowHeight = 21;
-        double cellWidth = (width - labelWidth) / Math.Max(points.Count, 1);
+        IReadOnlyList<double> hc5AxisValues = BuildHc5AxisValues(hc5Maximum);
+        double cellWidth = (width - labelWidth) / hc5AxisValues.Count;
         DrawTableCell(graphics, x, y, labelWidth, rowHeight, "HC5, %", SemiBold(6.6), XColors.White, Blue, XParagraphAlignment.Center);
         DrawTableCell(graphics, x, y + rowHeight, labelWidth, rowHeight, "WT, с", SemiBold(6.6), XColors.White, Deep, XParagraphAlignment.Center);
         CappedMetricSeries wtSeries = BuildCappedTimeSeries(points, point => point.Wt, 150);
+        Dictionary<double, int> pointIndexes = points
+            .Select((point, index) => (point.Hc5, Index: index))
+            .ToDictionary(item => item.Hc5, item => item.Index);
 
-        for (int i = 0; i < points.Count; i++)
+        for (int i = 0; i < hc5AxisValues.Count; i++)
         {
             double cellX = x + labelWidth + i * cellWidth;
-            XColor fill = points[i].IsInterpolated ? Gold10 : XColors.White;
-            XColor textColor = points[i].IsInterpolated ? Blue : Deep60;
-            DrawTableCell(graphics, cellX, y, cellWidth, rowHeight, FormatHc5(points[i].Hc5), Regular(6.6), textColor, fill, XParagraphAlignment.Center);
-            string wtValue = wtSeries.Values[i] is double value ? Format(value, 1) : "—";
+            double hc5 = hc5AxisValues[i];
+            bool interpolatedTick = !NearlyInteger(hc5);
+            XColor fill = interpolatedTick ? Gold10 : XColors.White;
+            XColor textColor = interpolatedTick ? Blue : Deep60;
+            DrawTableCell(graphics, cellX, y, cellWidth, rowHeight, FormatHc5(hc5), Regular(6.6), textColor, fill, XParagraphAlignment.Center);
+            string wtValue = pointIndexes.TryGetValue(hc5, out int pointIndex) && wtSeries.Values[pointIndex] is double value
+                ? Format(value, 1)
+                : "—";
             DrawTableCell(graphics, cellX, y + rowHeight, cellWidth, rowHeight, wtValue, SemiBold(6.6), Deep, fill, XParagraphAlignment.Center);
         }
+    }
+
+    internal static IReadOnlyList<double> BuildHc5AxisValues(int maximum)
+    {
+        int normalizedMaximum = Math.Max(1, maximum);
+        return Enumerable.Range(0, normalizedMaximum * 2 - 1)
+            .Select(index => 1d + index * 0.5d)
+            .ToArray();
+    }
+
+    internal static double Hc5PositionRatio(double hc5, int maximum)
+    {
+        int normalizedMaximum = Math.Max(1, maximum);
+        return Math.Clamp((hc5 - 1d) / Math.Max(normalizedMaximum - 1d, 1d), 0d, 1d);
     }
 
     internal static CappedMetricSeries BuildCappedTimeSeries(
@@ -785,10 +815,15 @@ internal sealed class ReportPdfRenderer : IDisposable
             tableY = 137;
         }
 
-        DrawBuildingTable(graphics, tableY, rowStart, rowCount, isLastPage);
+        double tableBottom = DrawBuildingTable(graphics, tableY, rowStart, rowCount, isLastPage);
+        if (firstPage && tableBottom + 57 <= ContentBottom)
+        {
+            DrawInfoNote(graphics, tableBottom + 15,
+                "Коэффициент присутствия 1,2 применяется только для этажей паркинга.");
+        }
     }
 
-    private void DrawBuildingTable(XGraphics graphics, double y, int rowStart, int rowCount, bool includeTotal)
+    private double DrawBuildingTable(XGraphics graphics, double y, int rowStart, int rowCount, bool includeTotal)
     {
         double columnWidth = ContentWidth / 7;
         double[] widths = Enumerable.Repeat(columnWidth, 7).ToArray();
@@ -822,7 +857,10 @@ internal sealed class ReportPdfRenderer : IDisposable
                 SemiBold(7.3), Deep, XColors.White, XParagraphAlignment.Left, 7);
             DrawTableCell(graphics, PageLeft + labelWidth, totalY, widths[6], rowHeight, Format(model.Building.CalculatedPopulation),
                 SemiBold(7.3), Deep, XColors.White, XParagraphAlignment.Center, 4);
+            return totalY + rowHeight;
         }
+
+        return y + headerHeight + rowCount * rowHeight;
     }
 
     private void BuildTrafficPagePlans()
