@@ -2867,7 +2867,7 @@ public sealed class ElevateReportService : IElevateReportService
 
         int keyRow = dataRows.Count > 0 ? dataRows[0] : 2;
         string sourceFileName = Path.GetFileName(sheet.Get(keyRow, 1).Trim());
-        string fileName = Path.GetFileNameWithoutExtension(sourceFileName);
+        string fileName = GetProjectFileStem(sourceFileName);
 
         return new MainBatchData
         {
@@ -2916,9 +2916,20 @@ public sealed class ElevateReportService : IElevateReportService
         };
     }
 
+    private static string GetProjectFileStem(string fileName)
+    {
+        string cleanFileName = Path.GetFileName(fileName.Trim());
+        string extension = Path.GetExtension(cleanFileName);
+        // Batch results can contain a stem without an extension and with dots in its name.
+        return extension.Equals(".elvx", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".csv", StringComparison.OrdinalIgnoreCase)
+            ? cleanFileName[..^extension.Length]
+            : cleanFileName;
+    }
+
     internal static string BuildStepFileName(string fileName, int step)
     {
-        string cleanFileName = Path.GetFileNameWithoutExtension(fileName.Trim());
+        string cleanFileName = GetProjectFileStem(fileName);
 
         string prefix = cleanFileName.Length > 3
             ? cleanFileName[..^3]
@@ -2933,7 +2944,7 @@ public sealed class ElevateReportService : IElevateReportService
     internal static string BuildElevateResultCsvFileName(string sourceFileName, int? step = null)
     {
         string cleanSourceFileName = Path.GetFileName(sourceFileName.Trim());
-        string sourceStem = Path.GetFileNameWithoutExtension(cleanSourceFileName);
+        string sourceStem = GetProjectFileStem(cleanSourceFileName);
         string targetStem = step.HasValue
             ? BuildSequentialStem(sourceStem, step.Value)
             : sourceStem;
@@ -4018,7 +4029,7 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         string cleanFileName = Path.GetFileName(fileName.Trim());
-        string fileStem = Path.GetFileNameWithoutExtension(cleanFileName);
+        string fileStem = GetProjectFileStem(cleanFileName);
         if (!string.IsNullOrWhiteSpace(fileStem))
         {
             string batchCsvFileName = BuildElevateResultCsvFileName($"{fileStem}.elvx");
@@ -4036,7 +4047,7 @@ public sealed class ElevateReportService : IElevateReportService
 
         if (!string.IsNullOrWhiteSpace(sourceProjectFileName))
         {
-            string sourceStem = Path.GetFileNameWithoutExtension(sourceProjectFileName);
+            string sourceStem = GetProjectFileStem(sourceProjectFileName);
             if (!string.IsNullOrWhiteSpace(sourceStem))
             {
                 string sourceCsvFileName = $"{sourceStem}.csv";

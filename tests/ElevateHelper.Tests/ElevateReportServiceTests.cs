@@ -38,6 +38,9 @@ public sealed class ElevateReportServiceTests
     [InlineData("Probe01.elvx", 2, "Probe02_elvx.csv")]
     [InlineData("Tower.elvx", 2, "Tower2_elvx.csv")]
     [InlineData("Project001.elvx", 12, "Project012_elvx.csv")]
+    [InlineData("L1.1-L1.6 R00 01", null, "L1.1-L1.6 R00 01_elvx.csv")]
+    [InlineData("L1.1-L1.6 R00 01", 2, "L1.1-L1.6 R00 02_elvx.csv")]
+    [InlineData("L1.1-L1.6 R00 01.elvx", 2, "L1.1-L1.6 R00 02_elvx.csv")]
     public void BuildElevateResultCsvFileName_UsesBatchOutputNaming(string sourceFileName, int? step, string expected)
     {
         string actual = ElevateReportService.BuildElevateResultCsvFileName(sourceFileName, step);
@@ -126,6 +129,39 @@ public sealed class ElevateReportServiceTests
             reportRoot);
 
         Assert.Equal(projectElvxPath, resolvedPath);
+    }
+
+    [Theory]
+    [InlineData("", "morning")]
+    [InlineData("", "lunch")]
+    [InlineData(".elvx", "lunch")]
+    [InlineData(".ELVX", "lunch")]
+    [InlineData(".csv", "lunch")]
+    public void ParseBatchResults_ResolvesDottedProjectAndResultFiles(string extension, string scenario)
+    {
+        using ReportTestWorkspace workspace = new();
+        string projectRoot = workspace.CreateDirectory("Tower 1");
+        string reportRoot = workspace.CreateDirectory(Path.Combine("Tower 1", scenario));
+        const string stem = "L1.1-L1.6 R00 01";
+        string projectPath = Path.Combine(projectRoot, stem + (extension == ".ELVX" ? extension : ".elvx"));
+        string resultPath = Path.Combine(reportRoot, stem + "_elvx.csv");
+        File.WriteAllText(projectPath, "<ElevateDocument />");
+        File.WriteAllText(resultPath, "csv");
+        string batchPath = Path.Combine(reportRoot, "batch_results.csv");
+        File.WriteAllText(batchPath, $"File,Folder\n{stem}{extension},{projectRoot}\n");
+
+        MethodInfo parse = typeof(ElevateReportService).GetMethod(
+            "ParseBatchResults", BindingFlags.NonPublic | BindingFlags.Static)!;
+        object data = parse.Invoke(null, [batchPath])!;
+        string fileName = (string)data.GetType().GetProperty("FileName")!.GetValue(data)!;
+        string sourceFileName = (string)data.GetType().GetProperty("SourceFileName")!.GetValue(data)!;
+
+        Assert.Equal(stem, fileName);
+        Assert.Equal(projectPath, ElevateReportService.ResolveProjectSourcePath(
+            fileName, sourceFileName, reportRoot, projectRoot));
+        Assert.Equal(resultPath, ElevateReportService.ResolveProjectCsvSourcePath(
+            fileName, sourceFileName, reportRoot, projectRoot));
+        Assert.Equal("L1.1-L1.6 R00 02.csv", ElevateReportService.BuildStepFileName(fileName, 2));
     }
 
     [Fact]
