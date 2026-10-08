@@ -656,7 +656,7 @@ public sealed class ElevateReportService : IElevateReportService
     {
         dynamic sheet = workbook.Sheets(SheetBuilding);
 
-        for (int i = 1; i <= buildingData.NoFloors; i++)
+        foreach (int i in GetReportFloorIndicesDescending(buildingData).Reverse())
         {
             InsertRow(sheet, 4, XlFormatFromRightOrBelow);
             sheet.Cells(4, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
@@ -695,7 +695,7 @@ public sealed class ElevateReportService : IElevateReportService
         sheet.Cells(3, 8).Value = $"Выходящий пассажиропоток{Environment.NewLine}({ToShortPercent(passengerData.Outgoing)}%)";
         sheet.Cells(3, 13).Value = $"Межэтажный пассажиропоток{Environment.NewLine}({ToShortPercent(passengerData.Interfloor)}%)";
 
-        for (int i = 1; i <= buildingData.NoFloors; i++)
+        foreach (int i in GetReportFloorIndicesDescending(buildingData).Reverse())
         {
             InsertRow(sheet, 5, XlFormatFromRightOrBelow);
             sheet.Cells(5, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
@@ -773,6 +773,8 @@ public sealed class ElevateReportService : IElevateReportService
                 elevatorData.DoorPreOpening,
                 doorType,
                 i);
+            string cabinType = i < elevatorData.CabinType.Length ? elevatorData.CabinType[i] : string.Empty;
+            equipmentValues[0] = ReportLiftModel.FormatDisplayCapacity(equipmentValues[0], cabinType);
 
             for (int j = 0; j < equipmentValues.Length; j++)
             {
@@ -780,7 +782,7 @@ public sealed class ElevateReportService : IElevateReportService
             }
         }
 
-        for (int i = 1; i <= buildingData.NoFloors; i++)
+        foreach (int i in GetReportFloorIndicesDescending(buildingData).Reverse())
         {
             InsertRow(sheet, 17, XlFormatFromRightOrBelow);
             sheet.Cells(17, 2).Value = FormatFloorForDisplay(buildingData.FloorName[i]);
@@ -820,6 +822,13 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         int totalRows = ToInt(sheet.UsedRange.Rows.Count);
+        InsertRow(sheet, totalRows + 1, XlFormatFromLeftOrAbove);
+        sheet.Cells(totalRows + 2, 2).Value = "Тип кабины";
+        for (int i = 1; i <= elevatorData.NoElevators; i++)
+        {
+            sheet.Cells(totalRows + 2, 2 + i).Value = i < elevatorData.CabinType.Length ? elevatorData.CabinType[i] : string.Empty;
+        }
+        totalRows = ToInt(sheet.UsedRange.Rows.Count);
         InsertRow(sheet, totalRows + 1, XlFormatFromLeftOrAbove);
         sheet.Cells(totalRows + 2, 2).Value = "*ЦО - центральное открывание, ТО - телескопическое открывание";
     }
@@ -1385,16 +1394,13 @@ public sealed class ElevateReportService : IElevateReportService
 
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
-            string capacity = elevatorData.Spec[i, 1];
+            string cabinType = i < elevatorData.CabinType.Length ? elevatorData.CabinType[i] : string.Empty;
+            string capacity = ReportLiftModel.FormatDisplayCapacity(elevatorData.Spec[i, 1], cabinType);
             if (!capacityCounts.TryAdd(capacity, 1))
             {
                 capacityCounts[capacity]++;
             }
         }
-
-        string x2 = elevatorData.Dispatcher.Contains("Double", StringComparison.OrdinalIgnoreCase)
-            ? "2x"
-            : string.Empty;
 
         System.Text.StringBuilder elevatorsText = new();
         foreach ((string cap, int count) in capacityCounts)
@@ -1406,7 +1412,7 @@ public sealed class ElevateReportService : IElevateReportService
                 _ => "лифтов",
             };
 
-            elevatorsText.Append($" {count} {noun} с грузоподъемностью {x2}{cap} кг,");
+            elevatorsText.Append($" {count} {noun} с грузоподъемностью {cap} кг,");
         }
 
         return $"Лифтовая группа:{elevatorsText} со скоростью {elevatorData.Spec[1, 2]} м/с. Количество остановок {servedFloors}/{floors}.";
@@ -1488,7 +1494,10 @@ public sealed class ElevateReportService : IElevateReportService
                 equipment[5],
                 equipment[6],
                 equipment[7],
-                equipment[8]));
+                equipment[8])
+            {
+                CabinType = index < elevatorData.CabinType.Length ? elevatorData.CabinType[index] : string.Empty,
+            });
         }
 
         string elevatorSummary = BuildCompactElevatorSummary(lifts);
@@ -1504,7 +1513,7 @@ public sealed class ElevateReportService : IElevateReportService
                     IsServed: isServed[floor])));
         int occupiedLevels = 0;
 
-        for (int floor = 1; floor <= buildingData.NoFloors; floor++)
+        foreach (int floor in GetReportFloorIndicesDescending(buildingData))
         {
             string floorLabel = FormatFloorForDisplay(buildingData.FloorName[floor]).TrimStart('\'');
             List<bool> servedByLift = new(elevatorData.NoElevators);
@@ -1590,6 +1599,11 @@ public sealed class ElevateReportService : IElevateReportService
         ReportCriteriaModel criteria = new(activeProfile.Name, profiles, BuildFlowText(passengerData), legalNote);
         return new ReportDocumentModel(metadata, assessment, liftGroup, building, traffic, criteria);
     }
+
+    private static IEnumerable<int> GetReportFloorIndicesDescending(BuildingDataModel buildingData) =>
+        Enumerable.Range(1, buildingData.NoFloors)
+            .OrderByDescending(floor => buildingData.FloorLevel[floor])
+            .ThenByDescending(floor => buildingData.FloorName[floor]);
 
     internal static IReadOnlyList<ReportMetricPointModel> InterpolateMetricPoints(IReadOnlyList<ReportMetricPointModel> simulationPoints)
     {
@@ -1851,14 +1865,29 @@ public sealed class ElevateReportService : IElevateReportService
         }
 
         int configurationCount = ReportLiftConfiguration.CountDistinct(lifts);
+        int doubleDeckCount = lifts.Count(lift => string.Equals(lift.CabinType, "Double Deck", StringComparison.OrdinalIgnoreCase));
+        string typeSuffix = doubleDeckCount == 0 ? string.Empty
+            : doubleDeckCount == lifts.Count ? " · Double Deck (двухэтажная)"
+            : $" · Double Deck: {doubleDeckCount}";
         if (configurationCount == 1)
         {
             ReportLiftModel first = lifts[0];
-            return $"{lifts.Count} × {DisplayText(first.CapacityKg)} кг · {DisplayText(first.SpeedMetresPerSecond)} м/с";
+            string capacitySummary = doubleDeckCount == lifts.Count
+                ? $"{lifts.Count} шт × {DisplayText(first.DisplayCapacityKg)} кг"
+                : $"{lifts.Count} × {DisplayText(first.CapacityKg)} кг";
+            return $"{capacitySummary} · {DisplayText(first.SpeedMetresPerSecond)} м/с{typeSuffix}";
         }
 
-        return $"{ReportLiftConfiguration.DescribeLiftCount(lifts.Count)} · {ReportLiftConfiguration.DescribeConfigurationCount(configurationCount)}";
+        return $"{ReportLiftConfiguration.DescribeLiftCount(lifts.Count)} · {ReportLiftConfiguration.DescribeConfigurationCount(configurationCount)}{typeSuffix}";
     }
+
+    internal static string NormalizeCabinType(string? value) => value?.Trim() switch
+    {
+        string text when text.Equals("Single Deck", StringComparison.OrdinalIgnoreCase) => "Single Deck",
+        string text when text.Equals("Double Deck", StringComparison.OrdinalIgnoreCase) => "Double Deck",
+        string text => text,
+        null => string.Empty,
+    };
 
     private static string BuildPresenceSummary(BuildingDataModel building)
     {
@@ -2282,8 +2311,15 @@ public sealed class ElevateReportService : IElevateReportService
         elevatorData.DoorPreOpening = CreateDoorPreOpeningArray(elevatorData.NoElevators);
         elevatorData.ReportDoorWidth = CreateStringArray(elevatorData.NoElevators);
         elevatorData.ReportDoorType = CreateStringArray(elevatorData.NoElevators);
+        elevatorData.CabinType = CreateStringArray(elevatorData.NoElevators);
+        int arrangementRow = sheet.FindRowExactInColumn(1, "Arrangement");
+        string csvCabinType = elevatorData.Dispatcher.Contains("Double Deck", StringComparison.OrdinalIgnoreCase) ||
+                              sheet.Get(arrangementRow, 4).Contains("Double Deck", StringComparison.OrdinalIgnoreCase)
+            ? "Double Deck"
+            : string.Empty;
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
+            elevatorData.CabinType[i] = csvCabinType;
             for (int j = 1; j <= 10; j++)
             {
                 elevatorData.Spec[i, j] = sheet.Get(elevatorDataRow + 1 + j, 3 + i);
@@ -2627,11 +2663,13 @@ public sealed class ElevateReportService : IElevateReportService
         elevatorData.DoorPreOpening = CreateDoorPreOpeningArray(elevatorData.NoElevators);
         elevatorData.ReportDoorWidth = CreateStringArray(elevatorData.NoElevators);
         elevatorData.ReportDoorType = CreateStringArray(elevatorData.NoElevators);
+        elevatorData.CabinType = CreateStringArray(elevatorData.NoElevators);
         elevatorData.FloorsServed = new string[elevatorData.NoElevators + 1, buildingData.NoFloors + 1];
 
         for (int i = 1; i <= elevatorData.NoElevators; i++)
         {
             XElement carElement = carElements[i - 1];
+            elevatorData.CabinType[i] = NormalizeCabinType((string?)carElement.Attribute("CarType"));
             elevatorData.CabinArea[i] = ResolveReportedCabinAreaValue((string?)carElement.Attribute("FloorAreaM2"), 0d);
             elevatorData.Spec[i, 1] = FormatNumericSpec((string?)carElement.Attribute("Capacity"), "0");
             elevatorData.Spec[i, 2] = FormatNumericSpec((string?)carElement.Attribute("Speed"), "0.00");
@@ -4160,6 +4198,8 @@ public sealed class ElevateReportService : IElevateReportService
         public string[] ReportDoorWidth { get; set; } = [string.Empty];
 
         public string[] ReportDoorType { get; set; } = [string.Empty];
+
+        public string[] CabinType { get; set; } = [string.Empty];
 
         public string[,] FloorsServed { get; set; } = new string[1, 1];
     }

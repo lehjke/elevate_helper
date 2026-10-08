@@ -63,7 +63,18 @@ internal sealed record ReportLiftModel(
     string DoorPreOpeningSeconds,
     string DoorOpeningSeconds,
     string DoorClosingSeconds,
-    string LightCurtainDelaySeconds);
+    string LightCurtainDelaySeconds)
+{
+    public string CabinType { get; init; } = string.Empty;
+    public string DisplayCapacityKg => FormatDisplayCapacity(CapacityKg, CabinType);
+
+    internal static string FormatDisplayCapacity(string capacityKg, string? cabinType) =>
+        string.IsNullOrWhiteSpace(capacityKg) || capacityKg is "—" or "-"
+            ? capacityKg
+            : string.Equals(cabinType, "Double Deck", StringComparison.OrdinalIgnoreCase)
+            ? $"{capacityKg}×2"
+            : capacityKg;
+}
 
 internal static class ReportLiftConfiguration
 {
@@ -78,6 +89,7 @@ internal static class ReportLiftConfiguration
 
     private static string BuildKey(ReportLiftModel lift) => string.Join('\u001f',
         lift.CapacityKg,
+        lift.CabinType,
         lift.CabinAreaSquareMetres.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
         lift.SpeedMetresPerSecond,
         lift.AccelerationMetresPerSecondSquared,

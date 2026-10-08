@@ -568,7 +568,16 @@ internal sealed class ReportPdfRenderer : IDisposable
 
     private void DrawAssessmentResultTable(XGraphics graphics, double x, double y, double width)
     {
-        string[] headers = ["Тип потока", "HC5", "WT", "TTD", "IS", "LW", "Оценка"];
+        string[] headers =
+        [
+            "Тип\nпассажиропотока",
+            "Провозная\nспособность\nHC5, %",
+            "Средн. время\nожидания\nWT, с",
+            "Средн. время\nпоездки\nTTD, с",
+            "Средн. кол-во\nостановок\nIS, шт.",
+            "Долгое\nожидание\nLW, %",
+            "Оценка",
+        ];
         string[] values =
         [
             model.Assessment.TrafficProfile,
@@ -580,14 +589,16 @@ internal sealed class ReportPdfRenderer : IDisposable
             string.Empty,
         ];
         double cellWidth = width / headers.Length;
+        const double headerHeight = 48;
+        const double valueHeight = 27.5;
         for (int index = 0; index < headers.Length; index++)
         {
             double cellX = x + index * cellWidth;
-            DrawTableCell(graphics, cellX, y, cellWidth, 27.5, headers[index], Regular(8.2), Deep60, Panel, XParagraphAlignment.Left, 8);
-            DrawTableCell(graphics, cellX, y + 27.5, cellWidth, 27.5, values[index], SemiBold(8.2), Deep, XColors.White, XParagraphAlignment.Left, 8);
+            DrawTableCell(graphics, cellX, y, cellWidth, headerHeight, headers[index], Regular(7), Deep60, Panel, XParagraphAlignment.Center, 3, 8);
+            DrawTableCell(graphics, cellX, y + headerHeight, cellWidth, valueHeight, values[index], SemiBold(8.2), Deep, XColors.White, XParagraphAlignment.Center, 3);
             if (index == headers.Length - 1)
             {
-                DrawStars(graphics, cellX + 8, y + 36, model.Assessment.Rating, 5.4, Deep, Deep60);
+                DrawStars(graphics, cellX + 8, y + headerHeight + 8, model.Assessment.Rating, 5.4, Deep, Deep60);
             }
         }
     }
@@ -598,7 +609,7 @@ internal sealed class ReportPdfRenderer : IDisposable
         const int firstPageFloorRows = 14;
         const int continuationFloorRows = 29;
         IReadOnlyList<ReportLiftModel> lifts = model.LiftGroup.Lifts;
-        IReadOnlyList<ReportFloorServiceModel> serviceRows = GroupServiceRows(model.LiftGroup.ServiceMatrix);
+        IReadOnlyList<ReportFloorServiceModel> serviceRows = model.LiftGroup.ServiceMatrix;
 
         for (int elevatorStart = 0; elevatorStart < Math.Max(lifts.Count, 1); elevatorStart += elevatorsPerPage)
         {
@@ -663,7 +674,7 @@ internal sealed class ReportPdfRenderer : IDisposable
                 [
                     (model.LiftGroup.Lifts.Count.ToString(CultureInfo.InvariantCulture), "лифтов в группе"),
                     (configurationCount.ToString(CultureInfo.InvariantCulture), "конфигураций оборудования"),
-                    (SummarizeLiftValues(model.LiftGroup.Lifts, lift => lift.CapacityKg, "кг"), "грузоподъёмность в группе"),
+                    (SummarizeLiftValues(model.LiftGroup.Lifts, lift => lift.DisplayCapacityKg, "кг"), "грузоподъёмность в группе"),
                     (SummarizeLiftValues(model.LiftGroup.Lifts, lift => lift.SpeedMetresPerSecond, "м/с"), "скорость в группе"),
                 ],
                 61);
@@ -708,7 +719,8 @@ internal sealed class ReportPdfRenderer : IDisposable
 
         (string Label, Func<ReportLiftModel, string> Value)[] rows =
         [
-            ("Грузоподъёмность, кг", lift => lift.CapacityKg),
+            ("Тип кабины", lift => lift.CabinType),
+            ("Грузоподъёмность, кг", lift => lift.DisplayCapacityKg),
             ("Площадь кабины, м²", lift => Format(lift.CabinAreaSquareMetres, 2)),
             ("Скорость, м/с", lift => lift.SpeedMetresPerSecond),
             ("Ускорение, м/с²", lift => lift.AccelerationMetresPerSecondSquared),
@@ -786,30 +798,6 @@ internal sealed class ReportPdfRenderer : IDisposable
                 }
             }
         }
-    }
-
-    private static IReadOnlyList<ReportFloorServiceModel> GroupServiceRows(
-        IReadOnlyList<ReportFloorServiceModel> rows)
-    {
-        if (rows.Count < 2) return rows;
-
-        List<ReportFloorServiceModel> grouped = [];
-        int start = 0;
-        while (start < rows.Count)
-        {
-            int end = start;
-            while (end + 1 < rows.Count && rows[start].ServedByLift.SequenceEqual(rows[end + 1].ServedByLift))
-            {
-                end++;
-            }
-
-            grouped.Add(new ReportFloorServiceModel(
-                BuildRangeLabel(rows[start].Floor, rows[end].Floor, end - start + 1),
-                rows[start].ServedByLift));
-            start = end + 1;
-        }
-
-        return grouped;
     }
 
     private void BuildBuildingPagePlans()
@@ -909,13 +897,15 @@ internal sealed class ReportPdfRenderer : IDisposable
     }
 
     internal static double CalculateUnweightedPopulation(IReadOnlyList<ReportBuildingFloorModel> floors) =>
-        floors.Where(floor => double.IsFinite(floor.Population)).Sum(floor => floor.Population);
+        floors.Where(floor => !string.Equals(floor.Function, "Парковка", StringComparison.OrdinalIgnoreCase) &&
+                              double.IsFinite(floor.Population))
+            .Sum(floor => floor.Population);
 
     private void BuildTrafficPagePlans()
     {
         const int firstPageRows = 14;
-        const int continuationRows = 29;
-        IReadOnlyList<ReportTrafficFloorModel> trafficRows = GroupTrafficRows(model.Traffic.Floors);
+        const int continuationRows = 24;
+        IReadOnlyList<ReportTrafficFloorModel> trafficRows = model.Traffic.Floors;
         int start = 0;
         int firstCount = Math.Min(firstPageRows, trafficRows.Count);
         pages.Add(new PagePlan(false, graphics => DrawTrafficPage(graphics, 0, firstCount, firstPage: true,
@@ -967,12 +957,7 @@ internal sealed class ReportPdfRenderer : IDisposable
             tableY = 159;
         }
 
-        double tableBottom = DrawTrafficTable(graphics, tableY, rowStart, rowCount, trafficRows);
-        if (firstPage && tableBottom + 57 <= ContentBottom)
-        {
-            DrawInfoNote(graphics, tableBottom + 15,
-                "Диапазон объединяется только при совпадении населения, коэффициента присутствия и всех направлений потока. Проценты в строке диапазона указаны суммарно.");
-        }
+        DrawTrafficTable(graphics, tableY, rowStart, rowCount, trafficRows);
         _ = lastPage;
     }
 
@@ -1006,7 +991,7 @@ internal sealed class ReportPdfRenderer : IDisposable
         IReadOnlyList<ReportTrafficFloorModel> trafficRows)
     {
         double[] widths = [97, 49, 78, 62, 82, 82, 81];
-        string[] headers = ["Этаж / диапазон", "Этажей", "Население", "Коэф.", "Входящий", "Выходящий", "Межэтажный"];
+        string[] headers = ["Этаж", "Этажей", "Население", "Коэф.", "Входящий", "Выходящий", "Межэтажный"];
         const double headerHeight = 34.406;
         const double rowHeight = 24.203;
         DrawHeaderRow(graphics, PageLeft, y, widths, headers, headerHeight, 7.3, centerAll: true);
@@ -1021,78 +1006,6 @@ internal sealed class ReportPdfRenderer : IDisposable
 
         return y + headerHeight + rowCount * rowHeight;
     }
-
-    internal static IReadOnlyList<ReportTrafficFloorModel> GroupTrafficRows(
-        IReadOnlyList<ReportTrafficFloorModel> rows)
-    {
-        if (rows.Count < 2) return rows;
-
-        List<ReportTrafficFloorModel> grouped = [];
-        int start = 0;
-        while (start < rows.Count)
-        {
-            int end = start;
-            while (end + 1 < rows.Count && HaveIdenticalTrafficData(rows[start], rows[end + 1]))
-            {
-                end++;
-            }
-
-            ReportTrafficFloorModel first = rows[start];
-            int floorCount = rows.Skip(start).Take(end - start + 1).Sum(row => row.FloorCount);
-            grouped.Add(first with
-            {
-                Floor = BuildRangeLabel(first.Floor, rows[end].Floor, end - start + 1),
-                FloorCount = floorCount,
-                Incoming = FormatGroupedTrafficShare(rows, start, end, row => row.IncomingPercentValue, first.Incoming),
-                Outgoing = FormatGroupedTrafficShare(rows, start, end, row => row.OutgoingPercentValue, first.Outgoing),
-                Interfloor = FormatGroupedTrafficShare(rows, start, end, row => row.InterfloorPercentValue, first.Interfloor),
-            });
-            start = end + 1;
-        }
-
-        return grouped;
-    }
-
-    private static bool HaveIdenticalTrafficData(ReportTrafficFloorModel left, ReportTrafficFloorModel right) =>
-        left.Population == right.Population &&
-        left.PresenceFactor == right.PresenceFactor &&
-        left.Incoming == right.Incoming &&
-        left.Outgoing == right.Outgoing &&
-        left.Interfloor == right.Interfloor &&
-        left.IncomingPercentValue == right.IncomingPercentValue &&
-        left.OutgoingPercentValue == right.OutgoingPercentValue &&
-        left.InterfloorPercentValue == right.InterfloorPercentValue;
-
-    private static string FormatGroupedTrafficShare(
-        IReadOnlyList<ReportTrafficFloorModel> rows,
-        int start,
-        int end,
-        Func<ReportTrafficFloorModel, double?> valueSelector,
-        string fallback)
-    {
-        if (end <= start || fallback == "—")
-        {
-            return fallback;
-        }
-
-        double total = 0d;
-        for (int index = start; index <= end; index++)
-        {
-            if (valueSelector(rows[index]) is not double value || !double.IsFinite(value))
-            {
-                return fallback;
-            }
-
-            total += value;
-        }
-
-        int suffixIndex = fallback.IndexOf('%');
-        string suffix = suffixIndex >= 0 ? fallback[(suffixIndex + 1)..] : string.Empty;
-        return $"{total.ToString("0.0", CultureInfo.GetCultureInfo("ru-RU"))}%{suffix}";
-    }
-
-    private static string BuildRangeLabel(string first, string last, int count) =>
-        count <= 1 || first == last ? first : $"{first}–{last}";
 
     private void DrawCriteria(XGraphics graphics)
     {

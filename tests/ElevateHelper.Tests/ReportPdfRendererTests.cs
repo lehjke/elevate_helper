@@ -100,6 +100,7 @@ public sealed class ReportPdfRendererTests
             new("1", 4.2, 0, "Лобби", 0, 0, 0),
             new("2", 4.2, 4.2, "Офис", 100, 0.8, 80),
             new("3", 4.2, 8.4, "Офис", 100, 0.8, 80),
+            new("P1", 4.2, -4.2, "Парковка", 50, 1.2, 60),
         ];
 
         Assert.Equal(200, ReportPdfRenderer.CalculateUnweightedPopulation(floors));
@@ -135,47 +136,6 @@ public sealed class ReportPdfRendererTests
     }
 
     [Fact]
-    public void GroupTrafficRows_SumsExactSharesBeforeRounding()
-    {
-        const double exactFloorShare = 100d / 1300d * 100d;
-        List<ReportTrafficFloorModel> floors =
-        [
-            new("1", 1, "0", "0", "100% ↑", "—", "—", 100d),
-            .. Enumerable.Range(2, 13).Select(floor => new ReportTrafficFloorModel(
-                floor.ToString(), 1, "100", "0,8", "7,7% ↓", "—", "—", exactFloorShare)),
-        ];
-
-        IReadOnlyList<ReportTrafficFloorModel> grouped = ReportPdfRenderer.GroupTrafficRows(floors);
-
-        Assert.Equal(2, grouped.Count);
-        Assert.Equal("2–14", grouped[1].Floor);
-        Assert.Equal(13, grouped[1].FloorCount);
-        Assert.Equal("100,0% ↓", grouped[1].Incoming);
-    }
-
-    [Fact]
-    public void GroupTrafficRows_AggregatesEntranceAndDestinationRangesIndependently()
-    {
-        const double destinationShare = 155d / 3565d * 100d;
-        List<ReportTrafficFloorModel> floors =
-        [
-            new("−2", 1, "149", "1,2", "5% ↑", "—", "—", 5d),
-            new("−1", 1, "149", "1,2", "5% ↑", "—", "—", 5d),
-            new("1", 1, "0", "0", "90% ↑", "—", "—", 90d),
-            .. Enumerable.Range(2, 23).Select(floor => new ReportTrafficFloorModel(
-                floor.ToString(), 1, "155", "0,8", "4,0% ↓", "—", "—", destinationShare)),
-        ];
-
-        IReadOnlyList<ReportTrafficFloorModel> grouped = ReportPdfRenderer.GroupTrafficRows(floors);
-
-        Assert.Equal(3, grouped.Count);
-        Assert.Equal("−2–−1", grouped[0].Floor);
-        Assert.Equal("10,0% ↑", grouped[0].Incoming);
-        Assert.Equal("2–24", grouped[2].Floor);
-        Assert.Equal("100,0% ↓", grouped[2].Incoming);
-    }
-
-    [Fact]
     public void LiftConfigurationSummary_AccountsForEveryLift()
     {
         ReportDocumentModel model = CreateModel(floorCount: 14, elevatorCount: 7);
@@ -184,6 +144,59 @@ public sealed class ReportPdfRendererTests
         Assert.Equal("7 лифтов · 2 конфигурации", ElevateReportService.BuildCompactElevatorSummary(model.LiftGroup.Lifts));
         Assert.Equal("1600 / 2000 кг",
             ReportPdfRenderer.SummarizeLiftValues(model.LiftGroup.Lifts, lift => lift.CapacityKg, "кг"));
+    }
+
+    [Fact]
+    public void LiftConfigurationAndSummary_IncludeCabinType()
+    {
+        ReportDocumentModel model = CreateModel(floorCount: 2, elevatorCount: 2);
+        ReportLiftModel[] lifts = model.LiftGroup.Lifts.ToArray();
+        lifts[0] = lifts[0] with { CabinType = "Double Deck" };
+
+        Assert.Equal(2, ReportLiftConfiguration.CountDistinct(lifts));
+        Assert.Equal("2 лифта · 2 конфигурации · Double Deck: 1",
+            ElevateReportService.BuildCompactElevatorSummary(lifts));
+    }
+
+    [Fact]
+    public void DoubleDeckCapacity_IsFormattedForReportDisplaysWithoutChangingRawCapacity()
+    {
+        ReportLiftModel[] lifts = CreateModel(floorCount: 2, elevatorCount: 2).LiftGroup.Lifts
+            .Select(lift => lift with { CapacityKg = "1800", CabinType = "dOuBlE dEcK" })
+            .ToArray();
+        lifts[1] = lifts[0] with { Number = 2 };
+
+        Assert.All(lifts, lift =>
+        {
+            Assert.Equal("1800", lift.CapacityKg);
+            Assert.Equal("1800×2", lift.DisplayCapacityKg);
+        });
+        Assert.Equal("1800×2 кг",
+            ReportPdfRenderer.SummarizeLiftValues(lifts, lift => lift.DisplayCapacityKg, "кг"));
+        Assert.Equal("2 шт × 1800×2 кг · 2,5 м/с · Double Deck (двухэтажная)",
+            ElevateReportService.BuildCompactElevatorSummary(lifts));
+    }
+
+    [Fact]
+    public void MixedDeckGroupCapacity_SummaryShowsEachDisplayedCapacity()
+    {
+        ReportLiftModel[] lifts = CreateModel(floorCount: 2, elevatorCount: 2).LiftGroup.Lifts.ToArray();
+        lifts[0] = lifts[0] with { CapacityKg = "1800", CabinType = "Double Deck" };
+        lifts[1] = lifts[1] with { CapacityKg = "1800", CabinType = "Single Deck" };
+
+        Assert.Equal("1800×2 / 1800 кг",
+            ReportPdfRenderer.SummarizeLiftValues(lifts, lift => lift.DisplayCapacityKg, "кг"));
+    }
+
+    [Theory]
+    [InlineData("1800", "Double Deck", "1800×2")]
+    [InlineData("1800", "double deck destination control", "1800")]
+    [InlineData("—", "Double Deck", "—")]
+    [InlineData("", "Double Deck", "")]
+    public void FormatDisplayCapacity_OnlyAddsMultiplierForKnownDoubleDeck(
+        string capacity, string cabinType, string expected)
+    {
+        Assert.Equal(expected, ReportLiftModel.FormatDisplayCapacity(capacity, cabinType));
     }
 
     [Fact]
@@ -228,14 +241,32 @@ public sealed class ReportPdfRendererTests
         string pdfPath = Generate(model);
 
         using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
-        // Identical consecutive service and traffic rows are intentionally collapsed
-        // into ranges, while the building table still paginates every floor.
         Assert.True(document.PageCount >= 9);
         Assert.All(document.Pages.Cast<PdfSharp.Pdf.PdfPage>(), page =>
         {
             Assert.InRange(page.Width.Point, 594.9, 595.1);
             Assert.InRange(page.Height.Point, 841.9, 842.1);
         });
+    }
+
+    [Fact]
+    public void Generate_RepeatedFloorsStillGetSeparateRowsAndContinuationPages()
+    {
+        ReportDocumentModel model = CreateModel(floorCount: 15, elevatorCount: 1);
+        string pdfPath = Generate(model);
+
+        using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
+        Assert.Equal(8, document.PageCount);
+    }
+
+    [Fact]
+    public void Generate_TrafficRowsBeyondContinuationCapacity_AddsPage()
+    {
+        ReportDocumentModel model = CreateModel(floorCount: 68, elevatorCount: 1);
+        string pdfPath = Generate(model);
+
+        using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
+        Assert.Equal(13, document.PageCount);
     }
 
     [Fact]
@@ -372,7 +403,7 @@ public sealed class ReportPdfRendererTests
         }
 
         using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
-        Assert.Equal(6, document.PageCount);
+        Assert.Equal(8, document.PageCount);
         Assert.True(new FileInfo(pdfPath).Length > 20_000);
     }
 

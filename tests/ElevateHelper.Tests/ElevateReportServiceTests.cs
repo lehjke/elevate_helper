@@ -9,6 +9,81 @@ namespace ElevateHelper.Tests;
 public sealed class ElevateReportServiceTests
 {
     [Fact]
+    public void ReportFloorOrder_SortsByElevationThenNumericFloorNameWithoutReorderingSourceData()
+    {
+        Type buildingType = typeof(ElevateReportService).GetNestedType("BuildingDataModel", BindingFlags.NonPublic)!;
+        object building = Activator.CreateInstance(buildingType)!;
+        buildingType.GetProperty("NoFloors")!.SetValue(building, 5);
+        double[] names = [0, 2, 10, 2, 2, 2];
+        double[] levels = [0, 3, -2, -2, 8, 3];
+        buildingType.GetProperty("FloorName")!.SetValue(building, names);
+        buildingType.GetProperty("FloorLevel")!.SetValue(building, levels);
+
+        MethodInfo getOrder = typeof(ElevateReportService).GetMethod("GetReportFloorIndicesDescending", BindingFlags.NonPublic | BindingFlags.Static)!;
+        IEnumerable<int> order = (IEnumerable<int>)getOrder.Invoke(null, [building])!;
+
+        Assert.Equal(new[] { 4, 1, 5, 2, 3 }, order);
+        Assert.Equal(new double[] { 0, 2, 10, 2, 2, 2 }, names);
+        Assert.Equal(new double[] { 0, 3, -2, -2, 8, 3 }, levels);
+    }
+
+    [Fact]
+    public void BuildReportDocumentModel_OrdersAllFloorListsTogetherAndKeepsFloorValuesLinked()
+    {
+        Type buildingType = typeof(ElevateReportService).GetNestedType("BuildingDataModel", BindingFlags.NonPublic)!;
+        object building = Activator.CreateInstance(buildingType)!;
+        buildingType.GetProperty("BuildingType")!.SetValue(building, "Residential");
+        buildingType.GetProperty("NoFloors")!.SetValue(building, 5);
+        buildingType.GetProperty("TotalPeople")!.SetValue(building, 1500d);
+        buildingType.GetProperty("CTotalPeople")!.SetValue(building, 1500d);
+        buildingType.GetProperty("FloorName")!.SetValue(building, new double[] { 0, 2, 10, -1, -2, 0 });
+        buildingType.GetProperty("FloorLevel")!.SetValue(building, new double[] { 0, 3, -2, -2, 8, 3 });
+        buildingType.GetProperty("FloorHeight")!.SetValue(building, new double[] { 0, 3, 4, 5, 6, 7 });
+        buildingType.GetProperty("FloorType")!.SetValue(building, new[] { "", "A", "B", "C", "D", "E" });
+        buildingType.GetProperty("NoPeople")!.SetValue(building, new double[] { 0, 100, 200, 300, 400, 500 });
+        buildingType.GetProperty("FloorFactor")!.SetValue(building, new double[] { 0, .1, .2, .3, .4, .5 });
+        buildingType.GetProperty("EntranceFloor")!.SetValue(building, new[] { "", "No", "No", "No", "No", "No" });
+        buildingType.GetProperty("Bias")!.SetValue(building, new double[6]);
+
+        Type elevatorType = typeof(ElevateReportService).GetNestedType("ElevatorDataModel", BindingFlags.NonPublic)!;
+        object elevator = Activator.CreateInstance(elevatorType)!;
+        Type passengerType = typeof(ElevateReportService).GetNestedType("PassengerDataModel", BindingFlags.NonPublic)!;
+        object passenger = Activator.CreateInstance(passengerType)!;
+        passengerType.GetProperty("Incoming")!.SetValue(passenger, 50d);
+        passengerType.GetProperty("Outgoing")!.SetValue(passenger, 50d);
+        passengerType.GetProperty("Interfloor")!.SetValue(passenger, 0d);
+        double[] metrics = new double[14];
+        for (int i = 1; i < metrics.Length; i++) metrics[i] = i;
+        bool[] served = [false, true, false, true, true, true];
+
+        MethodInfo buildModel = typeof(ElevateReportService).GetMethod("BuildReportDocumentModel", BindingFlags.NonPublic | BindingFlags.Static)!;
+        object model = buildModel.Invoke(null, ["", metrics, metrics, metrics, metrics, Array.Empty<string>(), building, elevator, passenger, 4, served])!;
+        object liftGroup = model.GetType().GetProperty("LiftGroup")!.GetValue(model)!;
+        object buildingModel = model.GetType().GetProperty("Building")!.GetValue(model)!;
+        object trafficModel = model.GetType().GetProperty("Traffic")!.GetValue(model)!;
+        var serviceRows = (IReadOnlyList<ElevateHelperWinUI.Models.Reports.ReportFloorServiceModel>)liftGroup.GetType().GetProperty("ServiceMatrix")!.GetValue(liftGroup)!;
+        var buildingRows = (IReadOnlyList<ElevateHelperWinUI.Models.Reports.ReportBuildingFloorModel>)buildingModel.GetType().GetProperty("Floors")!.GetValue(buildingModel)!;
+        var trafficRows = (IReadOnlyList<ElevateHelperWinUI.Models.Reports.ReportTrafficFloorModel>)trafficModel.GetType().GetProperty("Floors")!.GetValue(trafficModel)!;
+
+        Assert.Equal(new[] { "-2", "2", "0", "10", "-1" }, serviceRows.Select(row => row.Floor));
+        Assert.Equal(serviceRows.Select(row => row.Floor), buildingRows.Select(row => row.Floor));
+        Assert.Equal(serviceRows.Select(row => row.Floor), trafficRows.Select(row => row.Floor));
+        Assert.Equal(new[] { 400d, 100d, 500d, 200d, 300d }, buildingRows.Select(row => row.Population));
+        Assert.Equal(new[] { "D", "A", "E", "B", "C" }, buildingRows.Select(row => row.Function));
+        Assert.Equal(new[] { "400", "100", "500", "200", "300" }, trafficRows.Select(row => row.Population));
+    }
+
+    [Theory]
+    [InlineData("Single Deck", "Single Deck")]
+    [InlineData("double deck", "Double Deck")]
+    [InlineData("Future Cabin", "Future Cabin")]
+    [InlineData(null, "")]
+    public void NormalizeCabinType_PreservesKnownAndUnknownValues(string? value, string expected)
+    {
+        Assert.Equal(expected, ElevateReportService.NormalizeCabinType(value));
+    }
+
+    [Fact]
     public void BuildStepFileName_MatchesVbaNaming()
     {
         string stepFileName = ElevateReportService.BuildStepFileName("Luzhniki 24 B R001.csv", 14);
@@ -817,6 +892,58 @@ public sealed class ElevateReportServiceTests
             Assert.Equal("No", floorsServed[elevator, 1]);
             Assert.Equal("No", floorsServed[elevator, 2]);
         }
+    }
+
+    [Theory]
+    [InlineData("Double Deck Destination Control", "", "Project", "Double Deck")]
+    [InlineData("Group Collective", "Double Deck Arrangement", "Project", "Double Deck")]
+    [InlineData("Group Collective", "Single Deck", "Double Deck Arrangement", "")]
+    [InlineData("Group Collective", "", "Project", "")]
+    public void ParseProjectCsv_InfersCabinTypeOnlyFromExplicitDoubleDeckMarkers(
+        string dispatcher,
+        string arrangement,
+        string title,
+        string expected)
+    {
+        using ReportTestWorkspace workspace = new();
+        string csvPath = Path.Combine(workspace.RootPath, "Project_elvx.csv");
+        string[] rows = BuildPartialFloorsServedProjectCsv().Split(Environment.NewLine);
+        rows[1] = SerializeCsvRow(CsvRow((4, title)));
+        rows[12] = SerializeCsvRow(CsvRow((6, dispatcher)));
+        if (!string.IsNullOrEmpty(arrangement))
+        {
+            rows[70] = SerializeCsvRow(CsvRow((1, "Arrangement"), (4, arrangement)));
+        }
+        File.WriteAllText(csvPath, string.Join(Environment.NewLine, rows), Encoding.UTF8);
+
+        MethodInfo parseProjectCsv = typeof(ElevateReportService).GetMethod(
+            "ParseProjectCsv",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        object projectData = parseProjectCsv.Invoke(null, [csvPath])!;
+        object elevatorData = projectData.GetType().GetProperty("Elevator")!.GetValue(projectData)!;
+        string[] cabinTypes = (string[])elevatorData.GetType().GetProperty("CabinType")!.GetValue(elevatorData)!;
+
+        Assert.Equal(expected, cabinTypes[1]);
+    }
+
+    [Theory]
+    [InlineData("Double Deck", "Double Deck")]
+    [InlineData("Single Deck", "Single Deck")]
+    [InlineData("Unspecified", "Unspecified")]
+    public void ParseElevatorDataFromElvx_CarriesCarType(string carType, string expected)
+    {
+        Type buildingType = typeof(ElevateReportService).GetNestedType("BuildingDataModel", BindingFlags.NonPublic)!;
+        object building = Activator.CreateInstance(buildingType)!;
+        buildingType.GetProperty("NoFloors")!.SetValue(building, 1);
+        buildingType.GetProperty("FloorName")!.SetValue(building, new double[] { 0, 1 });
+        XElement analysis = XElement.Parse("<AnalysisData><Dispatcher><Algorithm AlgorithmName='Group Collective'/></Dispatcher></AnalysisData>");
+        XElement elevator = XElement.Parse($"<ElevatorData><Advanced><Configuration><Car CarType='{carType}' Capacity='1600' Speed='2.5' FloorAreaM2='3.2' /></Configuration></Advanced></ElevatorData>");
+
+        MethodInfo parser = typeof(ElevateReportService).GetMethod("ParseElevatorDataFromElvx", BindingFlags.NonPublic | BindingFlags.Static)!;
+        object parsed = parser.Invoke(null, [analysis, elevator, building])!;
+        string[] types = (string[])parsed.GetType().GetProperty("CabinType")!.GetValue(parsed)!;
+
+        Assert.Equal(expected, types[1]);
     }
 
     [Theory]
