@@ -55,6 +55,8 @@ public sealed partial class MainPage : Page
     private readonly Dictionary<string, MetricsReadState> metricsReadStates =
         new(StringComparer.OrdinalIgnoreCase);
     private int batchLaunchFlowActive;
+    private int terminateAllElevateProcessesActive;
+    private int batchDiscoveryGeneration;
     private int statusAnnouncementGeneration;
     private AppLanguage statusMessageLanguage;
     private JobProgressViewModel? dismissedJob;
@@ -529,6 +531,8 @@ public sealed partial class MainPage : Page
 
     private async void OnRunProjectBatchButtonClick(object sender, RoutedEventArgs e)
     {
+        if (Volatile.Read(ref terminateAllElevateProcessesActive) != 0) return;
+        int discoveryGeneration = Volatile.Read(ref batchDiscoveryGeneration);
         if (Interlocked.Exchange(ref batchLaunchFlowActive, 1) != 0)
         {
             SetStatus(Text.ProjectBatchLaunchAlreadyPreparingMessage, InfoBarSeverity.Informational);
@@ -558,10 +562,12 @@ public sealed partial class MainPage : Page
             ProjectBatchDiscoveryResult discoveryResult = await Task.Run(
                 () => projectBatchDiscoveryService.Discover(projectRoot),
                 applicationLifetimeSource.Token);
+            if (discoveryGeneration != Volatile.Read(ref batchDiscoveryGeneration)) return;
 
             IReadOnlyList<ProjectBatchJob>? manualJobs = await ResolveUnknownProjectBatchJobsAsync(
                 projectRoot,
                 discoveryResult.UnknownElvxFiles);
+            if (discoveryGeneration != Volatile.Read(ref batchDiscoveryGeneration)) return;
             if (manualJobs is null)
             {
                 return;
@@ -599,6 +605,7 @@ public sealed partial class MainPage : Page
                 return;
             }
 
+            if (discoveryGeneration != Volatile.Read(ref batchDiscoveryGeneration)) return;
             StartProjectBatchJobs(batchJobs, parallelRuns, discoveryResult.Warnings.Count, includeOfficeLunchPeak);
         }
         catch (OperationCanceledException) when (applicationLifetimeSource.IsCancellationRequested)
@@ -998,6 +1005,7 @@ public sealed partial class MainPage : Page
 
     private void OnRetryJobButtonClick(object sender, RoutedEventArgs e)
     {
+        if (Volatile.Read(ref terminateAllElevateProcessesActive) != 0) return;
         if (sender is not FrameworkElement { Tag: JobProgressViewModel job })
         {
             return;
@@ -1036,6 +1044,7 @@ public sealed partial class MainPage : Page
 
     private void OnRetryScenarioButtonClick(object sender, RoutedEventArgs e)
     {
+        if (Volatile.Read(ref terminateAllElevateProcessesActive) != 0) return;
         if (sender is not FrameworkElement { Tag: ScenarioProgressViewModel scenario } ||
             !scenario.CanRetry)
         {
@@ -1163,9 +1172,45 @@ public sealed partial class MainPage : Page
 
     private async void OnStopAllJobsButtonClick(object sender, RoutedEventArgs e)
     {
-        await ConfirmAndStopJobsAsync(
-            Jobs.Where(job => job.CanStop).ToList(),
-            queuedOnly: false);
+        if (Interlocked.CompareExchange(ref terminateAllElevateProcessesActive, 1, 0) != 0) return;
+        StopAllJobsButton.IsEnabled = false;
+        try
+        {
+            bool isRussian = localizationService.CurrentLanguage == AppLanguage.Russian;
+            ContentDialog dialog = new()
+            {
+                XamlRoot = XamlRoot,
+                Title = isRussian ? "Выгрузить все процессы Elevate?" : "Terminate all Elevate processes?",
+                Content = isRussian
+                    ? "Будут отменены задачи и принудительно закрыты все окна Elevate, включая несохранённые документы. Несохранённые данные будут потеряны."
+                    : "Jobs will be cancelled and every Elevate window will be force-closed, including unsaved documents. Unsaved data will be lost.",
+                PrimaryButtonText = isRussian ? "Выгрузить всё" : "Terminate all",
+                CloseButtonText = isRussian ? "Отмена" : "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await ShowCoordinatedDialogAsync(dialog) != ContentDialogResult.Primary) return;
+
+            Interlocked.Increment(ref batchDiscoveryGeneration);
+            foreach (JobProgressViewModel job in Jobs.Where(job => job.CanStop).ToList())
+                job.RequestStop(localizationService);
+            RefreshJobsSummary();
+            SetStatus(isRussian ? "Закрытие процессов Elevate…" : "Closing Elevate processes…", InfoBarSeverity.Informational);
+            (int count, IReadOnlyList<string> errors) = await Task.Run(
+                () => processingService.TerminateAllElevateProcessesAsync());
+            SetStatus(errors.Count == 0
+                    ? string.Format(isRussian ? "Завершено процессов Elevate: {0}." : "Elevate processes terminated: {0}.", count)
+                    : string.Format(isRussian ? "Завершено: {0}; ошибок: {1}. {2}" : "Terminated: {0}; errors: {1}. {2}", count, errors.Count, errors[0]),
+                errors.Count == 0 ? InfoBarSeverity.Success : InfoBarSeverity.Warning);
+        }
+        catch (Exception ex)
+        {
+            SetStatus(BuildExceptionMessage(ex), InfoBarSeverity.Error);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref terminateAllElevateProcessesActive, 0);
+            RefreshJobsSummary();
+        }
     }
 
     private async Task ConfirmAndStopJobsAsync(
@@ -1492,8 +1537,8 @@ public sealed partial class MainPage : Page
         AutomationProperties.SetHelpText(
             StopAllJobsButton,
             isRussian
-                ? "Останавливает все ожидающие и выполняющиеся задачи."
-                : "Stops every queued and running job.");
+                ? "Отменяет задачи и закрывает все процессы Elevate, включая запущенные вручную."
+                : "Cancels jobs and closes every Elevate process, including manually launched instances.");
     }
 
     private void OnBuildingTypeRadioButtonChecked(object sender, RoutedEventArgs e)
@@ -2221,6 +2266,7 @@ public sealed partial class MainPage : Page
 
     private void StartProcessingJob(string path, BuildingType buildingType, bool includeLunchPeak)
     {
+        if (Volatile.Read(ref terminateAllElevateProcessesActive) != 0) return;
         string normalizedPath = NormalizeProcessingFolder(path);
         string leaseOwnerId = Guid.NewGuid().ToString("N");
         if (!processingFolderLeases.TryAcquire(normalizedPath, leaseOwnerId, out IDisposable? folderLease))
@@ -2263,6 +2309,7 @@ public sealed partial class MainPage : Page
         int warningCount,
         bool includeOfficeLunchPeak)
     {
+        if (Volatile.Read(ref terminateAllElevateProcessesActive) != 0) return;
         int effectiveParallelRuns = parallelRuns == int.MaxValue
             ? Math.Max(1, batchJobs.Count)
             : Math.Max(1, Math.Min(parallelRuns, batchJobs.Count));
@@ -2974,12 +3021,9 @@ public sealed partial class MainPage : Page
         UpdateLiveRegionText(BusyTextBlock, localizationService.GetQueueSummary(runningJobs));
 
         int queuedStoppableJobs = Jobs.Count(job => job.CanStop && job.IsQueued);
-        int allStoppableJobs = Jobs.Count(job => job.CanStop);
-        BatchQueueControlsPanel.Visibility = allStoppableJobs > 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        BatchQueueControlsPanel.Visibility = Visibility.Visible;
         StopQueuedJobsButton.IsEnabled = queuedStoppableJobs > 0;
-        StopAllJobsButton.IsEnabled = allStoppableJobs > 0;
+        StopAllJobsButton.IsEnabled = terminateAllElevateProcessesActive == 0;
 
         bool hasJobs = Jobs.Count > 0;
         JobsItemsControl.Visibility = hasJobs ? Visibility.Visible : Visibility.Collapsed;

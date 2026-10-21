@@ -13,6 +13,9 @@ public interface IElevateProcessingService
         return Task.CompletedTask;
     }
 
+    Task<(int TerminatedCount, IReadOnlyList<string> Errors)> TerminateAllElevateProcessesAsync(
+        CancellationToken cancellationToken = default) => Task.FromResult<(int, IReadOnlyList<string>)>((0, []));
+
     int GetDefaultCopies(BuildingType buildingType);
 
     IReadOnlyList<ElevateRunManifest> GetRunHistory(string path);

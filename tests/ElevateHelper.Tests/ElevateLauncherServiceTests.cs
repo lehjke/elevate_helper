@@ -1,10 +1,132 @@
 using System.Reflection;
+using System.Diagnostics;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
 using ElevateHelperWinUI.Services;
 
 namespace ElevateHelper.Tests;
 
 public sealed class ElevateLauncherServiceTests
 {
+    [Fact]
+    public async Task TerminateProcessCandidates_KillsOnlySelectedProcessAndContinuesAfterFailure()
+    {
+        using Process target = StartLongRunningTestProcess();
+        using Process unrelated = StartLongRunningTestProcess();
+        using Process inaccessible = new();
+        int targetId = target.Id;
+        int unrelatedId = unrelated.Id;
+
+        try
+        {
+            (int terminated, IReadOnlyList<string> errors) = await ElevateLauncherService.TerminateProcessCandidatesAsync(
+                [inaccessible, target],
+                process => ReferenceEquals(process, inaccessible)
+                    ? throw new Win32Exception("simulated access failure")
+                    : (ReferenceEquals(process, target), null));
+
+            Assert.Equal(1, terminated);
+            Assert.Single(errors);
+            Assert.False(IsProcessRunning(targetId));
+            Assert.True(IsProcessRunning(unrelatedId));
+
+            (int noneTerminated, IReadOnlyList<string> noMatchErrors) = await ElevateLauncherService.TerminateProcessCandidatesAsync(
+                [unrelated],
+                _ => (false, null));
+            Assert.Equal(0, noneTerminated);
+            Assert.Empty(noMatchErrors);
+            Assert.True(IsProcessRunning(unrelatedId));
+        }
+        finally
+        {
+            if (IsProcessRunning(unrelatedId))
+            {
+                using Process cleanup = Process.GetProcessById(unrelatedId);
+                cleanup.Kill(entireProcessTree: true);
+                await cleanup.WaitForExitAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public void Win32MessageImports_UseUnicodeTimeoutAndPostMessageSignatures()
+    {
+        MethodInfo postMessage = typeof(ElevateLauncherService).GetMethod(
+            "PostMessage", BindingFlags.NonPublic | BindingFlags.Static)!;
+        MethodInfo sendMessageTimeout = typeof(ElevateLauncherService).GetMethod(
+            "SendMessageTimeout", BindingFlags.NonPublic | BindingFlags.Static)!;
+        MethodInfo sendMessageTimeoutRaw = typeof(ElevateLauncherService).GetMethod(
+            "SendMessageTimeoutRaw", BindingFlags.NonPublic | BindingFlags.Static)!;
+        MethodInfo sendMessageTimeoutString = typeof(ElevateLauncherService).GetMethod(
+            "SendMessageTimeoutString", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        Assert.Equal("PostMessageW", postMessage.GetCustomAttribute<DllImportAttribute>()!.EntryPoint);
+        Assert.Equal(4, postMessage.GetParameters().Length);
+        Assert.Equal("SendMessageTimeoutW", sendMessageTimeout.GetCustomAttribute<DllImportAttribute>()!.EntryPoint);
+        Assert.Equal(typeof(StringBuilder), sendMessageTimeout.GetParameters()[3].ParameterType);
+        Assert.Equal(7, sendMessageTimeout.GetParameters().Length);
+        Assert.Equal("SendMessageTimeoutW", sendMessageTimeoutRaw.GetCustomAttribute<DllImportAttribute>()!.EntryPoint);
+        Assert.Equal(typeof(IntPtr), sendMessageTimeoutRaw.GetParameters()[3].ParameterType);
+        Assert.Equal(7, sendMessageTimeoutRaw.GetParameters().Length);
+        Assert.Equal("SendMessageTimeoutW", sendMessageTimeoutString.GetCustomAttribute<DllImportAttribute>()!.EntryPoint);
+        Assert.Equal(7, sendMessageTimeoutString.GetParameters().Length);
+    }
+
+    private static Process StartLongRunningTestProcess()
+    {
+        ProcessStartInfo startInfo = OperatingSystem.IsWindows()
+            ? new("cmd.exe")
+            : new("/bin/sleep");
+        startInfo.UseShellExecute = false;
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (string argument in new[] { "/c", "ping", "127.0.0.1", "-n", "60" }) startInfo.ArgumentList.Add(argument);
+        }
+        else
+        {
+            startInfo.ArgumentList.Add("60");
+        }
+
+        return Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start test process.");
+    }
+
+    private static bool IsProcessRunning(int processId)
+    {
+        try
+        {
+            using Process process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    [Theory]
+    [InlineData("Elevate", true)]
+    [InlineData("DispatchY", true)]
+    [InlineData("DispatchZ", true)]
+    [InlineData("DispatchX", false)]
+    [InlineData("ElevateHelper", false)]
+    [InlineData("Other", false)]
+    public void IsElevateProcessName_MatchesOnlyInstalledElevateProcesses(string name, bool expected)
+    {
+        Assert.Equal(expected, ElevateLauncherService.IsElevateProcessName(name));
+    }
+
+    [Theory]
+    [InlineData("ElvDocx", true)]
+    [InlineData("Count", true)]
+    [InlineData("motion", true)]
+    [InlineData("perform", true)]
+    [InlineData("Helper", false)]
+    public void IsElevateAuxiliaryProcessName_RecognizesOnlyKnownCompanions(string name, bool expected)
+    {
+        Assert.Equal(expected, ElevateLauncherService.IsElevateAuxiliaryProcessName(name));
+    }
+
     [Theory]
     [InlineData("Elevate - [Probe 02.elvx]", true, "Probe 02.elvx")]
     [InlineData("Probe 02.elvx", false, "")]
@@ -106,6 +228,9 @@ public sealed class ElevateLauncherServiceTests
     [Theory]
     [InlineData("Elevate", "Could not open results file. Try again?", true)]
     [InlineData("Elevate", "COULD NOT OPEN RESULTS FILE", true)]
+    [InlineData("Elevate", "Could not open results file.\r\nTry again?", true)]
+    [InlineData("Elevate", "Could not open results\r\nfile. Try again?", true)]
+    [InlineData("Could not open", "results file. Try again?", true)]
     [InlineData("Elevate", "Could not open project file. Try again?", false)]
     [InlineData("Elevate", "Сохранить изменения в Design 1?", false)]
     public void IsResultFileOpenErrorDialogText_MatchesOnlyResultOpenFailure(

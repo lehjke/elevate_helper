@@ -17,8 +17,10 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private const int DialogNoControlId = 7;
     private const int DialogFolderEditControlId = 14148;
     private const uint WmCommand = 0x0111;
+    private const uint WmGetText = 0x000D;
+    private const uint WmGetTextLength = 0x000E;
+    private const uint SmtoAbortIfHung = 0x0002;
     private const uint WmSetText = 0x000C;
-    private const uint BmClick = 0x00F5;
     private const int ShowWindowHide = 0;
     private const int ShowWindowNoActivate = 8;
     private static readonly SemaphoreSlim BatchSubmissionLock = new(1, 1);
@@ -26,6 +28,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static readonly TimeSpan WindowPollDelay = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan ProgressPollDelay = TimeSpan.FromMilliseconds(600);
     private static readonly TimeSpan DialogCloseTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan WindowMessageTimeout = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan MainWindowAppearTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan BatchStartTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan BatchProgressStallTimeout = TimeSpan.FromMinutes(15);
@@ -34,6 +37,14 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     private static readonly TimeSpan ResultFileOpenRestartDelay = TimeSpan.FromSeconds(1);
     private const int MaxResultFileOpenRestarts = 3;
     private const int MaxBatchStallRestarts = 1;
+    private static readonly HashSet<string> ElevateProcessNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Elevate", "DispatchY", "DispatchZ",
+    };
+    private static readonly HashSet<string> ElevateAuxiliaryProcessNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ElvDocx", "Count", "motion", "perform",
+    };
 
     private readonly IElevateIntegrationService integrationService;
     private readonly ConcurrentDictionary<int, ConcurrentDictionary<IntPtr, byte>> hiddenWindowsByProcess = new();
@@ -61,6 +72,122 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         {
             cancellationToken.ThrowIfCancellationRequested();
             await ForceTerminateProcessAsync(process, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task<(int TerminatedCount, IReadOnlyList<string> Errors)> TerminateAllElevateProcessesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await BatchSubmissionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            int terminated = 0;
+            List<string> errors = [];
+            string? installedElevatePath = integrationService.GetIntegrationInfo().ExecutablePath;
+            string? installedElevateDirectory = string.IsNullOrWhiteSpace(installedElevatePath)
+                ? null
+                : Path.GetDirectoryName(installedElevatePath);
+            for (int scan = 0; scan < 3; scan++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Process[] processes;
+                try
+                {
+                    processes = Process.GetProcesses();
+                }
+                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+                {
+                    errors.Add($"Process scan failed: {ex.Message}");
+                    break;
+                }
+
+                (int count, IReadOnlyList<string> scanErrors) = await TerminateProcessCandidatesAsync(
+                    processes,
+                    process =>
+                    {
+                        string name = process.ProcessName;
+                        if (IsElevateProcessName(name)) return (true, null);
+                        if (!IsElevateAuxiliaryProcessName(name)) return (false, null);
+                        return IsInElevateInstallation(process, installedElevateDirectory);
+                    },
+                    cancellationToken).ConfigureAwait(false);
+                terminated += count;
+                errors.AddRange(scanErrors);
+
+                if (scan < 2)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            return (terminated, errors);
+        }
+        finally
+        {
+            BatchSubmissionLock.Release();
+        }
+    }
+
+    internal static bool IsElevateProcessName(string processName) => ElevateProcessNames.Contains(processName);
+
+    internal static bool IsElevateAuxiliaryProcessName(string processName) => ElevateAuxiliaryProcessNames.Contains(processName);
+
+    internal static async Task<(int TerminatedCount, IReadOnlyList<string> Errors)> TerminateProcessCandidatesAsync(
+        IEnumerable<Process> processes,
+        Func<Process, (bool IsTarget, string? Error)> targetSelector,
+        CancellationToken cancellationToken = default)
+    {
+        HashSet<int> terminated = [];
+        List<string> errors = [];
+        foreach (Process process in processes)
+        {
+            using (process)
+            {
+                try
+                {
+                    (bool isTarget, string? selectionError) = targetSelector(process);
+                    if (selectionError is not null) errors.Add(selectionError);
+                    if (!isTarget) continue;
+                    int processId = process.Id;
+                    await ForceTerminateProcessAsync(process, cancellationToken, throwOnFailure: true).ConfigureAwait(false);
+                    terminated.Add(processId);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (InvalidOperationException)
+                {
+                    // Process exited while the snapshot was being inspected.
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Process (PID {SafeGetProcessId(process)}): {ex.Message}");
+                }
+            }
+        }
+
+        return (terminated.Count, errors);
+    }
+
+    private static int SafeGetProcessId(Process process)
+    {
+        try { return process.Id; }
+        catch (InvalidOperationException) { return 0; }
+    }
+
+    private static (bool IsTarget, string? Error) IsInElevateInstallation(Process process, string? installedElevateDirectory)
+    {
+        try
+        {
+            string? directory = Path.GetDirectoryName(process.MainModule?.FileName);
+            if (directory is null) return (false, $"Could not read executable path for process {SafeGetProcessId(process)}.");
+            return (string.Equals(directory, installedElevateDirectory, StringComparison.OrdinalIgnoreCase) ||
+                    File.Exists(Path.Combine(directory, "Elevate.exe")), null);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            return (false, $"Could not inspect executable path for process {SafeGetProcessId(process)}: {ex.Message}");
         }
     }
 
@@ -264,6 +391,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     {
         Process? process = null;
         bool submissionLockAcquired = false;
+        bool requireTerminationBeforeRetry = false;
         CancellationTokenRegistration stopRegistration = default;
         ProcessStopRequest? stopRequest = null;
 
@@ -273,6 +401,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             {
                 await BatchSubmissionLock.WaitAsync(cancellationToken);
                 submissionLockAcquired = true;
+                cancellationToken.ThrowIfCancellationRequested();
 
                 process = Process.Start(new ProcessStartInfo
                 {
@@ -333,6 +462,11 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 progress,
                 cancellationToken);
         }
+        catch (ElevateResultFileOpenException)
+        {
+            requireTerminationBeforeRetry = true;
+            throw;
+        }
         finally
         {
             stopRegistration.Dispose();
@@ -341,20 +475,30 @@ public sealed class ElevateLauncherService : IElevateLauncherService
                 await pendingStopTask;
             }
 
-            await ForceTerminateProcessAsync(process, CancellationToken.None).ConfigureAwait(false);
-            if (process is not null)
+            try
             {
-                activeProcesses.TryRemove(process.Id, out _);
-                hiddenWindowsByProcess.TryRemove(process.Id, out _);
+                await ForceTerminateProcessAsync(
+                    process,
+                    CancellationToken.None,
+                    throwOnFailure: requireTerminationBeforeRetry).ConfigureAwait(false);
             }
+            finally
+            {
+                if (process is not null)
+                {
+                    activeProcesses.TryRemove(process.Id, out _);
+                    hiddenWindowsByProcess.TryRemove(process.Id, out _);
+                }
 
-            process?.Dispose();
+                process?.Dispose();
+            }
         }
     }
 
     private static async Task ForceTerminateProcessAsync(
         Process? process,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool throwOnFailure = false)
     {
         if (process is null)
         {
@@ -379,16 +523,28 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             catch (OperationCanceledException)
             {
                 // The caller owns the overall shutdown deadline; do not block its UI thread.
+                if (throwOnFailure && cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+
+                if (throwOnFailure)
+                {
+                    throw new TimeoutException($"Process {process.Id} did not exit within {ProcessStopGracePeriod}.");
+                }
             }
         }
         catch (InvalidOperationException)
         {
+            if (throwOnFailure && !process.HasExited) throw;
         }
         catch (System.ComponentModel.Win32Exception)
         {
+            if (throwOnFailure && !process.HasExited) throw;
         }
         catch (NotSupportedException)
         {
+            if (throwOnFailure) throw;
         }
     }
 
@@ -565,10 +721,17 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             throw new InvalidOperationException("Run Batch confirmation button was not found.");
         }
 
-        _ = SendMessage(editHandle, WmSetText, IntPtr.Zero, path);
-        _ = SendMessage(okHandle, BmClick, IntPtr.Zero, IntPtr.Zero);
+        if (!SendMessageTimeoutString(editHandle, WmSetText, IntPtr.Zero, path,
+                SmtoAbortIfHung, (uint)WindowMessageTimeout.TotalMilliseconds, out _))
+        {
+            throw new InvalidOperationException("Elevate did not accept the batch folder path.");
+        }
+        if (!PostMessage(dialogHandle, WmCommand, (IntPtr)DialogOkControlId, okHandle))
+        {
+            throw new InvalidOperationException("Unable to confirm the Elevate Run Batch dialog.");
+        }
 
-        await WaitForDialogToCloseAsync(dialogHandle, cancellationToken);
+        await WaitForDialogToCloseAsync(process.Id, dialogHandle, cancellationToken);
         await WaitForBatchStartAsync(process, path, progressContext, resultBaseline, cancellationToken);
     }
 
@@ -580,6 +743,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         {
             cancellationToken.ThrowIfCancellationRequested();
             ThrowIfElevateLicenseExpired(processId);
+            await ThrowIfResultFileOpenFailedAsync(processId, cancellationToken);
 
             IntPtr dialogHandle = FindRunBatchDialog(processId);
             if (dialogHandle != IntPtr.Zero)
@@ -594,6 +758,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
     }
 
     private static async Task WaitForDialogToCloseAsync(
+        int processId,
         IntPtr dialogHandle,
         CancellationToken cancellationToken)
     {
@@ -601,6 +766,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            await ThrowIfResultFileOpenFailedAsync(processId, cancellationToken);
             if (!IsWindow(dialogHandle))
             {
                 return;
@@ -625,7 +791,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             cancellationToken.ThrowIfCancellationRequested();
 
             process.Refresh();
-            ThrowIfResultFileOpenFailed(process.Id);
+            await ThrowIfResultFileOpenFailedAsync(process.Id, cancellationToken);
             ApplyProcessWindowVisibility(process.Id);
             ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
             if (observation.HasStarted)
@@ -663,7 +829,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         {
             cancellationToken.ThrowIfCancellationRequested();
             process.Refresh();
-            ThrowIfResultFileOpenFailed(process.Id);
+            await ThrowIfResultFileOpenFailedAsync(process.Id, cancellationToken);
             ApplyProcessWindowVisibility(process.Id);
 
             ProgressObservation observation = ObserveProgress(process.Id, path, progressContext, resultBaseline);
@@ -1171,6 +1337,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            await ThrowIfResultFileOpenFailedAsync(process.Id, cancellationToken);
             process.Refresh();
             if (process.HasExited)
             {
@@ -1363,8 +1530,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             }
             else
             {
-                _ = SendMessage(noButtonHandle, BmClick, IntPtr.Zero, IntPtr.Zero);
-                clicked = true;
+                clicked |= PostMessage(dialogHandle, WmCommand, (IntPtr)DialogNoControlId, noButtonHandle);
             }
         }
 
@@ -1382,10 +1548,22 @@ public sealed class ElevateLauncherService : IElevateLauncherService
         return IsSaveConfirmationDialogText(GetWindowTitle(windowHandle), childTexts);
     }
 
-    private static void ThrowIfResultFileOpenFailed(int processId)
+    private static async Task ThrowIfResultFileOpenFailedAsync(int processId, CancellationToken cancellationToken)
     {
-        if (GetProcessWindowHandles(processId, IsResultFileOpenErrorDialogHandle).Count > 0)
+        foreach (IntPtr dialogHandle in GetProcessWindowHandles(processId, IsResultFileOpenErrorDialogHandle))
         {
+            IntPtr okHandle = GetDlgItem(dialogHandle, DialogOkControlId);
+            if (okHandle != IntPtr.Zero)
+            {
+                _ = PostMessage(dialogHandle, WmCommand, (IntPtr)DialogOkControlId, okHandle);
+                DateTimeOffset deadline = DateTimeOffset.UtcNow + DialogCloseTimeout;
+                while (IsWindow(dialogHandle) && DateTimeOffset.UtcNow < deadline)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await Task.Delay(WindowPollDelay, cancellationToken);
+                }
+            }
+
             throw new ElevateResultFileOpenException();
         }
     }
@@ -1551,7 +1729,7 @@ public sealed class ElevateLauncherService : IElevateLauncherService
             builder.Append(childText);
         }
 
-        return builder.ToString();
+        return string.Join(' ', builder.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static IReadOnlyList<string> GetChildWindowTexts(IntPtr parentHandle)
@@ -1599,29 +1777,67 @@ public sealed class ElevateLauncherService : IElevateLauncherService
 
     private static string GetWindowTitle(IntPtr windowHandle)
     {
-        int length = GetWindowTextLength(windowHandle);
+        bool isForeignStaticChild = GetParent(windowHandle) != IntPtr.Zero &&
+                                    GetWindowClass(windowHandle).Equals("Static", StringComparison.Ordinal);
+        int length = isForeignStaticChild ? GetForeignWindowTextLength(windowHandle) : GetWindowTextLength(windowHandle);
         if (length <= 0)
         {
             return string.Empty;
         }
 
         StringBuilder builder = new(length + 1);
-        _ = GetWindowText(windowHandle, builder, builder.Capacity);
+        if (isForeignStaticChild)
+        {
+            if (!SendMessageTimeout(windowHandle, WmGetText, (IntPtr)builder.Capacity, builder,
+                    SmtoAbortIfHung, (uint)WindowMessageTimeout.TotalMilliseconds, out IntPtr copiedLength))
+            {
+                return string.Empty;
+            }
+
+            if (copiedLength.ToInt32() <= 0)
+            {
+                return string.Empty;
+            }
+        }
+        else
+        {
+            _ = GetWindowText(windowHandle, builder, builder.Capacity);
+        }
         return builder.ToString().Trim();
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
+    private static int GetForeignWindowTextLength(IntPtr windowHandle)
+    {
+        return SendMessageTimeoutRaw(windowHandle, WmGetTextLength, IntPtr.Zero, IntPtr.Zero,
+                   SmtoAbortIfHung, (uint)WindowMessageTimeout.TotalMilliseconds, out IntPtr result)
+            ? Math.Clamp(result.ToInt32(), 0, 4096)
+            : 0;
+    }
+
+    [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, string lParam);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
     [DllImport("user32.dll")]
     private static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetParent(IntPtr hWnd);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SendMessageTimeout(
+        IntPtr hWnd, uint msg, IntPtr wParam, StringBuilder lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SendMessageTimeoutRaw(
+        IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SendMessageTimeoutString(
+        IntPtr hWnd, uint msg, IntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);

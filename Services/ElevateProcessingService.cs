@@ -45,6 +45,9 @@ public sealed class ElevateProcessingService : IElevateProcessingService
         return launcherService.ShutdownAsync(cancellationToken);
     }
 
+    public Task<(int TerminatedCount, IReadOnlyList<string> Errors)> TerminateAllElevateProcessesAsync(
+        CancellationToken cancellationToken = default) => launcherService.TerminateAllElevateProcessesAsync(cancellationToken);
+
     public int GetDefaultCopies(BuildingType buildingType)
     {
         return buildingType switch

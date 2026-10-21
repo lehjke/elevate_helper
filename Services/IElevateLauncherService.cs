@@ -13,6 +13,9 @@ public interface IElevateLauncherService
         return Task.CompletedTask;
     }
 
+    Task<(int TerminatedCount, IReadOnlyList<string> Errors)> TerminateAllElevateProcessesAsync(
+        CancellationToken cancellationToken = default) => Task.FromResult<(int, IReadOnlyList<string>)>((0, []));
+
     Task LaunchResidenceAsync(string path, CancellationToken cancellationToken = default);
 
     Task LaunchResidenceAsync(
