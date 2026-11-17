@@ -107,6 +107,30 @@ public sealed class ReportPdfRendererTests
     }
 
     [Theory]
+    [InlineData(4, "4,000")]
+    [InlineData(4.2, "4,200")]
+    [InlineData(0, "0,000")]
+    [InlineData(double.NaN, "—")]
+    public void FormatFloorHeight_UsesThreeFixedDecimals(double value, string expected)
+    {
+        Assert.Equal(expected, ReportPdfRenderer.FormatFloorHeight(value));
+    }
+
+    [Theory]
+    [InlineData(4.2, "+4,200")]
+    [InlineData(-4.2, "-4,200")]
+    [InlineData(0, "±0,000")]
+    [InlineData(0.0004, "±0,000")]
+    [InlineData(-0.0004, "±0,000")]
+    [InlineData(0.0005, "+0,001")]
+    [InlineData(-0.0005, "-0,001")]
+    [InlineData(double.PositiveInfinity, "—")]
+    public void FormatFloorElevation_SignsRoundedThreeDecimalValue(double value, string expected)
+    {
+        Assert.Equal(expected, ReportPdfRenderer.FormatFloorElevation(value));
+    }
+
+    [Theory]
     [InlineData(13, "при HC5 13%")]
     [InlineData(6.5, "при HC5 6,5%")]
     public void FormatMetricHc5Caption_MakesSelectedCapacityExplicit(double hc5, string expected)

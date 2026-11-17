@@ -865,8 +865,8 @@ internal sealed class ReportPdfRenderer : IDisposable
             string[] values =
             [
                 floor.Floor,
-                Format(floor.HeightMetres),
-                Format(floor.ElevationMetres),
+                FormatFloorHeight(floor.HeightMetres),
+                FormatFloorElevation(floor.ElevationMetres),
                 floor.Function,
                 Format(floor.Population),
                 Format(floor.PresenceFactor),
@@ -1387,6 +1387,20 @@ internal sealed class ReportPdfRenderer : IDisposable
             _ => "0.###",
         };
         return value.ToString(format, CultureInfo.GetCultureInfo("ru-RU"));
+    }
+
+    internal static string FormatFloorHeight(double value) =>
+        double.IsFinite(value) ? value.ToString("0.000", CultureInfo.GetCultureInfo("ru-RU")) : "—";
+
+    internal static string FormatFloorElevation(double value)
+    {
+        if (!double.IsFinite(value))
+        {
+            return "—";
+        }
+
+        string formatted = Math.Abs(value).ToString("0.000", CultureInfo.GetCultureInfo("ru-RU"));
+        return formatted == "0,000" ? $"±{formatted}" : $"{(value > 0 ? "+" : "-")}{formatted}";
     }
 
     private static string FormatHc5(double value)
